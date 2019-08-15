@@ -1,0 +1,57 @@
+build
+captures
+.gradle
+.idea
+bin
+gen
+out
+*.iml
+.directory
+node_modules
+local.properties
+android/mobile/release/*
+ios.xcworkspace/
+
+.DS_Store
+.externalNativeBuild
+
+## Build generated
+build/
+DerivedData
+build.xcarchive
+
+## Various settings
+*.pbxuser
+!default.pbxuser
+*.mode1v3
+!default.mode1v3
+*.mode2v3
+!default.mode2v3
+*.perspectivev3
+!default.perspectivev3
+xcuserdata
+
+## Other
+*.xccheckout
+*.moved-aside
+*.xcuserstate
+*.xcscmblueprint
+
+## Obj-C/Swift specific
+*.hmap
+*.ipa
+
+# CocoaPods
+Pods/
+
+# Carthage
+Carthage/Checkouts
+Carthage/Build
+
+apps/epax-ios/DerivedData/
+*/DerivedData/
+*/Carthage/Checkouts
+*/Carthage/Build
+*/Pods/
+
+
