@@ -1,0 +1,22 @@
+source 'https://github.com/CocoaPods/Specs.git'
+
+platform :ios, '12.2'
+use_frameworks!
+inhibit_all_warnings!
+
+def required_pods
+
+  pod 'library', :path => '/Users/andrewreed/Documents/workspace/multi-blue/library'
+
+
+end
+
+target "Multi-Blue" do
+    required_pods
+end
+target "Multi-BlueTests" do
+    required_pods
+end
+target "Multi-BlueUITests" do
+    required_pods
+end

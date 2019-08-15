@@ -35,11 +35,13 @@ repositories {
     maven(url = "https://kotlin.bintray.com/kotlinx")
     maven(url = "https://dl.bintray.com/kotlin/kotlin-dev")
     maven(url = "https://dl.bintray.com/kotlin/kotlin-eap")
+    maven(url = "https://dl.bintray.com/pocketbyte/hydra/")
 }
 
 val kotlin_version: String by project
 val android_tools_version: String by project
 val project_version: String by project
+val hydra_log_version: String by project
 
 group = "uk.co.andrewreed"
 version = project_version
@@ -75,6 +77,7 @@ kotlin {
         val commonMain by getting {
             dependencies {
                 implementation("org.jetbrains.kotlin:kotlin-stdlib-common")
+                implementation("ru.pocketbyte.hydra:hydra-log:$hydra_log_version")
             }
         }
 
@@ -88,6 +91,7 @@ kotlin {
         val androidMain by getting {
             dependencies {
                 implementation("org.jetbrains.kotlin:kotlin-stdlib")
+                implementation("ru.pocketbyte.hydra:hydra-log-android:$hydra_log_version")
             }
         }
 
