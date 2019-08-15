@@ -99,7 +99,6 @@
 				FB5616E3A6B50A058DC3D265 /* Pods-Multi-BlueUITests.debug.xcconfig */,
 				F985433450AF3B7FF314E8BD /* Pods-Multi-BlueUITests.release.xcconfig */,
 			);
-			name = Pods;
 			path = Pods;
 			sourceTree = "<group>";
 		};
@@ -547,6 +546,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = 269C5Q4423;
 				INFOPLIST_FILE = "Multi-Blue/Info.plist";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -565,6 +565,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = 269C5Q4423;
 				INFOPLIST_FILE = "Multi-Blue/Info.plist";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
