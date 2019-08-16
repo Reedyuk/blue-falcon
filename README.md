@@ -16,3 +16,15 @@ Threading in iOS :(
 
 Create android project
 Fix iOS project
+
+## Examples
+
+This repo contains examples for ios and android(todo) in the examples folder, install its dependencies, and run it locally:
+
+## Support
+
+For a **bug, feature request, or cool idea**, please [file a Github issue](https://github.com/Reedyuk/blue-falcon/issues/new).
+
+### Two big little things
+
+Keep in mind that Blue-Falcon is maintained by volunteers. Please be patient if you don’t immediately get an answer to your question; we all have jobs, families, obligations, and lives beyond this project.
