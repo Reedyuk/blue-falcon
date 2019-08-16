@@ -12,7 +12,8 @@ import library
 struct ContentView : View {
     var body: some View {
         Text("Hello World").onAppear {
-            BlueFalcon().scan()
+            let blueFalcon = BlueFalcon()
+            blueFalcon.scan()
         }
     }
 }

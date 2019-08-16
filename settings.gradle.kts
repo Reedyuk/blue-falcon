@@ -21,10 +21,10 @@ pluginManagement {
         }
     }
 }
-rootProject.name = "blue-falcon"
+rootProject.name = "bluefalcon"
 
 include("library")
-//include("examples:android")
-//include("examples")
+include("examples:android")
+include("examples")
 
 enableFeaturePreview("GRADLE_METADATA")

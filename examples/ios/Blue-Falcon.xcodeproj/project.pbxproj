@@ -163,7 +163,6 @@
 				86B1877241E77DBE989028FD /* Pods-Blue-FalconUITests.debug.xcconfig */,
 				42D534E1A926A5304B97EAC6 /* Pods-Blue-FalconUITests.release.xcconfig */,
 			);
-			name = Pods;
 			path = Pods;
 			sourceTree = "<group>";
 		};
@@ -557,7 +556,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = "uk.co.andrewreed.Blue-Falcon";
+				PRODUCT_BUNDLE_IDENTIFIER = dev.bluefalcon;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
@@ -578,7 +577,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = "uk.co.andrewreed.Blue-Falcon";
+				PRODUCT_BUNDLE_IDENTIFIER = dev.bluefalcon;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";

@@ -41,7 +41,6 @@ repositories {
 val kotlin_version: String by project
 val android_tools_version: String by project
 val project_version: String by project
-val hydra_log_version: String by project
 
 group = "uk.co.andrewreed"
 version = project_version
@@ -50,7 +49,7 @@ kotlin {
     cocoapods {
         // Configure fields required by CocoaPods.
         summary = "Blue-Falcon a multiplatform bluetooth library"
-        homepage = "http://www.andrewreed.co.uk"
+        homepage = "http://www.bluefalcon.dev"
     }
     android("android")
     js {
@@ -77,7 +76,6 @@ kotlin {
         val commonMain by getting {
             dependencies {
                 implementation("org.jetbrains.kotlin:kotlin-stdlib-common")
-                implementation("ru.pocketbyte.hydra:hydra-log:$hydra_log_version")
             }
         }
 

@@ -1,6 +1,16 @@
 
 allprojects {
     repositories {
+        mavenLocal()
+        mavenCentral()
+        jcenter()
+        google()
+        maven(url = "https://dl.bintray.com/jetbrains/kotlin-native-dependencies")
+        maven(url = "https://maven.google.com")
+        maven(url = "https://plugins.gradle.org/m2/")
+        maven(url = "https://dl.bintray.com/kotlin/kotlin-eap")
+        maven(url = "https://kotlin.bintray.com/kotlinx")
+        maven(url = "https://dl.bintray.com/kotlin/kotlin-dev")
     }
 }
 
