@@ -26,7 +26,8 @@ actual class PlatformBluetooth : Bluetooth {
     }
 
     override fun scan() {
-        centralManager.scanForPeripheralsWithServices(null, null)
+        println("Scan")
+        //centralManager.scanForPeripheralsWithServices(null, null)
     }
 
     inner class BluetoothPeripheralManager: NSObject(), CBCentralManagerDelegateProtocol {

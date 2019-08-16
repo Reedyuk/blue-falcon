@@ -91,7 +91,6 @@ kotlin {
         val androidMain by getting {
             dependencies {
                 implementation("org.jetbrains.kotlin:kotlin-stdlib")
-                implementation("ru.pocketbyte.hydra:hydra-log-android:$hydra_log_version")
             }
         }
 

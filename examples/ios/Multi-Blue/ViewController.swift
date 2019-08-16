@@ -17,6 +17,5 @@ class ViewController: UIViewController {
         MultiBlue().scan()
     }
 
-
 }
 
