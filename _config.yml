@@ -1,1 +1,7 @@
 theme: jekyll-theme-minimal
+# Site settings
+title: Blue-Falcon
+subtitle: "A Multiplatform library for bluetooth"
+url: "https://bluefalcon.dev" # the base hostname & protocol for your site
+baseurl: "" # Set this value to "" if you want your site to be root
+#baseurl: "/"
