@@ -1,4 +1,4 @@
-# Blue-Falcon
+# Blue-Falcon ![Blue Falcon](bluefalcon.png)
 
 A Bluetooth Kotlin Multiplatform library for iOS and Android. 
 
