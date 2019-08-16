@@ -1,12 +1,12 @@
 package uk.co.andrewreed
 
-expect object MultiBlue: AbsBluetooth {
+expect object BlueFalcon: AbsBluetooth {
 
     override val bluetooth: Bluetooth
 
     fun init(bluetooth: Bluetooth)
 }
 
-fun MultiBlue.initDefault() {
+fun BlueFalcon.initDefault() {
     init(PlatformBluetooth())
 }

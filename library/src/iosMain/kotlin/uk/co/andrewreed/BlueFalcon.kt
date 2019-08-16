@@ -1,9 +1,6 @@
 package uk.co.andrewreed
 
-import kotlin.native.concurrent.AtomicReference
-import kotlin.native.concurrent.freeze
-
-actual object MultiBlue : AbsBluetooth() {
+actual object BlueFalcon : AbsBluetooth() {
     actual override val bluetooth: Bluetooth
         get() = getOrInitBluetooth()
 
@@ -31,7 +28,7 @@ actual object MultiBlue : AbsBluetooth() {
 //        return bluetooth
         val bluetooth = this.bluetoothRef
         if (bluetooth == null) {
-            MultiBlue.initDefault()
+            BlueFalcon.initDefault()
             return this.bluetoothRef!!
         }
         return bluetooth

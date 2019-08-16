@@ -1,4 +1,4 @@
-# Multi-Blue
+# Blue-Falcon
 
 A Bluetooth Kotlin Multiplatform library for iOS and Android. 
 

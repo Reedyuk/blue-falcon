@@ -1,6 +1,6 @@
 source 'https://github.com/CocoaPods/Specs.git'
 
-platform :ios, '13.0'
+platform :ios, '12.2'
 use_frameworks!
 inhibit_all_warnings!
 
@@ -11,12 +11,12 @@ def required_pods
 
 end
 
-target "Blue-Falcon" do
+target "Multi-Blue" do
     required_pods
 end
-target "Blue-FalconTests" do
+target "Multi-BlueTests" do
     required_pods
 end
-target "Blue-FalconUITests" do
+target "Multi-BlueUITests" do
     required_pods
 end

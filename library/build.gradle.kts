@@ -49,7 +49,7 @@ version = project_version
 kotlin {
     cocoapods {
         // Configure fields required by CocoaPods.
-        summary = "Multi-Blue a multiplatform bluetooth library"
+        summary = "Blue-Falcon a multiplatform bluetooth library"
         homepage = "http://www.andrewreed.co.uk"
     }
     android("android")

@@ -21,7 +21,7 @@ pluginManagement {
         }
     }
 }
-rootProject.name = "multi-blue"
+rootProject.name = "blue-falcon"
 
 include("library")
 //include("examples:android")

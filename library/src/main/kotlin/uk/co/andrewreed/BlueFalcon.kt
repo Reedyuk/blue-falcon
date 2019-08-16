@@ -1,6 +1,6 @@
 package uk.co.andrewreed
 
-actual object MultiBlue : AbsBluetooth() {
+actual object BlueFalcon : AbsBluetooth() {
     actual override val bluetooth: Bluetooth
         get() = getOrInitBluetooth()
 
@@ -16,7 +16,7 @@ actual object MultiBlue : AbsBluetooth() {
         val bluetooth = this.bluetoothRef
         if (bluetooth == null) {
 
-            MultiBlue.initDefault()
+            BlueFalcon.initDefault()
             return this.bluetoothRef!!
         }
         return bluetooth
