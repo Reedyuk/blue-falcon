@@ -1,3 +1,3 @@
 package dev.bluefalcon
 
-expect class PlatformBluetooth(): Bluetooth
+expect class PlatformBluetooth() : Bluetooth
