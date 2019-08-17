@@ -42,7 +42,7 @@ val kotlin_version: String by project
 val android_tools_version: String by project
 val project_version: String by project
 
-group = "uk.co.andrewreed"
+group = "dev.bluefalcon"
 version = project_version
 
 kotlin {
