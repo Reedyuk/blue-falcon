@@ -7,18 +7,10 @@ actual object BlueFalcon : AbsBluetooth() {
     private var bluetoothRef: Bluetooth? = null
 
     actual fun init(bluetooth: Bluetooth) {
-        if (bluetoothRef != null)
-            throw IllegalStateException("Bluetooth already initialized")
+        if (bluetoothRef != null) throw IllegalStateException("Bluetooth already initialized")
         bluetoothRef = bluetooth
     }
 
-    private fun getOrInitBluetooth(): Bluetooth {
-        val bluetooth = bluetoothRef
-        if (bluetooth == null) {
+    private fun getOrInitBluetooth(): Bluetooth = bluetoothRef ?: throw IllegalStateException("BlueFalcon.Init Method must be called first")
 
-            BlueFalcon.initDefault()
-            return bluetoothRef!!
-        }
-        return bluetooth
-    }
 }
