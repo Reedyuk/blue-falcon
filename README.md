@@ -17,9 +17,29 @@ Threading in iOS :(
 Create android project
 Fix iOS project
 
+## Basic Usage
+
+### iOS
+
+Create an instance of BlueFalcon and then call the scan method.
+
+```swift
+let blueFalcon = BlueFalcon()
+blueFalcon.scan()
+```
+
+### Android
+
+The Android sdk requires an Application context, we do this by using the init method on BlueFalcon.
+
+```kotlin
+BlueFalcon.init(PlatformBluetooth(PlatformContext(this)))
+BlueFalcon.scan()
+```
+
 ## Examples
 
-This repo contains examples for ios and android(todo) in the examples folder, install its dependencies, and run it locally:
+This repo contains examples for ios(todo) and android(todo) in the examples folder, install its dependencies, and run it locally:
 
 ## Support
 
