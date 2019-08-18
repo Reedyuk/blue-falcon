@@ -1,11 +1,13 @@
 package dev.bluefalcon
 
+import android.Manifest
 import android.bluetooth.BluetoothManager
 import android.bluetooth.le.ScanCallback
 import android.bluetooth.le.ScanFilter
 import android.bluetooth.le.ScanResult
 import android.bluetooth.le.ScanSettings
 import android.content.Context
+import android.content.pm.PackageManager
 import android.util.Log
 
 actual class PlatformBluetooth actual constructor() : Bluetooth {
@@ -16,8 +18,14 @@ actual class PlatformBluetooth actual constructor() : Bluetooth {
 
     constructor(platformContext: PlatformContext) : this() {
         this.platformContext = platformContext
+        if (permissionCheck()) throw PermissionException()
         val context = platformContext.getContext() as Context
         this.bluetoothManager = context.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
+    }
+
+    private fun permissionCheck(): Boolean {
+        val context = platformContext?.getContext() as Context
+        return context.checkSelfPermission(Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED
     }
 
     override fun connect() {
@@ -55,7 +63,7 @@ actual class PlatformBluetooth actual constructor() : Bluetooth {
         }
 
         private fun addScanResult(result: ScanResult?) {
-            Log.e("Blue-Falcon", "Found device "+result?.device?.address)
+            Log.i("Blue-Falcon", "Found device "+result?.device?.address)
         }
 
     }
