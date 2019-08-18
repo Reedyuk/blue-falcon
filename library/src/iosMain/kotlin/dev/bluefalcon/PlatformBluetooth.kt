@@ -7,7 +7,7 @@ import platform.Foundation.NSError
 import platform.Foundation.NSNumber
 import platform.darwin.NSObject
 
-actual class PlatformBluetooth() : Bluetooth {
+actual class PlatformBluetooth actual constructor() : Bluetooth {
 
     private val centralManager: CBCentralManager
     private val bluetoothPeripheralManager = BluetoothPeripheralManager()

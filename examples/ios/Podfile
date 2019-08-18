@@ -6,7 +6,7 @@ inhibit_all_warnings!
 
 def required_pods
 
-  pod 'library', :path => '/Users/andrewreed/Documents/workspace/blue-falcon/library'
+  pod 'library', :path => '../..//library'
 
 
 end

@@ -13,6 +13,7 @@ struct ContentView : View {
     var body: some View {
         Text("Hello World").onAppear {
             let blueFalcon = BlueFalcon()
+            print("Test")
             blueFalcon.scan()
         }
     }
