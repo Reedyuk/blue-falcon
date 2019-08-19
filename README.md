@@ -14,8 +14,7 @@ Threading in iOS :(
 
 ## TODO:
 
-Create android project
-Fix iOS project
+Fix iOS project with threading issues,
 
 ## Basic Usage
 
@@ -30,7 +29,7 @@ blueFalcon.scan()
 
 ### Android
 
-The Android sdk requires an Application context, we do this by using the init method on BlueFalcon.
+The Android sdk requires an Application context, we do this by using the init method on BlueFalcon, in this example we are calling the code from an activity.
 
 ```kotlin
 try {
@@ -43,7 +42,7 @@ try {
 
 ## Examples
 
-This repo contains examples for ios(todo) and android(todo) in the examples folder, install its dependencies, and run it locally:
+This repo contains examples for ios(todo) and android in the examples folder, install its dependencies, and run it locally:
 
 ## Support
 
