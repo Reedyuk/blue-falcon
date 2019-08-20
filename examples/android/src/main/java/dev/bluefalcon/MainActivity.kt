@@ -18,7 +18,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun setupBluetooth() {
         try {
-            val blueFalcon = BlueFalcon(PlatformBluetooth(PlatformContext(this)))
+            val blueFalcon = BlueFalcon(this)
             blueFalcon.scan()
         } catch (exception: PermissionException) {
             requestLocationPermission()
