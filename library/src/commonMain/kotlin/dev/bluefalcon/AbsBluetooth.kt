@@ -1,8 +1,6 @@
 package dev.bluefalcon
 
-abstract class AbsBluetooth: Bluetooth {
-
-    abstract val bluetooth: Bluetooth
+abstract class AbsBluetooth(private val bluetooth: Bluetooth): Bluetooth {
 
     override fun connect() {
         this.bluetooth.connect()

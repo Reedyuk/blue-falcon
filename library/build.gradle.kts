@@ -103,6 +103,7 @@ kotlin {
         val iosMain by getting {
             dependencies {
                 implementation("org.jetbrains.kotlin:kotlin-stdlib")
+                implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core-native:1.3.0-M2")
             }
         }
 

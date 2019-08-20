@@ -2,15 +2,15 @@ PODS:
   - library (0.0.1)
 
 DEPENDENCIES:
-  - library (from `../..//library`)
+  - library (from `../../library`)
 
 EXTERNAL SOURCES:
   library:
-    :path: "../..//library"
+    :path: "../../library"
 
 SPEC CHECKSUMS:
   library: de1661f7077896552bb8bc154224cc0cd6b18cd8
 
-PODFILE CHECKSUM: def1ddab4128f51aed271887b846331e37e6ebd8
+PODFILE CHECKSUM: 59029ea86acb95fb259b30cb095d1065ca20130e
 
 COCOAPODS: 1.7.1
