@@ -9,6 +9,8 @@ import platform.darwin.NSObject
 
 actual class BlueFalcon {
 
+    actual val delegates: MutableList<BlueFalconDelegate> = arrayListOf()
+
     private val centralManager: CBCentralManager
     private val bluetoothPeripheralManager = BluetoothPeripheralManager()
 
@@ -48,6 +50,9 @@ actual class BlueFalcon {
             RSSI: NSNumber
         ) {
             log("Discovered device ${didDiscoverPeripheral.name}")
+            delegates.forEach {
+                it.didConnect(didDiscoverPeripheral)
+            }
         }
 
         override fun centralManager(central: CBCentralManager, didConnectPeripheral: CBPeripheral) {
@@ -59,4 +64,5 @@ actual class BlueFalcon {
         }
 
     }
+
 }

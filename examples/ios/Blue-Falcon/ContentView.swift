@@ -8,20 +8,37 @@
 
 import SwiftUI
 import library
+import CoreBluetooth
 
 struct ContentView : View {
+    let blueFalcon = BlueFalcon()
+
     var body: some View {
         VStack {
             Text("Hello Blue Falcon")
-                .padding(10)
             Text("Bluetooth Device Status")
-                .padding(10)
                 .onAppear {
-                let blueFalcon = BlueFalcon()
-                blueFalcon.scan()
+                    self.blueFalcon.delegates.add(BluetoothDelegate())
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+                        self.blueFalcon.scan()
+                    }
             }
         }
     }
+}
+
+class BluetoothDelegate: BlueFalconDelegate {
+
+    func didDiscoverDevice(bluetoothPeripheral: CBPeripheral) {
+        print("In-app did discover device. \(bluetoothPeripheral.name)")
+    }
+
+    func didConnect(bluetoothPeripheral: CBPeripheral) {
+    }
+
+    func didDisconnect(bluetoothPeripheral: CBPeripheral) {
+    }
+
 }
 
 #if DEBUG

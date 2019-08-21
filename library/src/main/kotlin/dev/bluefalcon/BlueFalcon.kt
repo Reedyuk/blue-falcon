@@ -19,6 +19,7 @@ actual class BlueFalcon(private val context: Context) {
             throw PermissionException()
     }
 
+    actual val delegates: MutableList<BlueFalconDelegate> = arrayListOf()
     private val bluetoothManager = context.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
     private val mBluetoothScanCallBack = BluetoothScanCallBack()
 
@@ -59,6 +60,13 @@ actual class BlueFalcon(private val context: Context) {
 
         private fun addScanResult(result: ScanResult?) {
             log("Found device ${result?.device?.address}")
+            result?.let { scanResult ->
+                scanResult.device?.let { device ->
+                    delegates.forEach {
+                        it.didConnect(device)
+                    }
+                }
+            }
         }
 
     }
