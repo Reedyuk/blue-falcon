@@ -10,11 +10,13 @@ The idea is to have a common api for using bluetooth as the principle of bluetoo
 
 ## Known Issues
 
-Threading in iOS :(
+No callbacks on requests e.g. new devices
 
 ## TODO:
 
-Fix iOS project with threading issues,
+An example using kotlin multiplatform.
+
+Handle different scenarios for permissions e.g. bluetooth off, permission denied
 
 ## Basic Usage
 
@@ -42,7 +44,7 @@ try {
 
 ## Examples
 
-This repo contains examples for ios(todo) and android in the examples folder, install its dependencies, and run it locally:
+This repo contains examples for ios and android in the examples folder, install their dependencies, and run it locally:
 
 ## Support
 
