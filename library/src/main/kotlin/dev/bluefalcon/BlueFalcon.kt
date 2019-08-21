@@ -1,6 +1,9 @@
 package dev.bluefalcon
 
 import android.Manifest
+import android.bluetooth.BluetoothGatt
+import android.bluetooth.BluetoothGattCallback
+import android.bluetooth.BluetoothGattCharacteristic
 import android.bluetooth.BluetoothManager
 import android.bluetooth.le.ScanCallback
 import android.bluetooth.le.ScanFilter
@@ -8,7 +11,6 @@ import android.bluetooth.le.ScanResult
 import android.bluetooth.le.ScanSettings
 import android.content.Context
 import android.content.pm.PackageManager
-import android.util.Log
 
 actual class BlueFalcon(private val context: Context) {
 
@@ -20,16 +22,18 @@ actual class BlueFalcon(private val context: Context) {
     private val bluetoothManager = context.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
     private val mBluetoothScanCallBack = BluetoothScanCallBack()
 
-    actual fun connect() {
-        TODO("not implemented") //To change body of created functions use File | Settings | File Templates.
+    actual fun connect(bluetoothPeripheral: BluetoothPeripheral) {
+        log("connect")
+        bluetoothPeripheral.connectGatt(context, false, GattClientCallback())
     }
 
-    actual fun disconnect() {
-        TODO("not implemented") //To change body of created functions use File | Settings | File Templates.
+    actual fun disconnect(bluetoothPeripheral: BluetoothPeripheral) {
+        log("disconnect")
+        //no need to disconnect in Android.
     }
 
     actual fun scan() {
-        Log.i("Blue-Falcon", "BT Scan started")
+        log("BT Scan started")
         val filter = ScanFilter.Builder().build()
         val filters = listOf(filter)
         val settings = ScanSettings.Builder()
@@ -50,12 +54,37 @@ actual class BlueFalcon(private val context: Context) {
         }
 
         override fun onScanFailed(errorCode: Int) {
-            Log.e("Blue-Falcon", "Failed to scan with code "+errorCode)
+            log("Failed to scan with code $errorCode")
         }
 
         private fun addScanResult(result: ScanResult?) {
-            Log.i("Blue-Falcon", "Found device "+result?.device?.address)
+            log("Found device ${result?.device?.address}")
         }
 
+    }
+
+    inner class GattClientCallback: BluetoothGattCallback() {
+
+        override fun onConnectionStateChange(gatt: BluetoothGatt?, status: Int, newState: Int) {
+            super.onConnectionStateChange(gatt, status, newState)
+            log("onConnectionStateChange")
+        }
+
+        override fun onServicesDiscovered(gatt: BluetoothGatt?, status: Int) {
+            log("onServicesDiscovered")
+        }
+
+        override fun onMtuChanged(gatt: BluetoothGatt?, mtu: Int, status: Int) {
+            super.onMtuChanged(gatt, mtu, status)
+            log("onMtuChanged$mtu status:$status")
+        }
+
+        override fun onCharacteristicRead(gatt: BluetoothGatt?, characteristic: BluetoothGattCharacteristic?, status: Int) {
+            log("onCharacteristicChanged")
+        }
+
+        override fun onCharacteristicChanged(gatt: BluetoothGatt?, characteristic: BluetoothGattCharacteristic?) {
+            log("onCharacteristicChanged")
+        }
     }
 }

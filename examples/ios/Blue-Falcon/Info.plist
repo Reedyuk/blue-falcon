@@ -20,7 +20,7 @@
 	<string>1</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
-	<key>NSBluetoothAlwaysUseageDescription</key>
+	<key>NSBluetoothAlwaysUsageDescription</key>
 	<string>We need to use bluetooth to connect to your device.</string>
 	<key>NSBluetoothPeripheralUsageDescription</key>
 	<string>We need to use bluetooth to connect to your device.</string>

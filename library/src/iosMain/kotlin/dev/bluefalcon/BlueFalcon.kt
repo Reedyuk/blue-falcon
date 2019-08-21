@@ -16,13 +16,12 @@ actual class BlueFalcon {
         centralManager = CBCentralManager(bluetoothPeripheralManager, null)
     }
 
-    actual fun connect() {
-        //centralManager.connectPeripheral()
-        TODO("not implemented") //To change body of created functions use File | Settings | File Templates.
+    actual fun connect(bluetoothPeripheral: BluetoothPeripheral) {
+        centralManager.connectPeripheral(bluetoothPeripheral, null)
     }
 
-    actual fun disconnect() {
-        TODO("not implemented") //To change body of created functions use File | Settings | File Templates.
+    actual fun disconnect(bluetoothPeripheral: BluetoothPeripheral) {
+        centralManager.cancelPeripheralConnection(bluetoothPeripheral)
     }
 
     actual fun scan() {
@@ -32,16 +31,13 @@ actual class BlueFalcon {
     inner class BluetoothPeripheralManager: NSObject(), CBCentralManagerDelegateProtocol {
         override fun centralManagerDidUpdateState(central: CBCentralManager) {
             when (central.state.toInt()) {
-                0 -> print("State 0 is .unknown?")
-                1 -> print("State 1 is .resetting?")
-                2 -> print("State 2 is .unsupported?")
-                3 -> print("State 3 is .unauthorised?")
-                4 -> print("State 4 is .poweredOff?")
-                5 -> {
-                    print("State 5 is .poweredOn?")
-                    scan()
-                }
-                else -> print("State "+central.state.toInt()+" is else?")
+                0 -> log("State 0 is .unknown")
+                1 -> log("State 1 is .resetting")
+                2 -> log("State 2 is .unsupported")
+                3 -> log("State 3 is .unauthorised")
+                4 -> log("State 4 is .poweredOff")
+                5 -> log("State 5 is .poweredOn")
+                else -> log("State ${central.state.toInt()}")
             }
         }
 
@@ -51,14 +47,15 @@ actual class BlueFalcon {
             advertisementData: Map<Any?, *>,
             RSSI: NSNumber
         ) {
-            print("Discovered device "+didDiscoverPeripheral.name)
+            log("Discovered device ${didDiscoverPeripheral.name}")
         }
 
         override fun centralManager(central: CBCentralManager, didConnectPeripheral: CBPeripheral) {
+            log("DidConnectPeripheral ${didConnectPeripheral.name}")
         }
 
         override fun centralManager(central: CBCentralManager, didDisconnectPeripheral: CBPeripheral, error: NSError?) {
-            print("Disconnected device " + didDisconnectPeripheral.name)
+            log("Disconnected device ${didDisconnectPeripheral.name}")
         }
 
     }

@@ -11,10 +11,15 @@ import library
 
 struct ContentView : View {
     var body: some View {
-        Text("Hello World").onAppear {
-            let blueFalcon = BlueFalcon()
-            print("Test")
-            blueFalcon.scan()
+        VStack {
+            Text("Hello Blue Falcon")
+                .padding(10)
+            Text("Bluetooth Device Status")
+                .padding(10)
+                .onAppear {
+                let blueFalcon = BlueFalcon()
+                blueFalcon.scan()
+            }
         }
     }
 }

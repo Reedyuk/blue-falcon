@@ -29,12 +29,12 @@ blueFalcon.scan()
 
 ### Android
 
-The Android sdk requires an Application context, we do this by using the init method on BlueFalcon, in this example we are calling the code from an activity.
+The Android sdk requires an Application context, we do this by passing in on the BlueFalcon constructor, in this example we are calling the code from an activity(this).
 
 ```kotlin
 try {
-    BlueFalcon.init(PlatformBluetooth(PlatformContext(this)))
-    BlueFalcon.scan()
+    val blueFalcon = BlueFalcon(this)
+    blueFalcon.scan()
 } catch (exception: PermissionException) {
     //request the ACCESS_COARSE_LOCATION permission
 }

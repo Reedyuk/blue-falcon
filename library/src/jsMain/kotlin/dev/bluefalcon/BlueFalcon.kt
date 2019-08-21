@@ -1,11 +1,11 @@
 package dev.bluefalcon
 
 actual class BlueFalcon {
-    actual fun connect() {
+    actual fun connect(bluetoothPeripheral: BluetoothPeripheral) {
         TODO("not implemented") //To change body of created functions use File | Settings | File Templates.
     }
 
-    actual fun disconnect() {
+    actual fun disconnect(bluetoothPeripheral: BluetoothPeripheral) {
         TODO("not implemented") //To change body of created functions use File | Settings | File Templates.
     }
 
