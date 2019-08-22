@@ -50,8 +50,6 @@ actual class BlueFalcon {
             RSSI: NSNumber
         ) {
             log("Discovered device ${didDiscoverPeripheral.name}")
-            log("Delegates ${delegates}")
-            log("Delegates size ${delegates.size}")
             delegates.forEach {
                 it.didDiscoverDevice(didDiscoverPeripheral)
             }
@@ -59,10 +57,16 @@ actual class BlueFalcon {
 
         override fun centralManager(central: CBCentralManager, didConnectPeripheral: CBPeripheral) {
             log("DidConnectPeripheral ${didConnectPeripheral.name}")
+            delegates.forEach {
+                it.didConnect(didConnectPeripheral)
+            }
         }
 
         override fun centralManager(central: CBCentralManager, didDisconnectPeripheral: CBPeripheral, error: NSError?) {
             log("Disconnected device ${didDisconnectPeripheral.name}")
+            delegates.forEach {
+                it.didDisconnect(didDisconnectPeripheral)
+            }
         }
 
     }

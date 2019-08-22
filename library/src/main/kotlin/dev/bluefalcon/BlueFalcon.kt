@@ -31,6 +31,9 @@ actual class BlueFalcon(private val context: Context) {
     actual fun disconnect(bluetoothPeripheral: BluetoothPeripheral) {
         log("disconnect")
         //no need to disconnect in Android.
+        delegates.forEach {
+            it.didDisconnect(bluetoothPeripheral)
+        }
     }
 
     actual fun scan() {
@@ -63,7 +66,7 @@ actual class BlueFalcon(private val context: Context) {
             result?.let { scanResult ->
                 scanResult.device?.let { device ->
                     delegates.forEach {
-                        it.didConnect(device)
+                        it.didDiscoverDevice(device)
                     }
                 }
             }
@@ -76,6 +79,13 @@ actual class BlueFalcon(private val context: Context) {
         override fun onConnectionStateChange(gatt: BluetoothGatt?, status: Int, newState: Int) {
             super.onConnectionStateChange(gatt, status, newState)
             log("onConnectionStateChange")
+            gatt?.let { gatt ->
+                gatt.device.let {
+                    delegates.forEach {
+                        it.didConnect(gatt.device)
+                    }
+                }
+            }
         }
 
         override fun onServicesDiscovered(gatt: BluetoothGatt?, status: Int) {

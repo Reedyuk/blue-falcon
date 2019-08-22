@@ -38,15 +38,17 @@ struct ContentView : View {
 
         func didDiscoverDevice(bluetoothPeripheral: CBPeripheral) {
             guard !devices.contains(bluetoothPeripheral),
-                bluetoothPeripheral.name != nil else { return }
-            print("In-app did discover device. \(bluetoothPeripheral.name)")
+                let name = bluetoothPeripheral.name else { return }
+            print("In-app did discover device. \(name)")
             devices.append(bluetoothPeripheral)
         }
 
         func didConnect(bluetoothPeripheral: CBPeripheral) {
+            //update view to show connected status
         }
 
         func didDisconnect(bluetoothPeripheral: CBPeripheral) {
+            //update view to show disconnected
         }
 
     }
