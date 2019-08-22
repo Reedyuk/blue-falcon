@@ -9,36 +9,51 @@
 import SwiftUI
 import library
 import CoreBluetooth
+import Combine
 
 struct ContentView : View {
-    let blueFalcon = BlueFalcon()
+
+    @ObservedObject var delegate = BluetoothDelegate()
 
     var body: some View {
-        VStack {
-            Text("Hello Blue Falcon")
-            Text("Bluetooth Device Status")
-                .onAppear {
-                    self.blueFalcon.delegates.add(BluetoothDelegate())
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
-                        self.blueFalcon.scan()
-                    }
+        NavigationView {
+            List(delegate.devices) { device in
+                Text(device.identifier.uuidString)
             }
+            .navigationBarTitle(Text("Blue Falcon Devices"))
+        }.onAppear {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+                    AppDelegate.instance.blueFalcon.scan()
+                }
         }
     }
+
+    class BluetoothDelegate: BlueFalconDelegate, ObservableObject {
+
+        @Published var devices: [CBPeripheral] = []
+
+        init() {
+            AppDelegate.instance.blueFalcon.delegates.add(self)
+        }
+
+        func didDiscoverDevice(bluetoothPeripheral: CBPeripheral) {
+            guard !devices.contains(bluetoothPeripheral),
+                bluetoothPeripheral.name != nil else { return }
+            print("In-app did discover device. \(bluetoothPeripheral.name)")
+            devices.append(bluetoothPeripheral)
+        }
+
+        func didConnect(bluetoothPeripheral: CBPeripheral) {
+        }
+
+        func didDisconnect(bluetoothPeripheral: CBPeripheral) {
+        }
+
+    }
+
 }
 
-class BluetoothDelegate: BlueFalconDelegate {
-
-    func didDiscoverDevice(bluetoothPeripheral: CBPeripheral) {
-        print("In-app did discover device. \(bluetoothPeripheral.name)")
-    }
-
-    func didConnect(bluetoothPeripheral: CBPeripheral) {
-    }
-
-    func didDisconnect(bluetoothPeripheral: CBPeripheral) {
-    }
-
+extension CBPeripheral: Identifiable {
 }
 
 #if DEBUG

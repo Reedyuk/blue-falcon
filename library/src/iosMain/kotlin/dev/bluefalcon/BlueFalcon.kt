@@ -50,8 +50,10 @@ actual class BlueFalcon {
             RSSI: NSNumber
         ) {
             log("Discovered device ${didDiscoverPeripheral.name}")
+            log("Delegates ${delegates}")
+            log("Delegates size ${delegates.size}")
             delegates.forEach {
-                it.didConnect(didDiscoverPeripheral)
+                it.didDiscoverDevice(didDiscoverPeripheral)
             }
         }
 
