@@ -14,6 +14,10 @@
 		4902C4F423112873009D1416 /* DevicesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4902C4F323112873009D1416 /* DevicesView.swift */; };
 		4902C4F623112A9D009D1416 /* DeviceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4902C4F523112A9D009D1416 /* DeviceView.swift */; };
 		4902C4F8231131F2009D1416 /* DeviceViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4902C4F7231131F2009D1416 /* DeviceViewModel.swift */; };
+		4902C4FA2311920C009D1416 /* DeviceServiceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4902C4F92311920C009D1416 /* DeviceServiceView.swift */; };
+		4902C4FC23119B26009D1416 /* DeviceServiceCellViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4902C4FB23119B26009D1416 /* DeviceServiceCellViewModel.swift */; };
+		4902C4FE23119B4B009D1416 /* DeviceServiceViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4902C4FD23119B4B009D1416 /* DeviceServiceViewModel.swift */; };
+		4902C50023119B76009D1416 /* DeviceCharacteristicCellViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4902C4FF23119B76009D1416 /* DeviceCharacteristicCellViewModel.swift */; };
 		491323692306BE1A0035A693 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 491323682306BE1A0035A693 /* AppDelegate.swift */; };
 		4913236B2306BE1A0035A693 /* SceneDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4913236A2306BE1A0035A693 /* SceneDelegate.swift */; };
 		4913236F2306BE1E0035A693 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 4913236E2306BE1E0035A693 /* Assets.xcassets */; };
@@ -50,6 +54,10 @@
 		4902C4F323112873009D1416 /* DevicesView.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = DevicesView.swift; sourceTree = "<group>"; };
 		4902C4F523112A9D009D1416 /* DeviceView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceView.swift; sourceTree = "<group>"; };
 		4902C4F7231131F2009D1416 /* DeviceViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceViewModel.swift; sourceTree = "<group>"; };
+		4902C4F92311920C009D1416 /* DeviceServiceView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceServiceView.swift; sourceTree = "<group>"; };
+		4902C4FB23119B26009D1416 /* DeviceServiceCellViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceServiceCellViewModel.swift; sourceTree = "<group>"; };
+		4902C4FD23119B4B009D1416 /* DeviceServiceViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceServiceViewModel.swift; sourceTree = "<group>"; };
+		4902C4FF23119B76009D1416 /* DeviceCharacteristicCellViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceCharacteristicCellViewModel.swift; sourceTree = "<group>"; };
 		491323652306BE1A0035A693 /* Blue-Falcon.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Blue-Falcon.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		491323682306BE1A0035A693 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
 		4913236A2306BE1A0035A693 /* SceneDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SceneDelegate.swift; sourceTree = "<group>"; };
@@ -105,6 +113,9 @@
 				4902C4EC231127B4009D1416 /* DevicesViewModel.swift */,
 				4902C4EE231127C4009D1416 /* DevicesCellViewModel.swift */,
 				4902C4F7231131F2009D1416 /* DeviceViewModel.swift */,
+				4902C4FB23119B26009D1416 /* DeviceServiceCellViewModel.swift */,
+				4902C4FD23119B4B009D1416 /* DeviceServiceViewModel.swift */,
+				4902C4FF23119B76009D1416 /* DeviceCharacteristicCellViewModel.swift */,
 			);
 			path = ViewModels;
 			sourceTree = "<group>";
@@ -114,6 +125,7 @@
 			children = (
 				4902C4F323112873009D1416 /* DevicesView.swift */,
 				4902C4F523112A9D009D1416 /* DeviceView.swift */,
+				4902C4F92311920C009D1416 /* DeviceServiceView.swift */,
 			);
 			path = Views;
 			sourceTree = "<group>";
@@ -407,12 +419,16 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				4902C50023119B76009D1416 /* DeviceCharacteristicCellViewModel.swift in Sources */,
 				4902C4ED231127B4009D1416 /* DevicesViewModel.swift in Sources */,
 				4902C4F423112873009D1416 /* DevicesView.swift in Sources */,
 				4902C4F623112A9D009D1416 /* DeviceView.swift in Sources */,
 				491323692306BE1A0035A693 /* AppDelegate.swift in Sources */,
+				4902C4FE23119B4B009D1416 /* DeviceServiceViewModel.swift in Sources */,
 				4913236B2306BE1A0035A693 /* SceneDelegate.swift in Sources */,
 				4902C4F8231131F2009D1416 /* DeviceViewModel.swift in Sources */,
+				4902C4FA2311920C009D1416 /* DeviceServiceView.swift in Sources */,
+				4902C4FC23119B26009D1416 /* DeviceServiceCellViewModel.swift in Sources */,
 				4902C4EF231127C4009D1416 /* DevicesCellViewModel.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

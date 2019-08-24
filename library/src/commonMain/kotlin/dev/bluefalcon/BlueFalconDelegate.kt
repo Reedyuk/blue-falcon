@@ -6,5 +6,6 @@ interface BlueFalconDelegate {
     fun didConnect(bluetoothPeripheral: BluetoothPeripheral)
     fun didDisconnect(bluetoothPeripheral: BluetoothPeripheral)
     fun didDiscoverServices(bluetoothPeripheral: BluetoothPeripheral)
+    fun didDiscoverCharacteristics(bluetoothPeripheral: BluetoothPeripheral)
 
 }

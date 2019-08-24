@@ -14,6 +14,8 @@ class DeviceViewModel: BlueFalconDelegate, ObservableObject {
 
     let device: CBPeripheral
     @Published var isConnected = false
+    @Published var deviceServiceCellViewModels: [DeviceServiceCellViewModel] = []
+    var services: [CBService] = []
 
     init(device: CBPeripheral) {
         self.device = device
@@ -29,23 +31,31 @@ class DeviceViewModel: BlueFalconDelegate, ObservableObject {
 
     func didConnect(bluetoothPeripheral: CBPeripheral) {
         guard isSameDevice(bluetoothPeripheral) else { return }
-        //update view to show connected status
         print("connected to device \(bluetoothPeripheral.name)")
         isConnected = true
     }
 
     func didDisconnect(bluetoothPeripheral: CBPeripheral) {
         guard isSameDevice(bluetoothPeripheral) else { return }
-        //update view to show disconnected
         print("disconnected to device \(bluetoothPeripheral.name)")
     }
 
     func didDiscoverServices(bluetoothPeripheral: CBPeripheral) {
-        guard isSameDevice(bluetoothPeripheral) else { return }
-        print("didDiscoverServices \(bluetoothPeripheral.services)")
+        guard isSameDevice(bluetoothPeripheral),
+            let services = bluetoothPeripheral.services,
+            !services.isEmpty
+            else { return }
+        print("didDiscoverServices \(services)")
+        self.services = services
+        self.deviceServiceCellViewModels = services.map { service -> DeviceServiceCellViewModel in
+            DeviceServiceCellViewModel(id: service.uuid, service: service)
+        }
     }
+
+    func didDiscoverCharacteristics(bluetoothPeripheral: CBPeripheral) {}
 
     private func isSameDevice(_ bluetoothPeripheral: CBPeripheral) -> Bool {
         return device.identifier == bluetoothPeripheral.identifier
     }
 }
+

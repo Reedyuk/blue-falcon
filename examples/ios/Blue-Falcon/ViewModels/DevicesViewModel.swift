@@ -39,4 +39,6 @@ class DevicesViewModel: BlueFalconDelegate, ObservableObject {
 
     func didDiscoverServices(bluetoothPeripheral: CBPeripheral) {}
 
+    func didDiscoverCharacteristics(bluetoothPeripheral: CBPeripheral) {}
+
 }

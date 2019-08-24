@@ -45,7 +45,6 @@ class MainActivity : AppCompatActivity() {
     }
 
     inner class BluetoothDelegate: BlueFalconDelegate {
-
         override fun didDiscoverDevice(bluetoothPeripheral: BluetoothPeripheral) {
             if (!devices.contains(bluetoothPeripheral)) {
                 devices.add(bluetoothPeripheral)
@@ -60,6 +59,10 @@ class MainActivity : AppCompatActivity() {
         }
 
         override fun didDiscoverServices(bluetoothPeripheral: BluetoothPeripheral) {
+            TODO("not implemented") //To change body of created functions use File | Settings | File Templates.
+        }
+
+        override fun didDiscoverCharacteristics(bluetoothPeripheral: BluetoothPeripheral) {
             TODO("not implemented") //To change body of created functions use File | Settings | File Templates.
         }
 

@@ -1,9 +1,6 @@
 package dev.bluefalcon
 
-import platform.CoreBluetooth.CBCentralManager
-import platform.CoreBluetooth.CBCentralManagerDelegateProtocol
-import platform.CoreBluetooth.CBPeripheral
-import platform.CoreBluetooth.CBPeripheralDelegateProtocol
+import platform.CoreBluetooth.*
 import platform.Foundation.NSError
 import platform.Foundation.NSNumber
 import platform.darwin.NSObject
@@ -77,12 +74,34 @@ actual class BlueFalcon {
 
     inner class PeripheralDelegate: NSObject(), CBPeripheralDelegateProtocol {
 
-        override fun peripheral(peripheral: CBPeripheral, didDiscoverServices: NSError?) {
+        override fun peripheral(
+            peripheral: CBPeripheral,
+            didDiscoverServices: NSError?
+        ) {
             if (didDiscoverServices != null) {
                 println("Error with service discovery ${didDiscoverServices}")
             } else {
                 delegates.forEach {
                     it.didDiscoverServices(peripheral)
+                }
+                peripheral.services
+                    ?.mapNotNull { it as? CBService }
+                    ?.forEach {
+                        peripheral.discoverCharacteristics(null, it)
+                    }
+            }
+        }
+
+        override fun peripheral(
+            peripheral: CBPeripheral,
+            didDiscoverCharacteristicsForService: CBService,
+            error: NSError?
+        ) {
+            if (error != null) {
+                println("Error with characteristic discovery ${didDiscoverCharacteristicsForService}")
+            } else {
+                delegates.forEach {
+                    it.didDiscoverCharacteristics(peripheral)
                 }
             }
         }

@@ -91,9 +91,13 @@ actual class BlueFalcon(private val context: Context) {
 
         override fun onServicesDiscovered(gatt: BluetoothGatt?, status: Int) {
             log("onServicesDiscovered")
+            if (status != BluetoothGatt.GATT_SUCCESS) {
+                return
+            }
             gatt?.device?.let { bluetoothDevice ->
                 delegates.forEach {
                     it.didDiscoverServices(bluetoothDevice)
+                    it.didDiscoverCharacteristics(bluetoothDevice)
                 }
             }
         }

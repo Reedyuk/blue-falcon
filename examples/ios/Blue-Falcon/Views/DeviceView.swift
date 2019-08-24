@@ -16,11 +16,26 @@ struct DeviceView : View {
     @ObservedObject var deviceViewModel: DeviceViewModel
 
     var body: some View {
-        VStack {
+        VStack(alignment: HorizontalAlignment.leading, spacing: 10) {
             Text(deviceViewModel.isConnected ? "Connected" : "Connecting...")
                 .navigationBarTitle(Text(deviceViewModel.device.name!))
                 .onAppear {
                     self.deviceViewModel.connect()
+            }.padding(10)
+            Text(deviceViewModel.deviceServiceCellViewModels.isEmpty ? "" : "Services")
+                .bold()
+                .padding(10)
+            List(deviceViewModel.deviceServiceCellViewModels) { viewModel in
+                NavigationLink(
+                    destination: DeviceServiceView(
+                        deviceServiceViewModel: DeviceServiceViewModel(
+                            service: viewModel.service,
+                            device: self.deviceViewModel.device
+                        )
+                    )
+                ) {
+                    Text(viewModel.id.uuidString)
+                }
             }
         }
     }
