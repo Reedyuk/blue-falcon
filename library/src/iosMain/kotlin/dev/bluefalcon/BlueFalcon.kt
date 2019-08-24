@@ -3,6 +3,7 @@ package dev.bluefalcon
 import platform.CoreBluetooth.CBCentralManager
 import platform.CoreBluetooth.CBCentralManagerDelegateProtocol
 import platform.CoreBluetooth.CBPeripheral
+import platform.CoreBluetooth.CBPeripheralDelegateProtocol
 import platform.Foundation.NSError
 import platform.Foundation.NSNumber
 import platform.darwin.NSObject
@@ -13,6 +14,7 @@ actual class BlueFalcon {
 
     private val centralManager: CBCentralManager
     private val bluetoothPeripheralManager = BluetoothPeripheralManager()
+    private val peripheralDelegate = PeripheralDelegate()
 
     init {
         centralManager = CBCentralManager(bluetoothPeripheralManager, null)
@@ -60,15 +62,30 @@ actual class BlueFalcon {
             delegates.forEach {
                 it.didConnect(didConnectPeripheral)
             }
+            didConnectPeripheral.delegate = peripheralDelegate
+            didConnectPeripheral.discoverServices(null)
         }
 
         override fun centralManager(central: CBCentralManager, didDisconnectPeripheral: CBPeripheral, error: NSError?) {
-            log("Disconnected device ${didDisconnectPeripheral.name}")
+            log("DidDisconnectPeripheral ${didDisconnectPeripheral.name}")
             delegates.forEach {
                 it.didDisconnect(didDisconnectPeripheral)
             }
         }
 
+    }
+
+    inner class PeripheralDelegate: NSObject(), CBPeripheralDelegateProtocol {
+
+        override fun peripheral(peripheral: CBPeripheral, didDiscoverServices: NSError?) {
+            if (didDiscoverServices != null) {
+                println("Error with service discovery ${didDiscoverServices}")
+            } else {
+                delegates.forEach {
+                    it.didDiscoverServices(peripheral)
+                }
+            }
+        }
     }
 
 }

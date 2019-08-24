@@ -79,10 +79,11 @@ actual class BlueFalcon(private val context: Context) {
         override fun onConnectionStateChange(gatt: BluetoothGatt?, status: Int, newState: Int) {
             super.onConnectionStateChange(gatt, status, newState)
             log("onConnectionStateChange")
-            gatt?.let { gatt ->
-                gatt.device.let {
+            gatt?.let { bluetoothGatt ->
+                bluetoothGatt.device.let {
+                    bluetoothGatt.discoverServices()
                     delegates.forEach {
-                        it.didConnect(gatt.device)
+                        it.didConnect(bluetoothGatt.device)
                     }
                 }
             }
@@ -90,6 +91,11 @@ actual class BlueFalcon(private val context: Context) {
 
         override fun onServicesDiscovered(gatt: BluetoothGatt?, status: Int) {
             log("onServicesDiscovered")
+            gatt?.device?.let { bluetoothDevice ->
+                delegates.forEach {
+                    it.didDiscoverServices(bluetoothDevice)
+                }
+            }
         }
 
         override fun onMtuChanged(gatt: BluetoothGatt?, mtu: Int, status: Int) {
