@@ -3,12 +3,15 @@ package dev.bluefalcon.viewModels
 import android.Manifest
 import androidx.core.app.ActivityCompat
 import dev.bluefalcon.*
+import dev.bluefalcon.activities.DevicesActivity
 import dev.bluefalcon.adapters.DevicesAdapter
+import dev.bluefalcon.views.DevicesActivityUI
 
 class DevicesViewModel(private val devicesActivity: DevicesActivity) : BlueFalconDelegate {
 
     val devices: MutableList<BluetoothPeripheral> = arrayListOf()
     val devicesAdapter = DevicesAdapter(this)
+    val devicesActivityUI = DevicesActivityUI(this)
 
     fun setupBluetooth() {
         try {
