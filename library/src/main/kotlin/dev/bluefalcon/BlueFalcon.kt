@@ -25,7 +25,7 @@ actual class BlueFalcon(private val context: Context) {
 
     actual fun connect(bluetoothPeripheral: BluetoothPeripheral) {
         log("connect")
-        bluetoothPeripheral.connectGatt(context, false, GattClientCallback())
+        bluetoothPeripheral.bluetoothDevice.connectGatt(context, false, GattClientCallback())
     }
 
     actual fun disconnect(bluetoothPeripheral: BluetoothPeripheral) {
@@ -66,7 +66,7 @@ actual class BlueFalcon(private val context: Context) {
             result?.let { scanResult ->
                 scanResult.device?.let { device ->
                     delegates.forEach {
-                        it.didDiscoverDevice(device)
+                        it.didDiscoverDevice(BluetoothPeripheral(device))
                     }
                 }
             }
@@ -83,7 +83,7 @@ actual class BlueFalcon(private val context: Context) {
                 bluetoothGatt.device.let {
                     bluetoothGatt.discoverServices()
                     delegates.forEach {
-                        it.didConnect(bluetoothGatt.device)
+                        it.didConnect(BluetoothPeripheral(bluetoothGatt.device))
                     }
                 }
             }
@@ -96,8 +96,8 @@ actual class BlueFalcon(private val context: Context) {
             }
             gatt?.device?.let { bluetoothDevice ->
                 delegates.forEach {
-                    it.didDiscoverServices(bluetoothDevice)
-                    it.didDiscoverCharacteristics(bluetoothDevice)
+                    it.didDiscoverServices(BluetoothPeripheral(bluetoothDevice))
+                    it.didDiscoverCharacteristics(BluetoothPeripheral(bluetoothDevice))
                 }
             }
         }

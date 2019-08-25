@@ -15,9 +15,8 @@ class DevicesViewModel(private val devicesActivity: DevicesActivity) : BlueFalco
 
     fun setupBluetooth() {
         try {
-            val blueFalcon = BlueFalcon(devicesActivity)
-            blueFalcon.delegates.add(this)
-            blueFalcon.scan()
+            BlueFalconApplication.instance.blueFalcon.delegates.add(this)
+            BlueFalconApplication.instance.blueFalcon.scan()
         } catch (exception: PermissionException) {
             requestLocationPermission()
         }
@@ -29,7 +28,7 @@ class DevicesViewModel(private val devicesActivity: DevicesActivity) : BlueFalco
     }
 
     override fun didDiscoverDevice(bluetoothPeripheral: BluetoothPeripheral) {
-        if (!devices.contains(bluetoothPeripheral)) {
+        if (devices.firstOrNull { it.bluetoothDevice == bluetoothPeripheral.bluetoothDevice } == null) {
             devices.add(bluetoothPeripheral)
             devicesAdapter.notifyDataSetChanged()
         }
