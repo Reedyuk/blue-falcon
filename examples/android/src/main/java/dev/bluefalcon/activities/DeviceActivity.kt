@@ -14,7 +14,10 @@ class DeviceActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         deviceViewModel = DeviceViewModel(
-            BluetoothPeripheral(intent.getParcelableExtra("device") as BluetoothDevice)
+            this,
+            BluetoothPeripheral(
+                intent.getParcelableExtra("device") as BluetoothDevice
+            )
         )
         deviceViewModel.deviceActivityUI.setContentView(this)
     }

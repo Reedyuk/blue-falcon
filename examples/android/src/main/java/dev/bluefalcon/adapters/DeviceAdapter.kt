@@ -7,27 +7,28 @@ import android.view.ViewGroup
 import android.widget.BaseAdapter
 import androidx.annotation.RequiresApi
 import dev.bluefalcon.viewModels.DeviceViewModel
+import org.jetbrains.anko.dip
+import org.jetbrains.anko.padding
 import org.jetbrains.anko.relativeLayout
 import org.jetbrains.anko.textView
 
-class DeviceAdapter(viewModel : DeviceViewModel) : BaseAdapter() {
-    private var list : List<BluetoothGattService> = viewModel.services
+class DeviceAdapter(private val viewModel : DeviceViewModel) : BaseAdapter() {
 
     @RequiresApi(Build.VERSION_CODES.ECLAIR)
     override fun getView(i : Int, v : View?, parent : ViewGroup?) : View {
         val item = getItem(i)
         return with(parent!!.context) {
             relativeLayout {
-                textView(item.instanceId) {
-                    textSize = 32f
+                textView(item.uuid.toString()) {
+                    padding = dip(10)
                 }
             }
         }
     }
 
-    override fun getItem(position : Int) : BluetoothGattService = list[position]
+    override fun getItem(position : Int) : BluetoothGattService = viewModel.services[position]
 
-    override fun getCount() : Int = list.size
+    override fun getCount() : Int = viewModel.services.size
 
     override fun getItemId(position : Int) : Long = position.toLong()
 

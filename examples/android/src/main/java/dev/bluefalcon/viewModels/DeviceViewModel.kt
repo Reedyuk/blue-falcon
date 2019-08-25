@@ -1,23 +1,26 @@
 package dev.bluefalcon.viewModels
 
 import android.bluetooth.BluetoothGattService
+import android.util.Log
 import dev.bluefalcon.BlueFalconApplication
 import dev.bluefalcon.BlueFalconDelegate
 import dev.bluefalcon.BluetoothPeripheral
 import dev.bluefalcon.adapters.DeviceAdapter
+import dev.bluefalcon.observables.StandardObservableProperty
 import dev.bluefalcon.views.DeviceActivityUI
+import dev.bluefalcon.activities.DeviceActivity
 
 class DeviceViewModel(
-    val bluetoothPeripheral: BluetoothPeripheral
+    val deviceActivity: DeviceActivity,
+    var bluetoothPeripheral: BluetoothPeripheral
 ) : BlueFalconDelegate {
 
     val deviceActivityUI = DeviceActivityUI(this)
     val services: List<BluetoothGattService> get() = bluetoothPeripheral.services
     val deviceAdapter = DeviceAdapter(this)
-    var isConnected = false
+    var connectionStatus = StandardObservableProperty("Connecting...")
 
     init {
-        //need to move bluefalcon to a singleton?
         BlueFalconApplication.instance.blueFalcon.delegates.add(this)
         BlueFalconApplication.instance.blueFalcon.connect(bluetoothPeripheral)
     }
@@ -25,15 +28,18 @@ class DeviceViewModel(
     override fun didDiscoverDevice(bluetoothPeripheral: BluetoothPeripheral) {}
 
     override fun didConnect(bluetoothPeripheral: BluetoothPeripheral) {
-        println("Connected")
-        isConnected = true
+        connectionStatus.value = "Connected"
     }
 
     override fun didDisconnect(bluetoothPeripheral: BluetoothPeripheral) {}
 
     override fun didDiscoverServices(bluetoothPeripheral: BluetoothPeripheral) {
-        //we need to get the bluetooth gatt?
-        print("Services in view model ${bluetoothPeripheral.services}")
+        Log.v("Bluefalcon", "Services in view model ${bluetoothPeripheral.services}")
+        this.bluetoothPeripheral = bluetoothPeripheral
+        deviceActivity.runOnUiThread {
+            deviceAdapter.notifyDataSetInvalidated()
+            deviceAdapter.notifyDataSetChanged()
+        }
     }
 
     override fun didDiscoverCharacteristics(bluetoothPeripheral: BluetoothPeripheral) {}
