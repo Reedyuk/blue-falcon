@@ -1,5 +1,6 @@
 package dev.bluefalcon.adapters
 
+import android.bluetooth.BluetoothGattCharacteristic
 import android.os.Build
 import android.view.View
 import android.view.ViewGroup
@@ -18,16 +19,16 @@ class DeviceServiceAdapter(private val viewModel : DeviceServiceViewModel) : Bas
         val item = getItem(i)
         return with(parent!!.context) {
             relativeLayout {
-                textView(item.toString()) {
+                textView(item.uuid.toString()) {
                     padding = dip(10)
                 }
             }
         }
     }
 
-    override fun getItem(position : Int) : Int = 1
+    override fun getItem(position : Int) : BluetoothGattCharacteristic = viewModel.characteristics[position]
 
-    override fun getCount() : Int = 1
+    override fun getCount() : Int = viewModel.characteristics.size
 
     override fun getItemId(position : Int) : Long = position.toLong()
 

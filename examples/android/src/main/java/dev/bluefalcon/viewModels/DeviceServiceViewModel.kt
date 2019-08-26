@@ -1,21 +1,20 @@
 package dev.bluefalcon.viewModels
 
+import android.bluetooth.BluetoothGattCharacteristic
 import android.bluetooth.BluetoothGattService
 import dev.bluefalcon.BlueFalconApplication
 import dev.bluefalcon.BlueFalconDelegate
 import dev.bluefalcon.BluetoothPeripheral
-import dev.bluefalcon.activities.DeviceServiceActivity
 import dev.bluefalcon.adapters.DeviceServiceAdapter
 import dev.bluefalcon.views.DeviceServiceActivityUI
 
 class DeviceServiceViewModel(
-    val deviceServiceActivity: DeviceServiceActivity,
-    val service: BluetoothGattService,
-    val bluetoothPeripheral: BluetoothPeripheral
+    val service: BluetoothGattService
 ) : BlueFalconDelegate {
 
     val deviceServiceActivityUI = DeviceServiceActivityUI(this)
     val deviceServiceAdapter = DeviceServiceAdapter(this)
+    val characteristics: List<BluetoothGattCharacteristic> get() = service.characteristics
 
     init {
         BlueFalconApplication.instance.blueFalcon.delegates.add(this)
