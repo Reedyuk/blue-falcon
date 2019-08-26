@@ -1,6 +1,6 @@
 # ![Blue Falcon](bluefalcon.png) Blue-Falcon
 
-A Bluetooth Kotlin Multiplatform library for iOS and Android. 
+A Bluetooth "Cross Platform" Kotlin Multiplatform library for iOS and Android. 
 
 Bluetooth in general has the same functionality for all platforms, e.g. connect to device, fetch services, fetch characteristics.
 
@@ -8,9 +8,7 @@ This library is the glue that brings those together so that mobile developers ca
 
 The idea is to have a common api for using bluetooth as the principle of bluetooth is the same but each platform ios and android has different apis which means you have to duplicate the logic for each platform.
 
-## Known Issues
-
-No callbacks on requests e.g. new devices
+What this library isn't? It is not a cross platform library, this is a multiplatform library. The difference? each platform is compiled down to the native code, so when you use the library in iOS, you are consuming an obj-c library and same principle for Android.
 
 ## TODO:
 
@@ -45,6 +43,18 @@ try {
 ## Examples
 
 This repo contains examples for ios and android in the examples folder, install their dependencies, and run it locally:
+
+### iOS
+
+To run the iOS example, simply perform a pod install and run from xcode.
+
+```bash
+pod install
+```
+
+### Android
+
+Open the root directory of the project in Android Studio and run the Android app target from the ide.
 
 ## Support
 
