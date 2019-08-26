@@ -20,6 +20,10 @@ class DeviceViewModel(
     val deviceAdapter = DeviceAdapter(this)
     var connectionStatus = StandardObservableProperty("Connecting...")
 
+    val title: String
+        get() = bluetoothPeripheral.bluetoothDevice.address + " " +
+                if (bluetoothPeripheral.bluetoothDevice.name != null) bluetoothPeripheral.bluetoothDevice.name else ""
+
     init {
         BlueFalconApplication.instance.blueFalcon.delegates.add(this)
         BlueFalconApplication.instance.blueFalcon.connect(bluetoothPeripheral)

@@ -16,7 +16,7 @@ class DeviceActivityUI(private val viewModel: DeviceViewModel) : AnkoComponent<D
     override fun createView(ui : AnkoContext<DeviceActivity>) = with(ui) {
         verticalLayout {
             relativeLayout {
-                textView(viewModel.bluetoothPeripheral.bluetoothDevice.address).lparams {
+                textView(viewModel.title).lparams {
                     centerHorizontally()
                 }
             }

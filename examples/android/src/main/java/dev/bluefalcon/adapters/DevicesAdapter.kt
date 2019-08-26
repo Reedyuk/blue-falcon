@@ -7,7 +7,8 @@ import android.widget.BaseAdapter
 import androidx.annotation.RequiresApi
 import dev.bluefalcon.BluetoothPeripheral
 import dev.bluefalcon.viewModels.DevicesViewModel
-import org.jetbrains.anko.relativeLayout
+import org.jetbrains.anko.linearLayout
+import org.jetbrains.anko.padding
 import org.jetbrains.anko.textView
 
 class DevicesAdapter(viewModel : DevicesViewModel) : BaseAdapter() {
@@ -17,9 +18,14 @@ class DevicesAdapter(viewModel : DevicesViewModel) : BaseAdapter() {
     override fun getView(i : Int, v : View?, parent : ViewGroup?) : View {
         val item = getItem(i)
         return with(parent!!.context) {
-            relativeLayout {
+            linearLayout {
                 textView(item.bluetoothDevice.address) {
-                    textSize = 32f
+                    textSize = 20f
+                    padding = 10
+                }
+                textView(item.bluetoothDevice.name) {
+                    textSize = 12f
+                    padding = 10
                 }
             }
         }
