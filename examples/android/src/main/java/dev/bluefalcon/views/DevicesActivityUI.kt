@@ -20,7 +20,6 @@ class DevicesActivityUI(private val viewModel: DevicesViewModel) : AnkoComponent
                 adapter = viewModel.devicesAdapter
             }.onItemClick { _, _, index, _ ->
                 viewModel.devicesAdapter.getItem(index).let {
-                    Log.d("BlueFalcon", "Clicked item")
                     owner.startActivity<DeviceActivity>(
                         "device" to viewModel.devicesAdapter.getItem(index).bluetoothDevice
                     )

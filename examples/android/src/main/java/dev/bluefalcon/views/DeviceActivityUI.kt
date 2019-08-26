@@ -1,13 +1,14 @@
 package dev.bluefalcon.views
 
-import android.graphics.Color
 import android.graphics.Typeface.DEFAULT_BOLD
 import android.os.Build
 import androidx.annotation.RequiresApi
 import dev.bluefalcon.activities.DeviceActivity
+import dev.bluefalcon.activities.DeviceServiceActivity
 import dev.bluefalcon.extensions.bindString
 import dev.bluefalcon.viewModels.DeviceViewModel
 import org.jetbrains.anko.*
+import org.jetbrains.anko.sdk27.coroutines.onItemClick
 
 class DeviceActivityUI(private val viewModel: DeviceViewModel) : AnkoComponent<DeviceActivity> {
 
@@ -29,6 +30,13 @@ class DeviceActivityUI(private val viewModel: DeviceViewModel) : AnkoComponent<D
             }
             listView {
                 adapter = viewModel.deviceAdapter
+            }.onItemClick { _, _, index, _ ->
+                viewModel.deviceAdapter.getItem(index).let {
+                    owner.startActivity<DeviceServiceActivity>(
+                        "service" to viewModel.deviceAdapter.getItem(index),
+                        "device" to viewModel.bluetoothPeripheral.bluetoothDevice
+                    )
+                }
             }
         }
     }
