@@ -22,14 +22,16 @@ actual class BlueFalcon(private val context: Context) {
     actual val delegates: MutableList<BlueFalconDelegate> = arrayListOf()
     private val bluetoothManager = context.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
     private val mBluetoothScanCallBack = BluetoothScanCallBack()
+    private val mGattClientCallback = GattClientCallback()
 
     actual fun connect(bluetoothPeripheral: BluetoothPeripheral) {
         log("connect")
-        bluetoothPeripheral.bluetoothDevice.connectGatt(context, false, GattClientCallback())
+        bluetoothPeripheral.bluetoothDevice.connectGatt(context, false, mGattClientCallback)
     }
 
     actual fun disconnect(bluetoothPeripheral: BluetoothPeripheral) {
         log("disconnect")
+        mGattClientCallback.gatt?.disconnect()
         delegates.forEach {
             it.didDisconnect(bluetoothPeripheral)
         }
@@ -75,9 +77,12 @@ actual class BlueFalcon(private val context: Context) {
 
     inner class GattClientCallback: BluetoothGattCallback() {
 
+        var gatt: BluetoothGatt? = null
+
         override fun onConnectionStateChange(gatt: BluetoothGatt?, status: Int, newState: Int) {
             super.onConnectionStateChange(gatt, status, newState)
             log("onConnectionStateChange")
+            this.gatt = gatt
             gatt?.let { bluetoothGatt ->
                 bluetoothGatt.device.let {
                     bluetoothGatt.discoverServices()

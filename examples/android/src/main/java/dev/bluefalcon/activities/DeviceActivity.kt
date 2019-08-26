@@ -21,4 +21,9 @@ class DeviceActivity : AppCompatActivity() {
         )
         deviceViewModel.deviceActivityUI.setContentView(this)
     }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        deviceViewModel.destroy()
+    }
 }
