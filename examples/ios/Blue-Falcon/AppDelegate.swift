@@ -8,12 +8,14 @@
 
 import UIKit
 import library
+import CoreBluetooth
 
 @UIApplicationMain
 class AppDelegate: UIResponder, UIApplicationDelegate {
 
     static let instance = (UIApplication.shared.delegate as? AppDelegate)!
     let blueFalcon = BlueFalcon()
+    var connectedDevices: [CBPeripheral] = []
 
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
         // Override point for customization after application launch.

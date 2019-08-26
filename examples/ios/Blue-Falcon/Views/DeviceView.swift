@@ -18,9 +18,13 @@ struct DeviceView : View {
     var body: some View {
         VStack(alignment: HorizontalAlignment.leading, spacing: 10) {
             Text(deviceViewModel.isConnected ? "Connected" : "Connecting...")
-                .navigationBarTitle(Text(deviceViewModel.device.name!))
+                .navigationBarTitle(deviceViewModel.title)
                 .onAppear {
+                    self.deviceViewModel.addDelegate()
                     self.deviceViewModel.connect()
+            }
+            .onDisappear {
+                self.deviceViewModel.removeDelegate()
             }.padding(10)
             Text(deviceViewModel.deviceServiceCellViewModels.isEmpty ? "" : "Services")
                 .bold()

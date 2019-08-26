@@ -16,10 +16,20 @@ class DeviceViewModel: BlueFalconDelegate, ObservableObject {
     @Published var isConnected = false
     @Published var deviceServiceCellViewModels: [DeviceServiceCellViewModel] = []
     var services: [CBService] = []
+    var title: String {
+        "\(device.identifier.uuidString) \(device.name ?? "")"
+    }
 
     init(device: CBPeripheral) {
         self.device = device
+    }
+
+    func addDelegate() {
         AppDelegate.instance.blueFalcon.delegates.add(self)
+    }
+
+    func removeDelegate() {
+        AppDelegate.instance.blueFalcon.delegates.remove(self)
     }
 
     func connect() {
@@ -31,14 +41,11 @@ class DeviceViewModel: BlueFalconDelegate, ObservableObject {
 
     func didConnect(bluetoothPeripheral: CBPeripheral) {
         guard isSameDevice(bluetoothPeripheral) else { return }
-        print("connected to device \(bluetoothPeripheral.name)")
         isConnected = true
+        AppDelegate.instance.connectedDevices.append(bluetoothPeripheral)
     }
 
-    func didDisconnect(bluetoothPeripheral: CBPeripheral) {
-        guard isSameDevice(bluetoothPeripheral) else { return }
-        print("disconnected to device \(bluetoothPeripheral.name)")
-    }
+    func didDisconnect(bluetoothPeripheral: CBPeripheral) {}
 
     func didDiscoverServices(bluetoothPeripheral: CBPeripheral) {
         guard isSameDevice(bluetoothPeripheral),

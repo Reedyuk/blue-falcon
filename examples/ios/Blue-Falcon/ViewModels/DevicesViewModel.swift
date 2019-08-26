@@ -19,15 +19,23 @@ class DevicesViewModel: BlueFalconDelegate, ObservableObject {
         AppDelegate.instance.blueFalcon.delegates.add(self)
     }
 
+    func disconnectAllDevices() {
+        AppDelegate.instance.connectedDevices.forEach { device in
+            AppDelegate.instance.blueFalcon.disconnect(bluetoothPeripheral: device)
+        }
+    }
+
     func didDiscoverDevice(bluetoothPeripheral: CBPeripheral) {
-        guard !devices.contains(bluetoothPeripheral),
-            let name = bluetoothPeripheral.name else { return }
-        print("In-app did discover device. \(name)")
+        guard !devices.contains(bluetoothPeripheral) else { return }
         devices.append(bluetoothPeripheral)
+        var deviceName = ""
+        if let name = bluetoothPeripheral.name {
+            deviceName += " \(name)"
+        }
         devicesViewModels.append(
             DevicesCellViewModel(
                 id: bluetoothPeripheral.identifier.uuidString,
-                name: name,
+                name: bluetoothPeripheral.identifier.uuidString + deviceName,
                 device: bluetoothPeripheral
             )
         )
@@ -35,7 +43,12 @@ class DevicesViewModel: BlueFalconDelegate, ObservableObject {
 
     func didConnect(bluetoothPeripheral: CBPeripheral) {}
 
-    func didDisconnect(bluetoothPeripheral: CBPeripheral) {}
+    func didDisconnect(bluetoothPeripheral: CBPeripheral) {
+        AppDelegate.instance.connectedDevices.removeAll { device -> Bool in
+            device == bluetoothPeripheral
+        }
+        print("disconnected to device \(bluetoothPeripheral.name)")
+    }
 
     func didDiscoverServices(bluetoothPeripheral: CBPeripheral) {}
 

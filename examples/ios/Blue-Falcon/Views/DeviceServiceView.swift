@@ -21,6 +21,9 @@ struct DeviceServiceView : View {
                 .bold()
                 .padding(10)
                 .navigationBarTitle(Text(deviceServiceViewModel.service.uuid.uuidString))
+                .onDisappear {
+                self.deviceServiceViewModel.removeDelegate()
+            }
             List(deviceServiceViewModel.deviceCharacteristicCellViewModels) { viewModel in
                 Text(viewModel.id.uuidString)
             }

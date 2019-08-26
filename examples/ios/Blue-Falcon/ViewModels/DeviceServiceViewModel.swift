@@ -23,7 +23,15 @@ class DeviceServiceViewModel: BlueFalconDelegate, ObservableObject {
         self.device = device
         self.characteristics = service.characteristics ?? []
         createViewModelsFromCharacteristics()
+        addDelegate()
+    }
+
+    func addDelegate() {
         AppDelegate.instance.blueFalcon.delegates.add(self)
+    }
+
+    func removeDelegate() {
+        AppDelegate.instance.blueFalcon.delegates.remove(self)
     }
 
     func didDiscoverDevice(bluetoothPeripheral: CBPeripheral) {}

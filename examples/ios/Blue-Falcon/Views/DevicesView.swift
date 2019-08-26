@@ -32,6 +32,7 @@ struct DevicesView : View {
             //current hack due to waiting for powered on state, maybe throw an exception?
             DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
                 AppDelegate.instance.blueFalcon.scan()
+                self.viewModel.disconnectAllDevices()
             }
         }
     }
