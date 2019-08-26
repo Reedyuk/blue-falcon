@@ -16,4 +16,11 @@ actual class BlueFalcon {
         TODO("not implemented") //To change body of created functions use File | Settings | File Templates.
     }
 
+    actual fun readCharacteristic(
+        bluetoothPeripheral: BluetoothPeripheral,
+        bluetoothCharacteristic: BluetoothCharacteristic
+    ) {
+        TODO("not implemented")
+    }
+
 }

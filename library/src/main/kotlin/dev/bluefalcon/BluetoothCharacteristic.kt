@@ -1,0 +1,5 @@
+package dev.bluefalcon
+
+import android.bluetooth.BluetoothGattCharacteristic
+
+actual typealias BluetoothCharacteristic = BluetoothGattCharacteristic

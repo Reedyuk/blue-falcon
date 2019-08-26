@@ -48,6 +48,13 @@ actual class BlueFalcon(private val context: Context) {
         bluetoothScanner?.startScan(filters, settings, mBluetoothScanCallBack)
     }
 
+    actual fun readCharacteristic(
+        bluetoothPeripheral: BluetoothPeripheral,
+        bluetoothCharacteristic: BluetoothCharacteristic
+    ) {
+        mGattClientCallback.gatt?.readCharacteristic(bluetoothCharacteristic)
+    }
+
     inner class BluetoothScanCallBack: ScanCallback() {
 
         override fun onScanResult(callbackType: Int, result: ScanResult?) {
@@ -122,5 +129,16 @@ actual class BlueFalcon(private val context: Context) {
         override fun onCharacteristicChanged(gatt: BluetoothGatt?, characteristic: BluetoothGattCharacteristic?) {
             log("onCharacteristicChanged")
         }
+
+        private fun handleCharacteristicValueChange(gatt: BluetoothGatt?, characteristic: BluetoothGattCharacteristic?) {
+            characteristic?.let { forcedCharacteristic ->
+                gatt?.device?.let { bluetoothDevice ->
+                    delegates.forEach {
+                        it.didCharacteristcValueChanged(BluetoothPeripheral(bluetoothDevice), forcedCharacteristic)
+                    }
+                }
+            }
+        }
     }
+
 }

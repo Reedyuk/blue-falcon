@@ -8,4 +8,9 @@ expect class BlueFalcon {
     fun disconnect(bluetoothPeripheral: BluetoothPeripheral)
     fun scan()
 
+    fun readCharacteristic(
+        bluetoothPeripheral: BluetoothPeripheral,
+        bluetoothCharacteristic: BluetoothCharacteristic
+    )
+
 }

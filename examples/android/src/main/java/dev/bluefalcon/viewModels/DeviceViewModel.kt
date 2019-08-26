@@ -4,6 +4,7 @@ import android.bluetooth.BluetoothGattService
 import android.util.Log
 import dev.bluefalcon.BlueFalconApplication
 import dev.bluefalcon.BlueFalconDelegate
+import dev.bluefalcon.BluetoothCharacteristic
 import dev.bluefalcon.BluetoothPeripheral
 import dev.bluefalcon.adapters.DeviceAdapter
 import dev.bluefalcon.observables.StandardObservableProperty
@@ -52,4 +53,9 @@ class DeviceViewModel(
     }
 
     override fun didDiscoverCharacteristics(bluetoothPeripheral: BluetoothPeripheral) {}
+
+    override fun didCharacteristcValueChanged(
+        bluetoothPeripheral: BluetoothPeripheral,
+        bluetoothCharacteristic: BluetoothCharacteristic
+    ) {}
 }

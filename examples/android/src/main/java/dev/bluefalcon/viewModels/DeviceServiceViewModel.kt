@@ -4,6 +4,7 @@ import android.bluetooth.BluetoothGattCharacteristic
 import android.bluetooth.BluetoothGattService
 import dev.bluefalcon.BlueFalconApplication
 import dev.bluefalcon.BlueFalconDelegate
+import dev.bluefalcon.BluetoothCharacteristic
 import dev.bluefalcon.BluetoothPeripheral
 import dev.bluefalcon.adapters.DeviceServiceAdapter
 import dev.bluefalcon.views.DeviceServiceActivityUI
@@ -29,4 +30,9 @@ class DeviceServiceViewModel(
     override fun didDiscoverServices(bluetoothPeripheral: BluetoothPeripheral) {}
 
     override fun didDiscoverCharacteristics(bluetoothPeripheral: BluetoothPeripheral) {}
+
+    override fun didCharacteristcValueChanged(
+        bluetoothPeripheral: BluetoothPeripheral,
+        bluetoothCharacteristic: BluetoothCharacteristic
+    ) {}
 }

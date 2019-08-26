@@ -29,6 +29,13 @@ actual class BlueFalcon {
         centralManager.scanForPeripheralsWithServices(null, null)
     }
 
+    actual fun readCharacteristic(
+        bluetoothPeripheral: BluetoothPeripheral,
+        bluetoothCharacteristic: BluetoothCharacteristic
+    ) {
+        bluetoothPeripheral.readValueForCharacteristic(bluetoothCharacteristic)
+    }
+
     inner class BluetoothPeripheralManager: NSObject(), CBCentralManagerDelegateProtocol {
         override fun centralManagerDidUpdateState(central: CBCentralManager) {
             when (central.state.toInt()) {
@@ -103,6 +110,20 @@ actual class BlueFalcon {
                 delegates.forEach {
                     it.didDiscoverCharacteristics(peripheral)
                 }
+            }
+        }
+
+        override fun peripheral(
+            peripheral: CBPeripheral,
+            didUpdateValueForCharacteristic: CBCharacteristic,
+            error: NSError?
+        ) {
+            println("didUpdateValueForCharacteristic")
+            delegates.forEach {
+                it.didCharacteristcValueChanged(
+                    peripheral,
+                    didUpdateValueForCharacteristic
+                )
             }
         }
     }

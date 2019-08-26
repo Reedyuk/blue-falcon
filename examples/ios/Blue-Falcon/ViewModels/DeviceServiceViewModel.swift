@@ -50,6 +50,8 @@ class DeviceServiceViewModel: BlueFalconDelegate, ObservableObject {
         createViewModelsFromCharacteristics()
     }
 
+    func didCharacteristcValueChanged(bluetoothPeripheral: CBPeripheral, bluetoothCharacteristic: CBCharacteristic) {}
+
     private func createViewModelsFromCharacteristics() {
         deviceCharacteristicCellViewModels = characteristics.map { characteristic -> DeviceCharacteristicCellViewModel in
             DeviceCharacteristicCellViewModel(id: characteristic.uuid, characteristic: characteristic)

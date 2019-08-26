@@ -61,6 +61,8 @@ class DeviceViewModel: BlueFalconDelegate, ObservableObject {
 
     func didDiscoverCharacteristics(bluetoothPeripheral: CBPeripheral) {}
 
+    func didCharacteristcValueChanged(bluetoothPeripheral: CBPeripheral, bluetoothCharacteristic: CBCharacteristic) {}
+
     private func isSameDevice(_ bluetoothPeripheral: CBPeripheral) -> Bool {
         return device.identifier == bluetoothPeripheral.identifier
     }

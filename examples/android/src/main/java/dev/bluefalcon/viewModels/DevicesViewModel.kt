@@ -42,4 +42,9 @@ class DevicesViewModel(private val devicesActivity: DevicesActivity) : BlueFalco
 
     override fun didDiscoverCharacteristics(bluetoothPeripheral: BluetoothPeripheral) {}
 
+    override fun didCharacteristcValueChanged(
+        bluetoothPeripheral: BluetoothPeripheral,
+        bluetoothCharacteristic: BluetoothCharacteristic
+    ) {}
+
 }
