@@ -1,8 +1,7 @@
 package dev.bluefalcon
 
 import platform.CoreBluetooth.*
-import platform.Foundation.NSError
-import platform.Foundation.NSNumber
+import platform.Foundation.*
 import platform.darwin.NSObject
 
 actual class BlueFalcon {
@@ -34,6 +33,21 @@ actual class BlueFalcon {
         bluetoothCharacteristic: BluetoothCharacteristic
     ) {
         bluetoothPeripheral.readValueForCharacteristic(bluetoothCharacteristic)
+    }
+
+    actual fun writeCharacteristic(
+        bluetoothPeripheral: BluetoothPeripheral,
+        bluetoothCharacteristic: BluetoothCharacteristic,
+        value: String
+    ) {
+        val formattedString = NSString.create(string = value)
+        formattedString.dataUsingEncoding(NSUTF8StringEncoding)?.let {
+            bluetoothPeripheral.writeValue(
+                it,
+                bluetoothCharacteristic,
+                CBCharacteristicWriteWithResponse
+            )
+        }
     }
 
     inner class BluetoothPeripheralManager: NSObject(), CBCentralManagerDelegateProtocol {

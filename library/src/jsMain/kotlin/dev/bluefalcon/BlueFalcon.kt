@@ -23,4 +23,12 @@ actual class BlueFalcon {
         TODO("not implemented")
     }
 
+    actual fun writeCharacteristic(
+        bluetoothPeripheral: BluetoothPeripheral,
+        bluetoothCharacteristic: BluetoothCharacteristic,
+        value: String
+    ) {
+        TODO("not implemented")
+    }
+
 }

@@ -55,6 +55,15 @@ actual class BlueFalcon(private val context: Context) {
         mGattClientCallback.gatt?.readCharacteristic(bluetoothCharacteristic)
     }
 
+    actual fun writeCharacteristic(
+        bluetoothPeripheral: BluetoothPeripheral,
+        bluetoothCharacteristic: BluetoothCharacteristic,
+        value: String
+    ) {
+        bluetoothCharacteristic.setValue(value)
+        mGattClientCallback.gatt?.writeCharacteristic(bluetoothCharacteristic)
+    }
+
     inner class BluetoothScanCallBack: ScanCallback() {
 
         override fun onScanResult(callbackType: Int, result: ScanResult?) {
