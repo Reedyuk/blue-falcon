@@ -22,6 +22,8 @@ class DeviceViewModel: BlueFalconDelegate, ObservableObject {
 
     init(device: CBPeripheral) {
         self.device = device
+        self.services = device.services ?? []
+        isConnected = device.state == .connected
     }
 
     func addDelegate() {
@@ -40,7 +42,8 @@ class DeviceViewModel: BlueFalconDelegate, ObservableObject {
     func didDiscoverDevice(bluetoothPeripheral: CBPeripheral) {}
 
     func didConnect(bluetoothPeripheral: CBPeripheral) {
-        guard isSameDevice(bluetoothPeripheral) else { return }
+        guard isSameDevice(bluetoothPeripheral), !isConnected
+            else { return }
         isConnected = true
         AppDelegate.instance.connectedDevices.append(bluetoothPeripheral)
     }

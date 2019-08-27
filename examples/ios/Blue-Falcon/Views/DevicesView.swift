@@ -29,11 +29,14 @@ struct DevicesView : View {
             }
             .navigationBarTitle(Text("Blue Falcon Devices"))
         }.onAppear {
+            self.viewModel.addDelegate()
             //current hack due to waiting for powered on state, maybe throw an exception?
-            DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
                 AppDelegate.instance.blueFalcon.scan()
                 self.viewModel.disconnectAllDevices()
             }
+        }.onDisappear {
+            self.viewModel.removeDelegate()
         }
     }
 

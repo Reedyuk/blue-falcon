@@ -25,7 +25,12 @@ struct DeviceServiceView : View {
                 self.deviceServiceViewModel.removeDelegate()
             }
             List(deviceServiceViewModel.deviceCharacteristicCellViewModels) { viewModel in
-                Text(viewModel.id.uuidString)
+                Button(action: {
+                    print("Characteristic tapped \(viewModel.characteristic.uuid.uuidString)")
+                    self.deviceServiceViewModel.characteristicTapped(viewModel.characteristic)
+                }) {
+                    Text(viewModel.id.uuidString)
+                }
             }
         }
     }

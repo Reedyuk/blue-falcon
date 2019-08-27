@@ -34,6 +34,14 @@ class DeviceServiceViewModel: BlueFalconDelegate, ObservableObject {
         AppDelegate.instance.blueFalcon.delegates.remove(self)
     }
 
+    //consider moving to the characteristic cell view model.
+    func characteristicTapped(_ characteristic: CBCharacteristic) {
+        AppDelegate.instance.blueFalcon.readCharacteristic(
+            bluetoothPeripheral: device,
+            bluetoothCharacteristic: characteristic
+        )
+    }
+
     func didDiscoverDevice(bluetoothPeripheral: CBPeripheral) {}
 
     func didConnect(bluetoothPeripheral: CBPeripheral) {}
@@ -50,7 +58,9 @@ class DeviceServiceViewModel: BlueFalconDelegate, ObservableObject {
         createViewModelsFromCharacteristics()
     }
 
-    func didCharacteristcValueChanged(bluetoothPeripheral: CBPeripheral, bluetoothCharacteristic: CBCharacteristic) {}
+    func didCharacteristcValueChanged(bluetoothPeripheral: CBPeripheral, bluetoothCharacteristic: CBCharacteristic) {
+        print("didCharacteristcValueChanged - \(String(describing: bluetoothCharacteristic.value))")
+    }
 
     private func createViewModelsFromCharacteristics() {
         deviceCharacteristicCellViewModels = characteristics.map { characteristic -> DeviceCharacteristicCellViewModel in
