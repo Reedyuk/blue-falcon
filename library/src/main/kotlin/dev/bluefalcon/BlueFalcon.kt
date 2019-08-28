@@ -1,10 +1,7 @@
 package dev.bluefalcon
 
 import android.Manifest
-import android.bluetooth.BluetoothGatt
-import android.bluetooth.BluetoothGattCallback
-import android.bluetooth.BluetoothGattCharacteristic
-import android.bluetooth.BluetoothManager
+import android.bluetooth.*
 import android.bluetooth.le.ScanCallback
 import android.bluetooth.le.ScanFilter
 import android.bluetooth.le.ScanResult
@@ -87,7 +84,6 @@ actual class BlueFalcon(private val context: Context) {
         }
 
         private fun addScanResult(result: ScanResult?) {
-            log("Found device ${result?.device?.address} name? ${result?.device?.name}")
             result?.let { scanResult ->
                 scanResult.device?.let { device ->
                     delegates.forEach {
@@ -140,11 +136,11 @@ actual class BlueFalcon(private val context: Context) {
         }
 
         override fun onCharacteristicRead(gatt: BluetoothGatt?, characteristic: BluetoothGattCharacteristic?, status: Int) {
-            log("onCharacteristicChanged")
+            handleCharacteristicValueChange(gatt, characteristic)
         }
 
         override fun onCharacteristicChanged(gatt: BluetoothGatt?, characteristic: BluetoothGattCharacteristic?) {
-            log("onCharacteristicChanged")
+            handleCharacteristicValueChange(gatt, characteristic)
         }
 
         private fun handleCharacteristicValueChange(gatt: BluetoothGatt?, characteristic: BluetoothGattCharacteristic?) {

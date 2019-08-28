@@ -35,6 +35,14 @@ class DeviceViewModel(
         BlueFalconApplication.instance.blueFalcon.delegates.remove(this)
     }
 
+    fun addDelegate() {
+        BlueFalconApplication.instance.blueFalcon.delegates.add(this)
+    }
+
+    fun removeDelegate() {
+        BlueFalconApplication.instance.blueFalcon.delegates.remove(this)
+    }
+
     override fun didDiscoverDevice(bluetoothPeripheral: BluetoothPeripheral) {}
 
     override fun didConnect(bluetoothPeripheral: BluetoothPeripheral) {

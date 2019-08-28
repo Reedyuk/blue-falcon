@@ -22,6 +22,16 @@ class DeviceActivity : AppCompatActivity() {
         deviceViewModel.deviceActivityUI.setContentView(this)
     }
 
+    override fun onResume() {
+        super.onResume()
+        deviceViewModel.addDelegate()
+    }
+
+    override fun onPause() {
+        super.onPause()
+        deviceViewModel.removeDelegate()
+    }
+
     override fun onDestroy() {
         super.onDestroy()
         deviceViewModel.destroy()

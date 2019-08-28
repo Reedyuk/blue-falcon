@@ -1,16 +1,16 @@
 package dev.bluefalcon.adapters
 
 import android.bluetooth.BluetoothGattCharacteristic
+import android.graphics.Typeface
 import android.os.Build
 import android.view.View
 import android.view.ViewGroup
 import android.widget.BaseAdapter
 import androidx.annotation.RequiresApi
+import dev.bluefalcon.log
 import dev.bluefalcon.viewModels.DeviceServiceViewModel
-import org.jetbrains.anko.dip
-import org.jetbrains.anko.padding
-import org.jetbrains.anko.relativeLayout
-import org.jetbrains.anko.textView
+import org.jetbrains.anko.*
+import org.jetbrains.anko.sdk27.coroutines.onClick
 
 class DeviceServiceAdapter(private val viewModel : DeviceServiceViewModel) : BaseAdapter() {
 
@@ -18,9 +18,36 @@ class DeviceServiceAdapter(private val viewModel : DeviceServiceViewModel) : Bas
     override fun getView(i : Int, v : View?, parent : ViewGroup?) : View {
         val item = getItem(i)
         return with(parent!!.context) {
-            relativeLayout {
-                textView(item.uuid.toString()) {
-                    padding = dip(10)
+            verticalLayout {
+                verticalLayout {
+                    linearLayout {
+                        textView("ID: ") {
+                            typeface = Typeface.DEFAULT_BOLD
+                        }
+                        textView(item.uuid.toString())
+                    }
+                    linearLayout {
+                        textView("Value: ") {
+                            typeface = Typeface.DEFAULT_BOLD
+                        }
+                    }
+                }
+                linearLayout {
+                    button("Read") {
+                        onClick {
+                            viewModel.readCharacteristicTapped(item)
+                        }
+                    }
+                    button("Notify") {
+                        onClick {
+                            viewModel.notifyCharacteristicTapped(item)
+                        }
+                    }
+                    button("Write") {
+                        onClick {
+                            viewModel.writeCharactersticTapped(item)
+                        }
+                    }
                 }
             }
         }

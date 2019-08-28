@@ -2,23 +2,46 @@ package dev.bluefalcon.viewModels
 
 import android.bluetooth.BluetoothGattCharacteristic
 import android.bluetooth.BluetoothGattService
-import dev.bluefalcon.BlueFalconApplication
-import dev.bluefalcon.BlueFalconDelegate
-import dev.bluefalcon.BluetoothCharacteristic
-import dev.bluefalcon.BluetoothPeripheral
+import dev.bluefalcon.*
 import dev.bluefalcon.adapters.DeviceServiceAdapter
 import dev.bluefalcon.views.DeviceServiceActivityUI
 
 class DeviceServiceViewModel(
+    val device: BluetoothPeripheral,
     val service: BluetoothGattService
 ) : BlueFalconDelegate {
 
     val deviceServiceActivityUI = DeviceServiceActivityUI(this)
     val deviceServiceAdapter = DeviceServiceAdapter(this)
     val characteristics: List<BluetoothGattCharacteristic> get() = service.characteristics
+    private var notify = false
 
     init {
         BlueFalconApplication.instance.blueFalcon.delegates.add(this)
+    }
+
+    fun readCharacteristicTapped(characteristic: BluetoothGattCharacteristic) {
+        BlueFalconApplication.instance.blueFalcon.readCharacteristic(
+            device,
+            characteristic
+        )
+    }
+
+    fun notifyCharacteristicTapped(characteristic: BluetoothGattCharacteristic) {
+        notify = !notify
+        BlueFalconApplication.instance.blueFalcon.notifyCharacteristic(
+            device,
+            characteristic,
+            notify
+        )
+    }
+
+    fun writeCharactersticTapped(characteristic: BluetoothGattCharacteristic) {
+        BlueFalconApplication.instance.blueFalcon.writeCharacteristic(
+            device,
+            characteristic,
+            "1"
+        )
     }
 
     override fun didDiscoverDevice(bluetoothPeripheral: BluetoothPeripheral) {}
@@ -34,5 +57,7 @@ class DeviceServiceViewModel(
     override fun didCharacteristcValueChanged(
         bluetoothPeripheral: BluetoothPeripheral,
         bluetoothCharacteristic: BluetoothCharacteristic
-    ) {}
+    ) {
+        log("didCharacteristcValueChanged ")
+    }
 }

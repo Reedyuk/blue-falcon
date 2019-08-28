@@ -34,35 +34,6 @@ class DeviceServiceViewModel: BlueFalconDelegate, ObservableObject {
         AppDelegate.instance.blueFalcon.delegates.remove(self)
     }
 
-    //consider moving to the characteristic cell view model.
-    func readCharacteristicTapped(_ characteristic: CBCharacteristic) {
-        AppDelegate.instance.blueFalcon.readCharacteristic(
-            bluetoothPeripheral: device,
-            bluetoothCharacteristic: characteristic
-        )
-    }
-
-    func writeCharacteristicTapped(_ characteristic: CBCharacteristic) {
-        print("writeCharacteristicTapped")
-        let alert = UIAlertController(
-            title: "Characteristic Write",
-            message: "Please enter a value to write to the characteristic",
-            preferredStyle: .alert
-        )
-        alert.addTextField { _ in
-        }
-        alert.addAction(UIAlertAction(title: "OK", style: .default, handler: { _ in
-            guard let input = alert.textFields?.first?.text else { return }
-            AppDelegate.instance.blueFalcon.writeCharacteristic(
-                bluetoothPeripheral: self.device,
-                bluetoothCharacteristic: characteristic,
-                value: input
-            )
-        }))
-        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
-        SceneDelegate.instance.window?.rootViewController?.present(alert, animated: true)
-    }
-
     func didDiscoverDevice(bluetoothPeripheral: CBPeripheral) {}
 
     func didConnect(bluetoothPeripheral: CBPeripheral) {}

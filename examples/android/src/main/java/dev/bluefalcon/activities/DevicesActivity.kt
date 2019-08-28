@@ -15,6 +15,16 @@ class DevicesActivity : AppCompatActivity() {
         devicesViewModel.devicesActivityUI.setContentView(this)
     }
 
+    override fun onResume() {
+        super.onResume()
+        devicesViewModel.addDelegate()
+    }
+
+    override fun onPause() {
+        super.onPause()
+        devicesViewModel.removeDelegate()
+    }
+
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
         devicesViewModel.setupBluetooth()
