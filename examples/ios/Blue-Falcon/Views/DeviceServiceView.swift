@@ -25,33 +25,7 @@ struct DeviceServiceView : View {
                 self.deviceServiceViewModel.removeDelegate()
             }
             List(deviceServiceViewModel.deviceCharacteristicCellViewModels) { viewModel in
-                HStack {
-                    VStack(alignment: HorizontalAlignment.leading, spacing: 10) {
-                        Text(viewModel.id.uuidString)
-                        if viewModel.characteristic.value != nil {
-                            HStack {
-                                Text("Value: ")
-                                    .bold()
-                                Text(String(decoding: viewModel.characteristic.value ?? Data(), as: UTF8.self))
-                            }
-                        }
-                    }
-                    Spacer()
-                    Text("Read")
-                        .onTapGesture {
-                            self.deviceServiceViewModel.readCharacteristicTapped(viewModel.characteristic)
-                        }
-                        .padding()
-                        .background(Color.blue)
-                        .cornerRadius(5)
-                    Text("Write")
-                        .onTapGesture {
-                            self.deviceServiceViewModel.writeCharacteristicTapped(viewModel.characteristic)
-                        }
-                        .padding()
-                        .background(Color.yellow)
-                        .cornerRadius(5)
-                }
+                DeviceCharacteristicCell(viewModel: viewModel)
             }
         }
     }

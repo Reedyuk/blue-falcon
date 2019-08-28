@@ -35,6 +35,14 @@ actual class BlueFalcon {
         bluetoothPeripheral.readValueForCharacteristic(bluetoothCharacteristic)
     }
 
+    actual fun notifyCharacteristic(
+        bluetoothPeripheral: BluetoothPeripheral,
+        bluetoothCharacteristic: BluetoothCharacteristic,
+        notify: Boolean
+    ) {
+        bluetoothPeripheral.setNotifyValue(notify, bluetoothCharacteristic)
+    }
+
     actual fun writeCharacteristic(
         bluetoothPeripheral: BluetoothPeripheral,
         bluetoothCharacteristic: BluetoothCharacteristic,

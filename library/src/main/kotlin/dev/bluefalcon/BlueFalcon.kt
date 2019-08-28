@@ -55,6 +55,14 @@ actual class BlueFalcon(private val context: Context) {
         mGattClientCallback.gatt?.readCharacteristic(bluetoothCharacteristic)
     }
 
+    actual fun notifyCharacteristic(
+        bluetoothPeripheral: BluetoothPeripheral,
+        bluetoothCharacteristic: BluetoothCharacteristic,
+        notify: Boolean
+    ) {
+        mGattClientCallback.gatt?.setCharacteristicNotification(bluetoothCharacteristic, notify)
+    }
+
     actual fun writeCharacteristic(
         bluetoothPeripheral: BluetoothPeripheral,
         bluetoothCharacteristic: BluetoothCharacteristic,

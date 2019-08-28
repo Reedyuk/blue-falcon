@@ -13,6 +13,12 @@ expect class BlueFalcon {
         bluetoothCharacteristic: BluetoothCharacteristic
     )
 
+    fun notifyCharacteristic(
+        bluetoothPeripheral: BluetoothPeripheral,
+        bluetoothCharacteristic: BluetoothCharacteristic,
+        notify: Boolean
+    )
+
     fun writeCharacteristic(
         bluetoothPeripheral: BluetoothPeripheral,
         bluetoothCharacteristic: BluetoothCharacteristic,

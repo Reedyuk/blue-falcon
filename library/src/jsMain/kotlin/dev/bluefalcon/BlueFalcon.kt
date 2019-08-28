@@ -31,4 +31,12 @@ actual class BlueFalcon {
         TODO("not implemented")
     }
 
+    actual fun notifyCharacteristic(
+        bluetoothPeripheral: BluetoothPeripheral,
+        bluetoothCharacteristic: BluetoothCharacteristic,
+        notify: Boolean
+    ) {
+        TODO("not implemented")
+    }
+
 }
