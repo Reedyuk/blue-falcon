@@ -26,7 +26,6 @@ class DeviceViewModel(
                 if (bluetoothPeripheral.bluetoothDevice.name != null) bluetoothPeripheral.bluetoothDevice.name else ""
 
     init {
-        BlueFalconApplication.instance.blueFalcon.delegates.add(this)
         BlueFalconApplication.instance.blueFalcon.connect(bluetoothPeripheral)
     }
 

@@ -16,6 +16,8 @@ class DeviceServiceViewModel(
     val characteristics: List<BluetoothGattCharacteristic> get() = service.characteristics
     private var notify = false
 
+    //TODO: Need to have a charactristic view model.
+
     init {
         BlueFalconApplication.instance.blueFalcon.delegates.add(this)
     }
@@ -58,6 +60,7 @@ class DeviceServiceViewModel(
         bluetoothPeripheral: BluetoothPeripheral,
         bluetoothCharacteristic: BluetoothCharacteristic
     ) {
-        log("didCharacteristcValueChanged ")
+        log("didCharacteristcValueChanged ${bluetoothCharacteristic.value}")
+
     }
 }
