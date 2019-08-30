@@ -20,13 +20,11 @@ class DeviceServiceActivityUI(private val viewModel: DeviceServiceViewModel) : A
             }
             textView("Characteristics") {
                 typeface = Typeface.DEFAULT_BOLD
-                padding = 10
             }
             listView {
                 adapter = viewModel.deviceServiceAdapter
-            }.onItemClick { _, _, index, _ ->
-
             }
+            padding = dip(10)
         }
     }
 

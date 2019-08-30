@@ -16,6 +16,10 @@ An example using kotlin multiplatform.
 
 Handle different scenarios for permissions e.g. bluetooth off, permission denied
 
+## Known issues:
+
+On the android example we have an issue where the characteristic which was originally stored has changed and we are holding onto an old version.
+
 ## Basic Usage
 
 ### iOS

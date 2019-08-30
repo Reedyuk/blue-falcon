@@ -4,6 +4,7 @@ import android.bluetooth.BluetoothGattService
 import android.util.Log
 import dev.bluefalcon.BlueFalconApplication
 import dev.bluefalcon.BlueFalconDelegate
+import dev.bluefalcon.BluetoothCharacteristic
 import dev.bluefalcon.BluetoothPeripheral
 import dev.bluefalcon.adapters.DeviceAdapter
 import dev.bluefalcon.observables.StandardObservableProperty
@@ -25,12 +26,19 @@ class DeviceViewModel(
                 if (bluetoothPeripheral.bluetoothDevice.name != null) bluetoothPeripheral.bluetoothDevice.name else ""
 
     init {
-        BlueFalconApplication.instance.blueFalcon.delegates.add(this)
         BlueFalconApplication.instance.blueFalcon.connect(bluetoothPeripheral)
     }
 
     fun destroy() {
         BlueFalconApplication.instance.blueFalcon.disconnect(bluetoothPeripheral)
+        BlueFalconApplication.instance.blueFalcon.delegates.remove(this)
+    }
+
+    fun addDelegate() {
+        BlueFalconApplication.instance.blueFalcon.delegates.add(this)
+    }
+
+    fun removeDelegate() {
         BlueFalconApplication.instance.blueFalcon.delegates.remove(this)
     }
 
@@ -52,4 +60,9 @@ class DeviceViewModel(
     }
 
     override fun didDiscoverCharacteristics(bluetoothPeripheral: BluetoothPeripheral) {}
+
+    override fun didCharacteristcValueChanged(
+        bluetoothPeripheral: BluetoothPeripheral,
+        bluetoothCharacteristic: BluetoothCharacteristic
+    ) {}
 }

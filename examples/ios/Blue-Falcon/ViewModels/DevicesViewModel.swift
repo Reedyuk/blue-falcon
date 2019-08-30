@@ -15,8 +15,12 @@ class DevicesViewModel: BlueFalconDelegate, ObservableObject {
     @Published var devicesViewModels: [DevicesCellViewModel] = []
     var devices: [CBPeripheral] = []
 
-    init() {
+    func addDelegate() {
         AppDelegate.instance.blueFalcon.delegates.add(self)
+    }
+
+    func removeDelegate() {
+        AppDelegate.instance.blueFalcon.delegates.remove(self)
     }
 
     func disconnectAllDevices() {
@@ -53,5 +57,7 @@ class DevicesViewModel: BlueFalconDelegate, ObservableObject {
     func didDiscoverServices(bluetoothPeripheral: CBPeripheral) {}
 
     func didDiscoverCharacteristics(bluetoothPeripheral: CBPeripheral) {}
+
+    func didCharacteristcValueChanged(bluetoothPeripheral: CBPeripheral, bluetoothCharacteristic: CBCharacteristic) {}
 
 }

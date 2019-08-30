@@ -25,7 +25,7 @@ struct DeviceServiceView : View {
                 self.deviceServiceViewModel.removeDelegate()
             }
             List(deviceServiceViewModel.deviceCharacteristicCellViewModels) { viewModel in
-                Text(viewModel.id.uuidString)
+                DeviceCharacteristicCell(viewModel: viewModel)
             }
         }
     }

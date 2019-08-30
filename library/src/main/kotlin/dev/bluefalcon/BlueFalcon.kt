@@ -1,10 +1,7 @@
 package dev.bluefalcon
 
 import android.Manifest
-import android.bluetooth.BluetoothGatt
-import android.bluetooth.BluetoothGattCallback
-import android.bluetooth.BluetoothGattCharacteristic
-import android.bluetooth.BluetoothManager
+import android.bluetooth.*
 import android.bluetooth.le.ScanCallback
 import android.bluetooth.le.ScanFilter
 import android.bluetooth.le.ScanResult
@@ -31,7 +28,7 @@ actual class BlueFalcon(private val context: Context) {
 
     actual fun disconnect(bluetoothPeripheral: BluetoothPeripheral) {
         log("disconnect")
-        mGattClientCallback.gatt?.disconnect()
+        mGattClientCallback.gattForDevice(bluetoothPeripheral.bluetoothDevice)?.disconnect()
         delegates.forEach {
             it.didDisconnect(bluetoothPeripheral)
         }
@@ -46,6 +43,50 @@ actual class BlueFalcon(private val context: Context) {
             .build()
         val bluetoothScanner = bluetoothManager.adapter?.bluetoothLeScanner
         bluetoothScanner?.startScan(filters, settings, mBluetoothScanCallBack)
+    }
+
+    private fun fetchCharacteristic(
+        bluetoothCharacteristic: BluetoothCharacteristic,
+        gatt: BluetoothGatt): List<BluetoothCharacteristic> =
+        gatt.services.flatMap { service ->
+            service.characteristics.filter {
+                it.uuid == bluetoothCharacteristic.uuid
+            }
+        }
+
+    actual fun readCharacteristic(
+        bluetoothPeripheral: BluetoothPeripheral,
+        bluetoothCharacteristic: BluetoothCharacteristic
+    ) {
+        mGattClientCallback.gattForDevice(bluetoothPeripheral.bluetoothDevice)?.let { gatt ->
+            fetchCharacteristic(bluetoothCharacteristic, gatt)
+                .forEach { gatt.readCharacteristic(it) }
+        }
+    }
+
+    actual fun notifyCharacteristic(
+        bluetoothPeripheral: BluetoothPeripheral,
+        bluetoothCharacteristic: BluetoothCharacteristic,
+        notify: Boolean
+    ) {
+        mGattClientCallback.gattForDevice(bluetoothPeripheral.bluetoothDevice)?.let { gatt ->
+            fetchCharacteristic(bluetoothCharacteristic, gatt)
+                .forEach { gatt.setCharacteristicNotification(it, notify) }
+        }
+    }
+
+    actual fun writeCharacteristic(
+        bluetoothPeripheral: BluetoothPeripheral,
+        bluetoothCharacteristic: BluetoothCharacteristic,
+        value: String
+    ) {
+        mGattClientCallback.gattForDevice(bluetoothPeripheral.bluetoothDevice)?.let { gatt ->
+            fetchCharacteristic(bluetoothCharacteristic, gatt)
+                .forEach {
+                    it.setValue(value)
+                    gatt.writeCharacteristic(it)
+                }
+        }
     }
 
     inner class BluetoothScanCallBack: ScanCallback() {
@@ -63,7 +104,6 @@ actual class BlueFalcon(private val context: Context) {
         }
 
         private fun addScanResult(result: ScanResult?) {
-            log("Found device ${result?.device?.address} name? ${result?.device?.name}")
             result?.let { scanResult ->
                 scanResult.device?.let { device ->
                     delegates.forEach {
@@ -77,14 +117,23 @@ actual class BlueFalcon(private val context: Context) {
 
     inner class GattClientCallback: BluetoothGattCallback() {
 
-        var gatt: BluetoothGatt? = null
+        private val gatts: MutableList<BluetoothGatt> = mutableListOf()
+
+        private fun addGatt(gatt: BluetoothGatt) {
+            if (gatts.firstOrNull { it.device == gatt.device } == null) {
+                gatts.add(gatt)
+            }
+        }
+
+        fun gattForDevice(bluetoothDevice: BluetoothDevice): BluetoothGatt? =
+            gatts.firstOrNull { it.device == bluetoothDevice }
 
         override fun onConnectionStateChange(gatt: BluetoothGatt?, status: Int, newState: Int) {
             super.onConnectionStateChange(gatt, status, newState)
             log("onConnectionStateChange")
-            this.gatt = gatt
             gatt?.let { bluetoothGatt ->
                 bluetoothGatt.device.let {
+                    addGatt(bluetoothGatt)
                     bluetoothGatt.discoverServices()
                     delegates.forEach {
                         it.didConnect(BluetoothPeripheral(bluetoothGatt.device))
@@ -116,11 +165,22 @@ actual class BlueFalcon(private val context: Context) {
         }
 
         override fun onCharacteristicRead(gatt: BluetoothGatt?, characteristic: BluetoothGattCharacteristic?, status: Int) {
-            log("onCharacteristicChanged")
+            handleCharacteristicValueChange(gatt, characteristic)
         }
 
         override fun onCharacteristicChanged(gatt: BluetoothGatt?, characteristic: BluetoothGattCharacteristic?) {
-            log("onCharacteristicChanged")
+            handleCharacteristicValueChange(gatt, characteristic)
+        }
+
+        private fun handleCharacteristicValueChange(gatt: BluetoothGatt?, characteristic: BluetoothGattCharacteristic?) {
+            characteristic?.let { forcedCharacteristic ->
+                gatt?.device?.let { bluetoothDevice ->
+                    delegates.forEach {
+                        it.didCharacteristcValueChanged(BluetoothPeripheral(bluetoothDevice), forcedCharacteristic)
+                    }
+                }
+            }
         }
     }
+
 }

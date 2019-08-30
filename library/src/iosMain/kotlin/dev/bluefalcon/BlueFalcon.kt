@@ -1,8 +1,7 @@
 package dev.bluefalcon
 
 import platform.CoreBluetooth.*
-import platform.Foundation.NSError
-import platform.Foundation.NSNumber
+import platform.Foundation.*
 import platform.darwin.NSObject
 
 actual class BlueFalcon {
@@ -27,6 +26,36 @@ actual class BlueFalcon {
 
     actual fun scan() {
         centralManager.scanForPeripheralsWithServices(null, null)
+    }
+
+    actual fun readCharacteristic(
+        bluetoothPeripheral: BluetoothPeripheral,
+        bluetoothCharacteristic: BluetoothCharacteristic
+    ) {
+        bluetoothPeripheral.readValueForCharacteristic(bluetoothCharacteristic)
+    }
+
+    actual fun notifyCharacteristic(
+        bluetoothPeripheral: BluetoothPeripheral,
+        bluetoothCharacteristic: BluetoothCharacteristic,
+        notify: Boolean
+    ) {
+        bluetoothPeripheral.setNotifyValue(notify, bluetoothCharacteristic)
+    }
+
+    actual fun writeCharacteristic(
+        bluetoothPeripheral: BluetoothPeripheral,
+        bluetoothCharacteristic: BluetoothCharacteristic,
+        value: String
+    ) {
+        val formattedString = NSString.create(string = value)
+        formattedString.dataUsingEncoding(NSUTF8StringEncoding)?.let {
+            bluetoothPeripheral.writeValue(
+                it,
+                bluetoothCharacteristic,
+                CBCharacteristicWriteWithResponse
+            )
+        }
     }
 
     inner class BluetoothPeripheralManager: NSObject(), CBCentralManagerDelegateProtocol {
@@ -103,6 +132,20 @@ actual class BlueFalcon {
                 delegates.forEach {
                     it.didDiscoverCharacteristics(peripheral)
                 }
+            }
+        }
+
+        override fun peripheral(
+            peripheral: CBPeripheral,
+            didUpdateValueForCharacteristic: CBCharacteristic,
+            error: NSError?
+        ) {
+            println("didUpdateValueForCharacteristic")
+            delegates.forEach {
+                it.didCharacteristcValueChanged(
+                    peripheral,
+                    didUpdateValueForCharacteristic
+                )
             }
         }
     }

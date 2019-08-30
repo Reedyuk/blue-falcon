@@ -25,6 +25,7 @@
 		491323752306BE1E0035A693 /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 491323732306BE1E0035A693 /* LaunchScreen.storyboard */; };
 		491323802306BE1E0035A693 /* Blue_FalconTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4913237F2306BE1E0035A693 /* Blue_FalconTests.swift */; };
 		4913238B2306BE1E0035A693 /* Blue_FalconUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4913238A2306BE1E0035A693 /* Blue_FalconUITests.swift */; };
+		49CF49432316594A00B30A4C /* DeviceCharacteristicCell.swift in Sources */ = {isa = PBXBuildFile; fileRef = 49CF49422316594A00B30A4C /* DeviceCharacteristicCell.swift */; };
 		B6AB3EF9ABF6DE926F2A877D /* Pods_Blue_FalconUITests.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 28CE099E84C76E60CE8E17AE /* Pods_Blue_FalconUITests.framework */; };
 /* End PBXBuildFile section */
 
@@ -71,6 +72,7 @@
 		491323862306BE1E0035A693 /* Blue-FalconUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "Blue-FalconUITests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
 		4913238A2306BE1E0035A693 /* Blue_FalconUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Blue_FalconUITests.swift; sourceTree = "<group>"; };
 		4913238C2306BE1E0035A693 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		49CF49422316594A00B30A4C /* DeviceCharacteristicCell.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceCharacteristicCell.swift; sourceTree = "<group>"; };
 		7DCB1F90714D69E9DFB9A15C /* Pods_Blue_Falcon.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_Blue_Falcon.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		86B1877241E77DBE989028FD /* Pods-Blue-FalconUITests.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Blue-FalconUITests.debug.xcconfig"; path = "Target Support Files/Pods-Blue-FalconUITests/Pods-Blue-FalconUITests.debug.xcconfig"; sourceTree = "<group>"; };
 		B526CB3F28C7FE940A5E947C /* Pods_Blue_FalconTests.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_Blue_FalconTests.framework; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -126,6 +128,7 @@
 				4902C4F323112873009D1416 /* DevicesView.swift */,
 				4902C4F523112A9D009D1416 /* DeviceView.swift */,
 				4902C4F92311920C009D1416 /* DeviceServiceView.swift */,
+				49CF49422316594A00B30A4C /* DeviceCharacteristicCell.swift */,
 			);
 			path = Views;
 			sourceTree = "<group>";
@@ -429,6 +432,7 @@
 				4902C4F8231131F2009D1416 /* DeviceViewModel.swift in Sources */,
 				4902C4FA2311920C009D1416 /* DeviceServiceView.swift in Sources */,
 				4902C4FC23119B26009D1416 /* DeviceServiceCellViewModel.swift in Sources */,
+				49CF49432316594A00B30A4C /* DeviceCharacteristicCell.swift in Sources */,
 				4902C4EF231127C4009D1416 /* DevicesCellViewModel.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
