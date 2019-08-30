@@ -1,18 +1,16 @@
 package dev.bluefalcon.adapters
 
-import android.bluetooth.BluetoothGattCharacteristic
 import android.graphics.Typeface
 import android.os.Build
 import android.view.View
 import android.view.ViewGroup
 import android.widget.BaseAdapter
 import androidx.annotation.RequiresApi
-import dev.bluefalcon.log
-import dev.bluefalcon.viewModels.DeviceServiceViewModel
+import dev.bluefalcon.viewModels.DeviceCharacteristicViewModel
 import org.jetbrains.anko.*
 import org.jetbrains.anko.sdk27.coroutines.onClick
 
-class DeviceServiceAdapter(private val viewModel : DeviceServiceViewModel) : BaseAdapter() {
+class DeviceServiceAdapter(var viewModels : List<DeviceCharacteristicViewModel>) : BaseAdapter() {
 
     @RequiresApi(Build.VERSION_CODES.ECLAIR)
     override fun getView(i : Int, v : View?, parent : ViewGroup?) : View {
@@ -24,28 +22,35 @@ class DeviceServiceAdapter(private val viewModel : DeviceServiceViewModel) : Bas
                         textView("ID: ") {
                             typeface = Typeface.DEFAULT_BOLD
                         }
-                        textView(item.uuid.toString())
+                        textView(item.id.toString())
                     }
                     linearLayout {
                         textView("Value: ") {
                             typeface = Typeface.DEFAULT_BOLD
                         }
+                        textView(item.value())
+                    }
+                    linearLayout {
+                        textView("Notify: ") {
+                            typeface = Typeface.DEFAULT_BOLD
+                        }
+                        textView(item.notify.toString())
                     }
                 }
                 linearLayout {
                     button("Read") {
                         onClick {
-                            viewModel.readCharacteristicTapped(item)
+                            item.readCharacteristicTapped()
                         }
                     }
                     button("Notify") {
                         onClick {
-                            viewModel.notifyCharacteristicTapped(item)
+                            item.notifyCharacteristicTapped()
                         }
                     }
                     button("Write") {
                         onClick {
-                            viewModel.writeCharactersticTapped(item)
+                            item.writeCharactersticTapped()
                         }
                     }
                 }
@@ -53,9 +58,9 @@ class DeviceServiceAdapter(private val viewModel : DeviceServiceViewModel) : Bas
         }
     }
 
-    override fun getItem(position : Int) : BluetoothGattCharacteristic = viewModel.characteristics[position]
+    override fun getItem(position : Int) : DeviceCharacteristicViewModel = viewModels[position]
 
-    override fun getCount() : Int = viewModel.characteristics.size
+    override fun getCount() : Int = viewModels.size
 
     override fun getItemId(position : Int) : Long = position.toLong()
 

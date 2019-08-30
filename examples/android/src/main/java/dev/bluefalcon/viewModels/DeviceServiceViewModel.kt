@@ -3,48 +3,32 @@ package dev.bluefalcon.viewModels
 import android.bluetooth.BluetoothGattCharacteristic
 import android.bluetooth.BluetoothGattService
 import dev.bluefalcon.*
+import dev.bluefalcon.activities.DeviceServiceActivity
 import dev.bluefalcon.adapters.DeviceServiceAdapter
 import dev.bluefalcon.views.DeviceServiceActivityUI
 
 class DeviceServiceViewModel(
-    val device: BluetoothPeripheral,
+    private val deviceServiceActivity: DeviceServiceActivity,
+    private val device: BluetoothPeripheral,
     val service: BluetoothGattService
 ) : BlueFalconDelegate {
 
     val deviceServiceActivityUI = DeviceServiceActivityUI(this)
-    val deviceServiceAdapter = DeviceServiceAdapter(this)
-    val characteristics: List<BluetoothGattCharacteristic> get() = service.characteristics
-    private var notify = false
-
-    //TODO: Need to have a charactristic view model.
+    val deviceServiceAdapter: DeviceServiceAdapter
+    private val characteristics: List<BluetoothGattCharacteristic> get() = service.characteristics
 
     init {
         BlueFalconApplication.instance.blueFalcon.delegates.add(this)
+        deviceServiceAdapter = DeviceServiceAdapter(createCharacteristicViewModels())
     }
 
-    fun readCharacteristicTapped(characteristic: BluetoothGattCharacteristic) {
-        BlueFalconApplication.instance.blueFalcon.readCharacteristic(
-            device,
-            characteristic
-        )
+    fun notifyValueChanged() {
+        deviceServiceActivity.runOnUiThread {
+            deviceServiceAdapter.notifyDataSetChanged()
+        }
     }
 
-    fun notifyCharacteristicTapped(characteristic: BluetoothGattCharacteristic) {
-        notify = !notify
-        BlueFalconApplication.instance.blueFalcon.notifyCharacteristic(
-            device,
-            characteristic,
-            notify
-        )
-    }
-
-    fun writeCharactersticTapped(characteristic: BluetoothGattCharacteristic) {
-        BlueFalconApplication.instance.blueFalcon.writeCharacteristic(
-            device,
-            characteristic,
-            "1"
-        )
-    }
+    private fun createCharacteristicViewModels() = characteristics.map { characteristic -> DeviceCharacteristicViewModel(deviceServiceActivity, this, device, characteristic) }
 
     override fun didDiscoverDevice(bluetoothPeripheral: BluetoothPeripheral) {}
 
@@ -60,7 +44,15 @@ class DeviceServiceViewModel(
         bluetoothPeripheral: BluetoothPeripheral,
         bluetoothCharacteristic: BluetoothCharacteristic
     ) {
-        log("didCharacteristcValueChanged ${bluetoothCharacteristic.value}")
-
+        deviceServiceActivity.runOnUiThread {
+            deviceServiceAdapter.viewModels
+                .filter { it.characteristic.uuid == bluetoothCharacteristic.uuid }
+                .forEach { viewModel ->
+                    if (viewModel.characteristic.uuid == bluetoothCharacteristic.uuid) {
+                        viewModel.characteristic = bluetoothCharacteristic
+                    }
+            }
+            deviceServiceAdapter.notifyDataSetChanged()
+        }
     }
 }
