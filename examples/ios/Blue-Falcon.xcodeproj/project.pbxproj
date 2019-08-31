@@ -25,6 +25,8 @@
 		491323752306BE1E0035A693 /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 491323732306BE1E0035A693 /* LaunchScreen.storyboard */; };
 		491323802306BE1E0035A693 /* Blue_FalconTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4913237F2306BE1E0035A693 /* Blue_FalconTests.swift */; };
 		4913238B2306BE1E0035A693 /* Blue_FalconUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4913238A2306BE1E0035A693 /* Blue_FalconUITests.swift */; };
+		498B07F9231A7E9700CA8EC1 /* HostingController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 498B07F8231A7E9700CA8EC1 /* HostingController.swift */; };
+		498B07FC231A80DF00CA8EC1 /* DevicesViewCell.swift in Sources */ = {isa = PBXBuildFile; fileRef = 498B07FB231A80DF00CA8EC1 /* DevicesViewCell.swift */; };
 		49CF49432316594A00B30A4C /* DeviceCharacteristicCell.swift in Sources */ = {isa = PBXBuildFile; fileRef = 49CF49422316594A00B30A4C /* DeviceCharacteristicCell.swift */; };
 		B6AB3EF9ABF6DE926F2A877D /* Pods_Blue_FalconUITests.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 28CE099E84C76E60CE8E17AE /* Pods_Blue_FalconUITests.framework */; };
 /* End PBXBuildFile section */
@@ -72,6 +74,8 @@
 		491323862306BE1E0035A693 /* Blue-FalconUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "Blue-FalconUITests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
 		4913238A2306BE1E0035A693 /* Blue_FalconUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Blue_FalconUITests.swift; sourceTree = "<group>"; };
 		4913238C2306BE1E0035A693 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		498B07F8231A7E9700CA8EC1 /* HostingController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HostingController.swift; sourceTree = "<group>"; };
+		498B07FB231A80DF00CA8EC1 /* DevicesViewCell.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DevicesViewCell.swift; sourceTree = "<group>"; };
 		49CF49422316594A00B30A4C /* DeviceCharacteristicCell.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceCharacteristicCell.swift; sourceTree = "<group>"; };
 		7DCB1F90714D69E9DFB9A15C /* Pods_Blue_Falcon.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_Blue_Falcon.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		86B1877241E77DBE989028FD /* Pods-Blue-FalconUITests.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Blue-FalconUITests.debug.xcconfig"; path = "Target Support Files/Pods-Blue-FalconUITests/Pods-Blue-FalconUITests.debug.xcconfig"; sourceTree = "<group>"; };
@@ -125,6 +129,7 @@
 		4902C4F023112857009D1416 /* Views */ = {
 			isa = PBXGroup;
 			children = (
+				498B07FA231A803B00CA8EC1 /* Cells */,
 				4902C4F323112873009D1416 /* DevicesView.swift */,
 				4902C4F523112A9D009D1416 /* DeviceView.swift */,
 				4902C4F92311920C009D1416 /* DeviceServiceView.swift */,
@@ -158,6 +163,7 @@
 		491323672306BE1A0035A693 /* Blue-Falcon */ = {
 			isa = PBXGroup;
 			children = (
+				498B07F7231A7E8F00CA8EC1 /* Controllers */,
 				4902C4F023112857009D1416 /* Views */,
 				4902C4EB2311279A009D1416 /* ViewModels */,
 				491323682306BE1A0035A693 /* AppDelegate.swift */,
@@ -207,6 +213,22 @@
 				42D534E1A926A5304B97EAC6 /* Pods-Blue-FalconUITests.release.xcconfig */,
 			);
 			path = Pods;
+			sourceTree = "<group>";
+		};
+		498B07F7231A7E8F00CA8EC1 /* Controllers */ = {
+			isa = PBXGroup;
+			children = (
+				498B07F8231A7E9700CA8EC1 /* HostingController.swift */,
+			);
+			path = Controllers;
+			sourceTree = "<group>";
+		};
+		498B07FA231A803B00CA8EC1 /* Cells */ = {
+			isa = PBXGroup;
+			children = (
+				498B07FB231A80DF00CA8EC1 /* DevicesViewCell.swift */,
+			);
+			path = Cells;
 			sourceTree = "<group>";
 		};
 		7234F4FA77B20A826915AA03 /* Frameworks */ = {
@@ -427,6 +449,8 @@
 				4902C4F423112873009D1416 /* DevicesView.swift in Sources */,
 				4902C4F623112A9D009D1416 /* DeviceView.swift in Sources */,
 				491323692306BE1A0035A693 /* AppDelegate.swift in Sources */,
+				498B07F9231A7E9700CA8EC1 /* HostingController.swift in Sources */,
+				498B07FC231A80DF00CA8EC1 /* DevicesViewCell.swift in Sources */,
 				4902C4FE23119B4B009D1416 /* DeviceServiceViewModel.swift in Sources */,
 				4913236B2306BE1A0035A693 /* SceneDelegate.swift in Sources */,
 				4902C4F8231131F2009D1416 /* DeviceViewModel.swift in Sources */,

@@ -16,28 +16,66 @@ struct DevicesView : View {
 
     var body: some View {
         NavigationView {
-            List(viewModel.devicesViewModels) { deviceViewModel in
-                NavigationLink(
-                    destination: DeviceView(
-                        deviceViewModel: DeviceViewModel(
-                            device: deviceViewModel.device
+            VStack(alignment: .leading) {
+                HStack {
+                    Text("Bluetooth Status:")
+                    Text(viewModel.status)
+                }.padding()
+                List(viewModel.devicesViewModels) { deviceViewModel in
+                    NavigationLink(
+                        destination: DeviceView(
+                            deviceViewModel: DeviceViewModel(
+                                device: deviceViewModel.device
+                            )
                         )
-                    )
-                ) {
-                    Text(deviceViewModel.name)
+                    ) {
+                        DevicesViewCell(
+                            name: deviceViewModel.name,
+                            deviceId: deviceViewModel.id
+                        )
+                    }
+                }
+                .navigationBarTitle(Text("Blue Falcon Devices"))
+            }
+        }.onAppear {
+            self.scan()
+        }.onDisappear {
+            self.viewModel.stopScanning()
+        }
+        .colorScheme(.dark)
+    }
+
+    //the old way would be to perform this in the uiview controller.
+    private func scan() {
+        do {
+            try viewModel.scan()
+        } catch {
+            let error = error as NSError
+            switch error.userInfo["KotlinException"] {
+            case is BluetoothPermissionException:
+                showError(message: "Please accept the bluetooth permission for the app")
+            case is BluetoothNotEnabledException:
+                showError(message: "Bluetooth is not enabled for this device")
+            case is BluetoothUnsupportedException:
+                showError(message: "Bluetooth is not supported for this device")
+            case is BluetoothResettingException:
+                showError(message: "Bluetooth adapter is currently resetting")
+            default:
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
+                    self.scan()
                 }
             }
-            .navigationBarTitle(Text("Blue Falcon Devices"))
-        }.onAppear {
-            self.viewModel.addDelegate()
-            //current hack due to waiting for powered on state, maybe throw an exception?
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-                AppDelegate.instance.blueFalcon.scan()
-                self.viewModel.disconnectAllDevices()
-            }
-        }.onDisappear {
-            self.viewModel.removeDelegate()
         }
+    }
+
+    private func showError(message: String) {
+        let alert = UIAlertController(
+            title: "Bluetooth Error",
+            message: message,
+            preferredStyle: .alert
+        )
+        alert.addAction(UIAlertAction(title: "OK", style: .default))
+        SceneDelegate.instance.window?.rootViewController?.present(alert, animated: true)
     }
 
 }

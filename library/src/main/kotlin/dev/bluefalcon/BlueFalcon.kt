@@ -13,13 +13,14 @@ actual class BlueFalcon(private val context: Context) {
 
     init {
         if (context.checkSelfPermission(Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED)
-            throw PermissionException()
+            throw BluetoothPermissionException()
     }
 
     actual val delegates: MutableList<BlueFalconDelegate> = arrayListOf()
     private val bluetoothManager = context.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
     private val mBluetoothScanCallBack = BluetoothScanCallBack()
     private val mGattClientCallback = GattClientCallback()
+    actual var isScanning: Boolean = false
 
     actual fun connect(bluetoothPeripheral: BluetoothPeripheral) {
         log("connect")
@@ -34,8 +35,13 @@ actual class BlueFalcon(private val context: Context) {
         }
     }
 
+    actual fun stopScanning() {
+        isScanning = false
+    }
+
     actual fun scan() {
         log("BT Scan started")
+        isScanning = true
         val filter = ScanFilter.Builder().build()
         val filters = listOf(filter)
         val settings = ScanSettings.Builder()

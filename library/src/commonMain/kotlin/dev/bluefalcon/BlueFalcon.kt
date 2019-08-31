@@ -3,10 +3,13 @@ package dev.bluefalcon
 expect class BlueFalcon {
 
     val delegates: MutableList<BlueFalconDelegate>
+    var isScanning: Boolean
 
     fun connect(bluetoothPeripheral: BluetoothPeripheral)
     fun disconnect(bluetoothPeripheral: BluetoothPeripheral)
+
     fun scan()
+    fun stopScanning()
 
     fun readCharacteristic(
         bluetoothPeripheral: BluetoothPeripheral,

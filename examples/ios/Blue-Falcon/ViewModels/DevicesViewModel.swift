@@ -12,15 +12,22 @@ import CoreBluetooth
 import Combine
 
 class DevicesViewModel: BlueFalconDelegate, ObservableObject {
+
     @Published var devicesViewModels: [DevicesCellViewModel] = []
+    @Published var status = "Not Scanning"
     var devices: [CBPeripheral] = []
 
-    func addDelegate() {
+    func scan() throws {
         AppDelegate.instance.blueFalcon.delegates.add(self)
+        try AppDelegate.instance.blueFalcon.scan()
+        status = "Scanning"
+        disconnectAllDevices()
     }
 
-    func removeDelegate() {
+    func stopScanning() {
+        AppDelegate.instance.blueFalcon.stopScanning()
         AppDelegate.instance.blueFalcon.delegates.remove(self)
+        status = "Not Scanning"
     }
 
     func disconnectAllDevices() {
@@ -39,7 +46,7 @@ class DevicesViewModel: BlueFalconDelegate, ObservableObject {
         devicesViewModels.append(
             DevicesCellViewModel(
                 id: bluetoothPeripheral.identifier.uuidString,
-                name: bluetoothPeripheral.identifier.uuidString + deviceName,
+                name: deviceName,
                 device: bluetoothPeripheral
             )
         )
@@ -51,7 +58,8 @@ class DevicesViewModel: BlueFalconDelegate, ObservableObject {
         AppDelegate.instance.connectedDevices.removeAll { device -> Bool in
             device == bluetoothPeripheral
         }
-        print("disconnected to device \(bluetoothPeripheral.name)")
+        guard let name = bluetoothPeripheral.name else { return }
+        print("disconnected to device \(name)")
     }
 
     func didDiscoverServices(bluetoothPeripheral: CBPeripheral) {}

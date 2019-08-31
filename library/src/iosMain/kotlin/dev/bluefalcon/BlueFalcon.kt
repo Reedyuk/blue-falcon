@@ -11,6 +11,7 @@ actual class BlueFalcon {
     private val centralManager: CBCentralManager
     private val bluetoothPeripheralManager = BluetoothPeripheralManager()
     private val peripheralDelegate = PeripheralDelegate()
+    actual var isScanning: Boolean = false
 
     init {
         centralManager = CBCentralManager(bluetoothPeripheralManager, null)
@@ -24,8 +25,22 @@ actual class BlueFalcon {
         centralManager.cancelPeripheralConnection(bluetoothPeripheral)
     }
 
+    @Throws
     actual fun scan() {
-        centralManager.scanForPeripheralsWithServices(null, null)
+        isScanning = true
+        when(centralManager.state) {
+            CBManagerStateUnknown -> throw BluetoothUnknownException()
+            CBManagerStateResetting -> throw BluetoothResettingException()
+            CBManagerStateUnsupported -> throw BluetoothUnsupportedException()
+            CBManagerStateUnauthorized -> throw BluetoothPermissionException()
+            CBManagerStatePoweredOff -> throw BluetoothNotEnabledException()
+            CBManagerStatePoweredOn -> centralManager.scanForPeripheralsWithServices(null, null)
+        }
+    }
+
+    actual fun stopScanning() {
+        isScanning = false
+        centralManager.stopScan()
     }
 
     actual fun readCharacteristic(
@@ -60,13 +75,13 @@ actual class BlueFalcon {
 
     inner class BluetoothPeripheralManager: NSObject(), CBCentralManagerDelegateProtocol {
         override fun centralManagerDidUpdateState(central: CBCentralManager) {
-            when (central.state.toInt()) {
-                0 -> log("State 0 is .unknown")
-                1 -> log("State 1 is .resetting")
-                2 -> log("State 2 is .unsupported")
-                3 -> log("State 3 is .unauthorised")
-                4 -> log("State 4 is .poweredOff")
-                5 -> log("State 5 is .poweredOn")
+            when (central.state) {
+                CBManagerStateUnknown -> log("State 0 is .unknown")
+                CBManagerStateResetting -> log("State 1 is .resetting")
+                CBManagerStateUnsupported -> log("State 2 is .unsupported")
+                CBManagerStateUnauthorized -> log("State 3 is .unauthorised")
+                CBManagerStatePoweredOff -> log("State 4 is .poweredOff")
+                CBManagerStatePoweredOn -> log("State 5 is .poweredOn")
                 else -> log("State ${central.state.toInt()}")
             }
         }
