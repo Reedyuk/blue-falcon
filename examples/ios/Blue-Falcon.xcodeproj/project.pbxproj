@@ -27,6 +27,9 @@
 		4913238B2306BE1E0035A693 /* Blue_FalconUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4913238A2306BE1E0035A693 /* Blue_FalconUITests.swift */; };
 		498B07F9231A7E9700CA8EC1 /* HostingController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 498B07F8231A7E9700CA8EC1 /* HostingController.swift */; };
 		498B07FC231A80DF00CA8EC1 /* DevicesViewCell.swift in Sources */ = {isa = PBXBuildFile; fileRef = 498B07FB231A80DF00CA8EC1 /* DevicesViewCell.swift */; };
+		498B07FE231C405800CA8EC1 /* ActivityIndicator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 498B07FD231C405800CA8EC1 /* ActivityIndicator.swift */; };
+		498B0800231C413800CA8EC1 /* Strings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 498B07FF231C413800CA8EC1 /* Strings.swift */; };
+		49BD3E89231C575900960C6F /* BluetoothConnectionState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 49BD3E88231C575900960C6F /* BluetoothConnectionState.swift */; };
 		49CF49432316594A00B30A4C /* DeviceCharacteristicCell.swift in Sources */ = {isa = PBXBuildFile; fileRef = 49CF49422316594A00B30A4C /* DeviceCharacteristicCell.swift */; };
 		B6AB3EF9ABF6DE926F2A877D /* Pods_Blue_FalconUITests.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 28CE099E84C76E60CE8E17AE /* Pods_Blue_FalconUITests.framework */; };
 /* End PBXBuildFile section */
@@ -76,6 +79,9 @@
 		4913238C2306BE1E0035A693 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		498B07F8231A7E9700CA8EC1 /* HostingController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HostingController.swift; sourceTree = "<group>"; };
 		498B07FB231A80DF00CA8EC1 /* DevicesViewCell.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DevicesViewCell.swift; sourceTree = "<group>"; };
+		498B07FD231C405800CA8EC1 /* ActivityIndicator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActivityIndicator.swift; sourceTree = "<group>"; };
+		498B07FF231C413800CA8EC1 /* Strings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Strings.swift; sourceTree = "<group>"; };
+		49BD3E88231C575900960C6F /* BluetoothConnectionState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BluetoothConnectionState.swift; sourceTree = "<group>"; };
 		49CF49422316594A00B30A4C /* DeviceCharacteristicCell.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceCharacteristicCell.swift; sourceTree = "<group>"; };
 		7DCB1F90714D69E9DFB9A15C /* Pods_Blue_Falcon.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_Blue_Falcon.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		86B1877241E77DBE989028FD /* Pods-Blue-FalconUITests.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Blue-FalconUITests.debug.xcconfig"; path = "Target Support Files/Pods-Blue-FalconUITests/Pods-Blue-FalconUITests.debug.xcconfig"; sourceTree = "<group>"; };
@@ -134,6 +140,7 @@
 				4902C4F523112A9D009D1416 /* DeviceView.swift */,
 				4902C4F92311920C009D1416 /* DeviceServiceView.swift */,
 				49CF49422316594A00B30A4C /* DeviceCharacteristicCell.swift */,
+				498B07FD231C405800CA8EC1 /* ActivityIndicator.swift */,
 			);
 			path = Views;
 			sourceTree = "<group>";
@@ -163,6 +170,7 @@
 		491323672306BE1A0035A693 /* Blue-Falcon */ = {
 			isa = PBXGroup;
 			children = (
+				49BD3E87231C573100960C6F /* Models */,
 				498B07F7231A7E8F00CA8EC1 /* Controllers */,
 				4902C4F023112857009D1416 /* Views */,
 				4902C4EB2311279A009D1416 /* ViewModels */,
@@ -172,6 +180,7 @@
 				491323732306BE1E0035A693 /* LaunchScreen.storyboard */,
 				491323762306BE1E0035A693 /* Info.plist */,
 				491323702306BE1E0035A693 /* Preview Content */,
+				498B07FF231C413800CA8EC1 /* Strings.swift */,
 			);
 			path = "Blue-Falcon";
 			sourceTree = "<group>";
@@ -229,6 +238,14 @@
 				498B07FB231A80DF00CA8EC1 /* DevicesViewCell.swift */,
 			);
 			path = Cells;
+			sourceTree = "<group>";
+		};
+		49BD3E87231C573100960C6F /* Models */ = {
+			isa = PBXGroup;
+			children = (
+				49BD3E88231C575900960C6F /* BluetoothConnectionState.swift */,
+			);
+			path = Models;
 			sourceTree = "<group>";
 		};
 		7234F4FA77B20A826915AA03 /* Frameworks */ = {
@@ -445,6 +462,8 @@
 			buildActionMask = 2147483647;
 			files = (
 				4902C50023119B76009D1416 /* DeviceCharacteristicCellViewModel.swift in Sources */,
+				498B07FE231C405800CA8EC1 /* ActivityIndicator.swift in Sources */,
+				498B0800231C413800CA8EC1 /* Strings.swift in Sources */,
 				4902C4ED231127B4009D1416 /* DevicesViewModel.swift in Sources */,
 				4902C4F423112873009D1416 /* DevicesView.swift in Sources */,
 				4902C4F623112A9D009D1416 /* DeviceView.swift in Sources */,
@@ -453,6 +472,7 @@
 				498B07FC231A80DF00CA8EC1 /* DevicesViewCell.swift in Sources */,
 				4902C4FE23119B4B009D1416 /* DeviceServiceViewModel.swift in Sources */,
 				4913236B2306BE1A0035A693 /* SceneDelegate.swift in Sources */,
+				49BD3E89231C575900960C6F /* BluetoothConnectionState.swift in Sources */,
 				4902C4F8231131F2009D1416 /* DeviceViewModel.swift in Sources */,
 				4902C4FA2311920C009D1416 /* DeviceServiceView.swift in Sources */,
 				4902C4FC23119B26009D1416 /* DeviceServiceCellViewModel.swift in Sources */,

@@ -15,6 +15,9 @@ class DevicesViewModel: BlueFalconDelegate, ObservableObject {
 
     @Published var devicesViewModels: [DevicesCellViewModel] = []
     @Published var status = "Not Scanning"
+    var scanning: Bool {
+        return AppDelegate.instance.blueFalcon.isScanning
+    }
     var devices: [CBPeripheral] = []
 
     func scan() throws {

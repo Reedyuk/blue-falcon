@@ -20,6 +20,9 @@ struct DevicesView : View {
                 HStack {
                     Text("Bluetooth Status:")
                     Text(viewModel.status)
+                    if viewModel.scanning {
+                        ActivityIndicator(isAnimating: .constant(true), style: .medium)
+                    }
                 }.padding()
                 List(viewModel.devicesViewModels) { deviceViewModel in
                     NavigationLink(
@@ -53,13 +56,13 @@ struct DevicesView : View {
             let error = error as NSError
             switch error.userInfo["KotlinException"] {
             case is BluetoothPermissionException:
-                showError(message: "Please accept the bluetooth permission for the app")
+                showError(message: Strings.Errors.Bluetooth.permission)
             case is BluetoothNotEnabledException:
-                showError(message: "Bluetooth is not enabled for this device")
+                showError(message: Strings.Errors.Bluetooth.notEnabled)
             case is BluetoothUnsupportedException:
-                showError(message: "Bluetooth is not supported for this device")
+                showError(message: Strings.Errors.Bluetooth.unsupported)
             case is BluetoothResettingException:
-                showError(message: "Bluetooth adapter is currently resetting")
+                showError(message: Strings.Errors.Bluetooth.resetting)
             default:
                 DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
                     self.scan()

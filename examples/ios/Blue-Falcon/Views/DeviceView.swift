@@ -17,11 +17,12 @@ struct DeviceView : View {
 
     var body: some View {
         VStack(alignment: HorizontalAlignment.leading, spacing: 10) {
-            Text(deviceViewModel.isConnected ? "Connected" : "Connecting...")
+            Text(deviceViewModel.state.displayText())
                 .navigationBarTitle(deviceViewModel.title)
                 .onAppear {
                     self.deviceViewModel.addDelegate()
                     self.deviceViewModel.connect()
+                    self.deviceViewModel.refreshViewModel()
             }
             .onDisappear {
                 self.deviceViewModel.removeDelegate()
