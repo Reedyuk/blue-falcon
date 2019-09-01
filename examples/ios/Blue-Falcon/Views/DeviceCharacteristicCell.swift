@@ -33,31 +33,39 @@ struct DeviceCharacteristicCell: View {
             }.padding()
             HStack {
                 Spacer()
-                Text("Read")
-                    .onTapGesture {
+                Group {
+                    Button(action: {}) {
+                        Text("Read").padding(5)
+                    }.onTapGesture {
                         self.viewModel.readCharacteristicTapped(self.viewModel.characteristic)
                     }
                     .foregroundColor(Color.white)
                     .padding()
                     .background(Color.blue)
                     .cornerRadius(5)
-                Text("Notify \(viewModel.notify.description)")
-                    .onTapGesture {
+                }
+                Group {
+                    Button(action: {}) {
+                        Text("Notify \(viewModel.notify.description)").padding(5)
+                    }.onTapGesture {
                         self.viewModel.notifyCharacteristicTapped(self.viewModel.characteristic)
                     }
                     .foregroundColor(Color.white)
                     .padding()
                     .background(Color.purple)
                     .cornerRadius(5)
-
-                Text("Write")
-                    .onTapGesture {
+                }
+                Group {
+                    Button(action: {}) {
+                        Text("Write").padding(5)
+                    }.onTapGesture {
                         self.viewModel.writeCharacteristicTapped(self.viewModel.characteristic)
                     }
                     .foregroundColor(Color.white)
                     .padding()
                     .background(Color.yellow)
                     .cornerRadius(5)
+                }
             }
         }
     }

@@ -12,9 +12,10 @@ import CoreBluetooth
 
 class DeviceViewModel: BlueFalconDelegate, ObservableObject {
 
-    let device: CBPeripheral
     @Published var state: CBPeripheralState = .connecting
     @Published var deviceServiceCellViewModels: [DeviceServiceCellViewModel] = []
+
+    let device: CBPeripheral
     var services: [CBService] = []
     var title: String {
         "\(device.identifier.uuidString) \(device.name ?? "")"

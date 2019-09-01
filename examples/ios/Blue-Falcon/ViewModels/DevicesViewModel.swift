@@ -40,7 +40,8 @@ class DevicesViewModel: BlueFalconDelegate, ObservableObject {
     }
 
     func didDiscoverDevice(bluetoothPeripheral: CBPeripheral) {
-        guard !devices.contains(bluetoothPeripheral) else { return }
+        guard !devices.contains(bluetoothPeripheral),
+            AppDelegate.instance.blueFalcon.isScanning else { return }
         devices.append(bluetoothPeripheral)
         var deviceName = ""
         if let name = bluetoothPeripheral.name {

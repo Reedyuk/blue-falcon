@@ -17,15 +17,11 @@ struct DeviceView : View {
 
     var body: some View {
         VStack(alignment: HorizontalAlignment.leading, spacing: 10) {
-            Text(deviceViewModel.state.displayText())
-                .navigationBarTitle(deviceViewModel.title)
-                .onAppear {
-                    self.deviceViewModel.addDelegate()
-                    self.deviceViewModel.connect()
-                    self.deviceViewModel.refreshViewModel()
-            }
-            .onDisappear {
-                self.deviceViewModel.removeDelegate()
+            HStack {
+                Text(deviceViewModel.state.displayText())
+                if deviceViewModel.state == CBPeripheralState.connecting {
+                    ActivityIndicator(isAnimating: .constant(true), style: .medium)
+                }
             }.padding(10)
             Text(deviceViewModel.deviceServiceCellViewModels.isEmpty ? "" : "Services")
                 .bold()
@@ -42,6 +38,15 @@ struct DeviceView : View {
                     Text(viewModel.id.uuidString)
                 }
             }
+        }
+        .navigationBarTitle(deviceViewModel.title)
+        .onAppear {
+            self.deviceViewModel.addDelegate()
+            self.deviceViewModel.connect()
+            self.deviceViewModel.refreshViewModel()
+        }
+        .onDisappear {
+            self.deviceViewModel.removeDelegate()
         }
     }
 
