@@ -14,12 +14,14 @@ import UIKit
 class DeviceCharacteristicCellViewModel: Identifiable, ObservableObject {
 
     var id: CBUUID
+    let name: String
     let characteristic: CBCharacteristic
     let device: CBPeripheral
     @Published var notify: Bool = false
 
     init(id: CBUUID, characteristic: CBCharacteristic, device: CBPeripheral) {
         self.id = id
+        self.name = characteristic.uuid.description
         self.characteristic = characteristic
         self.device = device
     }

@@ -22,7 +22,7 @@ struct DeviceCharacteristicCell: View {
             VStack(alignment: HorizontalAlignment.leading, spacing: 10) {
                 HStack {
                     Text("ID: ").bold()
-                    Text(viewModel.id.uuidString)
+                    Text(viewModel.name)
                 }
                 if viewModel.characteristic.value != nil {
                     HStack {
@@ -30,8 +30,8 @@ struct DeviceCharacteristicCell: View {
                         Text(String(decoding: viewModel.characteristic.value ?? Data(), as: UTF8.self))
                     }
                 }
-            }.padding()
-            HStack {
+            }
+            HStack(alignment: .center) {
                 Spacer()
                 Group {
                     Button(action: {}) {
@@ -66,7 +66,8 @@ struct DeviceCharacteristicCell: View {
                     .background(Color.yellow)
                     .cornerRadius(5)
                 }
-            }
+                Spacer()
+            }.padding()
         }
     }
 }
