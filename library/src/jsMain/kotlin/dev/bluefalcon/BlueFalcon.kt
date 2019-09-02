@@ -2,7 +2,7 @@ package dev.bluefalcon
 
 actual class BlueFalcon {
 
-    actual val delegates: MutableList<BlueFalconDelegate> = arrayListOf()
+    actual val delegates: MutableSet<BlueFalconDelegate> = mutableSetOf()
     actual var isScanning: Boolean = false
 
     actual fun connect(bluetoothPeripheral: BluetoothPeripheral) {

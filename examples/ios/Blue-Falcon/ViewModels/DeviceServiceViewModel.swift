@@ -11,7 +11,7 @@ import library
 import Combine
 import CoreBluetooth
 
-class DeviceServiceViewModel: BlueFalconDelegate, ObservableObject {
+class DeviceServiceViewModel: NSObject, BlueFalconDelegate, ObservableObject {
 
     let service: CBService
     let device: CBPeripheral
@@ -22,8 +22,9 @@ class DeviceServiceViewModel: BlueFalconDelegate, ObservableObject {
         self.service = service
         self.device = device
         self.characteristics = service.characteristics ?? []
+        super.init()
         createViewModelsFromCharacteristics()
-        addDelegate()
+        //addDelegate()
     }
 
     func addDelegate() {

@@ -11,7 +11,7 @@ import library
 import CoreBluetooth
 import Combine
 
-class DevicesViewModel: BlueFalconDelegate, ObservableObject {
+class DevicesViewModel: NSObject, BlueFalconDelegate, ObservableObject {
 
     @Published var devicesViewModels: [DevicesCellViewModel] = []
     @Published var status = "Not Scanning"

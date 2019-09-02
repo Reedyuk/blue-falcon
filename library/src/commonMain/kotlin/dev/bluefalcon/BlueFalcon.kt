@@ -2,7 +2,7 @@ package dev.bluefalcon
 
 expect class BlueFalcon {
 
-    val delegates: MutableList<BlueFalconDelegate>
+    val delegates: MutableSet<BlueFalconDelegate>
     var isScanning: Boolean
 
     fun connect(bluetoothPeripheral: BluetoothPeripheral)

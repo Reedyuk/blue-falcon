@@ -16,7 +16,7 @@ actual class BlueFalcon(private val context: Context) {
             throw BluetoothPermissionException()
     }
 
-    actual val delegates: MutableList<BlueFalconDelegate> = arrayListOf()
+    actual val delegates: MutableSet<BlueFalconDelegate> = mutableSetOf()
     private val bluetoothManager = context.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
     private val mBluetoothScanCallBack = BluetoothScanCallBack()
     private val mGattClientCallback = GattClientCallback()

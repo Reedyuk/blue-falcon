@@ -10,7 +10,7 @@ import Foundation
 import library
 import CoreBluetooth
 
-class DeviceViewModel: BlueFalconDelegate, ObservableObject {
+class DeviceViewModel: NSObject, BlueFalconDelegate, ObservableObject {
 
     @Published var state: CBPeripheralState = .connecting
     @Published var deviceServiceCellViewModels: [DeviceServiceCellViewModel] = []
@@ -23,6 +23,7 @@ class DeviceViewModel: BlueFalconDelegate, ObservableObject {
 
     init(device: CBPeripheral) {
         self.device = device
+        super.init()
         refreshViewModel()
     }
 
@@ -67,10 +68,12 @@ class DeviceViewModel: BlueFalconDelegate, ObservableObject {
     func didDisconnect(bluetoothPeripheral: CBPeripheral) {}
 
     func didDiscoverServices(bluetoothPeripheral: CBPeripheral) {
-        setupServices(bluetoothPeripheral: bluetoothPeripheral)
+//        setupServices(bluetoothPeripheral: bluetoothPeripheral)
     }
 
-    func didDiscoverCharacteristics(bluetoothPeripheral: CBPeripheral) {}
+    func didDiscoverCharacteristics(bluetoothPeripheral: CBPeripheral) {
+        setupServices(bluetoothPeripheral: bluetoothPeripheral)
+    }
 
     func didCharacteristcValueChanged(bluetoothPeripheral: CBPeripheral, bluetoothCharacteristic: CBCharacteristic) {}
 

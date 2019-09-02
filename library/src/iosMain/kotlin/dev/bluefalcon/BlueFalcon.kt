@@ -6,7 +6,7 @@ import platform.darwin.NSObject
 
 actual class BlueFalcon {
 
-    actual val delegates: MutableList<BlueFalconDelegate> = arrayListOf()
+    actual val delegates: MutableSet<BlueFalconDelegate> = mutableSetOf()
 
     private val centralManager: CBCentralManager
     private val bluetoothPeripheralManager = BluetoothPeripheralManager()
