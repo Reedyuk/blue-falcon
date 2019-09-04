@@ -12,9 +12,10 @@ import CoreBluetooth
 
 class BluetoothService {
 
-    let blueFalcon = BlueFalcon()
+    private let blueFalcon = BlueFalcon()
     private var devices: [CBPeripheral] = []
     var detectedDeviceDelegates: [BluetoothServiceDetectedDeviceDelegate] = []
+    var connectedDeviceDelegate: [(UUID, BluetoothServiceConnectedDeviceDelegate)] = []
 
     init() {
         blueFalcon.delegates.add(self)
@@ -22,6 +23,10 @@ class BluetoothService {
 
     func scan() throws {
         try blueFalcon.scan()
+    }
+
+    func connect(bluetoothPeripheral: CBPeripheral) {
+        blueFalcon.connect(bluetoothPeripheral: bluetoothPeripheral)
     }
 
 }
@@ -37,7 +42,10 @@ extension BluetoothService: BlueFalconDelegate {
     }
 
     func didConnect(bluetoothPeripheral: CBPeripheral) {
-
+        bluetoothServiceConnectedDeviceDelegates(bluetoothPeripheralId: bluetoothPeripheral.identifier)
+        .forEach { bluetoothServiceConnectedDeviceDelegate in
+            bluetoothServiceConnectedDeviceDelegate.connectedDevice()
+        }
     }
 
     func didDisconnect(bluetoothPeripheral: CBPeripheral) {
@@ -45,7 +53,10 @@ extension BluetoothService: BlueFalconDelegate {
     }
 
     func didDiscoverServices(bluetoothPeripheral: CBPeripheral) {
-
+        bluetoothServiceConnectedDeviceDelegates(bluetoothPeripheralId: bluetoothPeripheral.identifier)
+        .forEach { bluetoothServiceConnectedDeviceDelegate in
+            bluetoothServiceConnectedDeviceDelegate.discoveredServices()
+        }
     }
 
     func didDiscoverCharacteristics(bluetoothPeripheral: CBPeripheral) {
@@ -59,10 +70,19 @@ extension BluetoothService: BlueFalconDelegate {
 
     }
 
+    private func bluetoothServiceConnectedDeviceDelegates(bluetoothPeripheralId: UUID) -> [BluetoothServiceConnectedDeviceDelegate] {
+        return connectedDeviceDelegate.compactMap { connectedDeviceDelegateTuple -> BluetoothServiceConnectedDeviceDelegate? in
+            connectedDeviceDelegateTuple.0 == bluetoothPeripheralId ? connectedDeviceDelegateTuple.1 : nil
+        }
+    }
+
 }
 
 protocol BluetoothServiceDetectedDeviceDelegate {
-
     func discoveredDevice(devices: [CBPeripheral])
+}
 
+protocol BluetoothServiceConnectedDeviceDelegate {
+    func connectedDevice()
+    func discoveredServices()
 }
