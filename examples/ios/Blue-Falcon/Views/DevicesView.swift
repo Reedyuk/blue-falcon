@@ -40,10 +40,11 @@ struct DevicesView : View {
                 }
                 .navigationBarTitle(Text("Blue Falcon Devices"))
             }
-        }.onAppear {
-            self.scan()
-        }.onDisappear {
-            self.viewModel.stopScanning()
+            .onAppear {
+                self.scan()
+            }.onDisappear {
+                self.viewModel.stopScanning()
+            }
         }
         .colorScheme(.dark)
     }

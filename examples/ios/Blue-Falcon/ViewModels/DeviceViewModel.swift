@@ -41,7 +41,15 @@ class DeviceViewModel: NSObject, BlueFalconDelegate, ObservableObject {
     }
 
     func connect() {
-        AppDelegate.instance.blueFalcon.connect(bluetoothPeripheral: device)
+        AppDelegate.instance.blueFalcon.stopScanning()
+        if self.device.state != .connecting {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 10.0, execute: {
+                if self.device.state != .connected {
+                    AppDelegate.instance.blueFalcon.disconnect(bluetoothPeripheral: self.device)
+                }
+            })
+            AppDelegate.instance.blueFalcon.connect(bluetoothPeripheral: device)
+        }
     }
 
     private func setupServices(bluetoothPeripheral: CBPeripheral) {
@@ -50,6 +58,8 @@ class DeviceViewModel: NSObject, BlueFalconDelegate, ObservableObject {
             !services.isEmpty
             else { return }
         print("didDiscoverServices \(services)")
+        //consider having a delay on when to update the services and their characteristics becuase this is
+        //called every time we get a new characteristic.
         self.services = services
         self.deviceServiceCellViewModels = services.map { service -> DeviceServiceCellViewModel in
             DeviceServiceCellViewModel(id: service.uuid, service: service)
@@ -65,7 +75,9 @@ class DeviceViewModel: NSObject, BlueFalconDelegate, ObservableObject {
         AppDelegate.instance.connectedDevices.append(bluetoothPeripheral)
     }
 
-    func didDisconnect(bluetoothPeripheral: CBPeripheral) {}
+    func didDisconnect(bluetoothPeripheral: CBPeripheral) {
+        state = .disconnected
+    }
 
     func didDiscoverServices(bluetoothPeripheral: CBPeripheral) {
 //        setupServices(bluetoothPeripheral: bluetoothPeripheral)

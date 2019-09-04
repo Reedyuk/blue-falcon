@@ -92,9 +92,11 @@ actual class BlueFalcon {
             advertisementData: Map<Any?, *>,
             RSSI: NSNumber
         ) {
-            log("Discovered device ${didDiscoverPeripheral.name}")
-            delegates.forEach {
-                it.didDiscoverDevice(didDiscoverPeripheral)
+            if (isScanning) {
+                log("Discovered device ${didDiscoverPeripheral.name}")
+                delegates.forEach {
+                    it.didDiscoverDevice(didDiscoverPeripheral)
+                }
             }
         }
 
