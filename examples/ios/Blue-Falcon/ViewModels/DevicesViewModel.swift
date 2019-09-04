@@ -11,65 +11,36 @@ import library
 import CoreBluetooth
 import Combine
 
-class DevicesViewModel: NSObject, BlueFalconDelegate, ObservableObject {
+class DevicesViewModel: ObservableObject {
 
     @Published var devicesViewModels: [DevicesCellViewModel] = []
-    @Published var status = "Not Scanning"
-    var scanning: Bool {
-        return AppDelegate.instance.blueFalcon.isScanning
+    @Published var status: BluetoothScanningState = .notScanning
+
+    func onAppear() {
+        AppDelegate.instance.bluetoothService.detectedDeviceDelegates.append(self)
     }
-    var devices: [CBPeripheral] = []
 
     func scan() throws {
-        AppDelegate.instance.blueFalcon.delegates.add(self)
-        try AppDelegate.instance.blueFalcon.scan()
-        status = "Scanning"
-        disconnectAllDevices()
+        try AppDelegate.instance.bluetoothService.scan()
+        status = .scanning
     }
 
-    func stopScanning() {
-        AppDelegate.instance.blueFalcon.stopScanning()
-        AppDelegate.instance.blueFalcon.delegates.remove(self)
-        status = "Not Scanning"
-    }
+}
 
-    func disconnectAllDevices() {
-        AppDelegate.instance.connectedDevices.forEach { device in
-            AppDelegate.instance.blueFalcon.disconnect(bluetoothPeripheral: device)
-        }
-    }
+extension DevicesViewModel: BluetoothServiceDetectedDeviceDelegate {
 
-    func didDiscoverDevice(bluetoothPeripheral: CBPeripheral) {
-        guard !devices.contains(bluetoothPeripheral),
-            AppDelegate.instance.blueFalcon.isScanning else { return }
-        devices.append(bluetoothPeripheral)
-        var deviceName = ""
-        if let name = bluetoothPeripheral.name {
-            deviceName += " \(name)"
-        }
-        devicesViewModels.append(
-            DevicesCellViewModel(
-                id: bluetoothPeripheral.identifier.uuidString,
+    func discoveredDevice(devices: [CBPeripheral]) {
+        devicesViewModels = devices.map { device -> DevicesCellViewModel in
+            var deviceName = ""
+            if let name = device.name {
+                deviceName += " \(name)"
+            }
+            return DevicesCellViewModel(
+                id: device.identifier.uuidString,
                 name: deviceName,
-                device: bluetoothPeripheral
+                device: device
             )
-        )
-    }
-
-    func didConnect(bluetoothPeripheral: CBPeripheral) {}
-
-    func didDisconnect(bluetoothPeripheral: CBPeripheral) {
-        AppDelegate.instance.connectedDevices.removeAll { device -> Bool in
-            device == bluetoothPeripheral
         }
-        guard let name = bluetoothPeripheral.name else { return }
-        print("disconnected to device \(name)")
     }
-
-    func didDiscoverServices(bluetoothPeripheral: CBPeripheral) {}
-
-    func didDiscoverCharacteristics(bluetoothPeripheral: CBPeripheral) {}
-
-    func didCharacteristcValueChanged(bluetoothPeripheral: CBPeripheral, bluetoothCharacteristic: CBCharacteristic) {}
 
 }

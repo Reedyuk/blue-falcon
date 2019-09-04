@@ -28,11 +28,11 @@ class DeviceServiceViewModel: NSObject, BlueFalconDelegate, ObservableObject {
     }
 
     func addDelegate() {
-        AppDelegate.instance.blueFalcon.delegates.add(self)
+        //AppDelegate.instance.blueFalcon.delegates.add(self)
     }
 
     func removeDelegate() {
-        AppDelegate.instance.blueFalcon.delegates.remove(self)
+        //AppDelegate.instance.blueFalcon.delegates.remove(self)
     }
 
     func didDiscoverDevice(bluetoothPeripheral: CBPeripheral) {}

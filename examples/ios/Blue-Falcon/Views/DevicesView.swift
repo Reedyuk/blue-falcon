@@ -19,8 +19,8 @@ struct DevicesView : View {
             VStack(alignment: .leading) {
                 HStack {
                     Text("Bluetooth Status:")
-                    Text(viewModel.status)
-                    if viewModel.scanning {
+                    Text(viewModel.status == .scanning ? "Scanning" : "Not Scanning")
+                    if viewModel.status == .scanning {
                         ActivityIndicator(isAnimating: .constant(true), style: .medium)
                     }
                 }.padding()
@@ -41,9 +41,8 @@ struct DevicesView : View {
                 .navigationBarTitle(Text("Blue Falcon Devices"))
             }
             .onAppear {
+                self.viewModel.onAppear()
                 self.scan()
-            }.onDisappear {
-                self.viewModel.stopScanning()
             }
         }
         .colorScheme(.dark)

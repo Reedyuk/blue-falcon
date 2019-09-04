@@ -28,18 +28,18 @@ class DeviceCharacteristicCellViewModel: Identifiable, ObservableObject {
 
     //consider moving to the characteristic cell view model.
     func readCharacteristicTapped(_ characteristic: CBCharacteristic) {
-        AppDelegate.instance.blueFalcon.readCharacteristic(
+        /*AppDelegate.instance.blueFalcon.readCharacteristic(
             bluetoothPeripheral: device,
             bluetoothCharacteristic: characteristic
-        )
+        )*/
     }
 
     func notifyCharacteristicTapped(_ characteristic: CBCharacteristic) {
         notify = !notify
-        AppDelegate.instance.blueFalcon.notifyCharacteristic(
+        /*AppDelegate.instance.blueFalcon.notifyCharacteristic(
             bluetoothPeripheral: device,
             bluetoothCharacteristic: characteristic,
-            notify: notify)
+            notify: notify)*/
     }
 
     func writeCharacteristicTapped(_ characteristic: CBCharacteristic) {
@@ -53,11 +53,11 @@ class DeviceCharacteristicCellViewModel: Identifiable, ObservableObject {
         }
         alert.addAction(UIAlertAction(title: "OK", style: .default, handler: { _ in
             guard let input = alert.textFields?.first?.text else { return }
-            AppDelegate.instance.blueFalcon.writeCharacteristic(
+            /*AppDelegate.instance.blueFalcon.writeCharacteristic(
                 bluetoothPeripheral: self.device,
                 bluetoothCharacteristic: characteristic,
                 value: input
-            )
+            )*/
         }))
         alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
         SceneDelegate.instance.window?.rootViewController?.present(alert, animated: true)

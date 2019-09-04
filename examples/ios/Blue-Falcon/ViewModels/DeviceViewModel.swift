@@ -28,11 +28,11 @@ class DeviceViewModel: NSObject, BlueFalconDelegate, ObservableObject {
     }
 
     func addDelegate() {
-        AppDelegate.instance.blueFalcon.delegates.add(self)
+        //AppDelegate.instance.blueFalcon.delegates.add(self)
     }
 
     func removeDelegate() {
-        AppDelegate.instance.blueFalcon.delegates.remove(self)
+        //AppDelegate.instance.blueFalcon.delegates.remove(self)
     }
 
     func refreshViewModel() {
@@ -41,7 +41,7 @@ class DeviceViewModel: NSObject, BlueFalconDelegate, ObservableObject {
     }
 
     func connect() {
-        AppDelegate.instance.blueFalcon.stopScanning()
+        /*AppDelegate.instance.blueFalcon.stopScanning()
         if self.device.state != .connecting {
             DispatchQueue.main.asyncAfter(deadline: .now() + 10.0, execute: {
                 if self.device.state != .connected {
@@ -49,7 +49,7 @@ class DeviceViewModel: NSObject, BlueFalconDelegate, ObservableObject {
                 }
             })
             AppDelegate.instance.blueFalcon.connect(bluetoothPeripheral: device)
-        }
+        }*/
     }
 
     private func setupServices(bluetoothPeripheral: CBPeripheral) {
@@ -72,7 +72,7 @@ class DeviceViewModel: NSObject, BlueFalconDelegate, ObservableObject {
     func didConnect(bluetoothPeripheral: CBPeripheral) {
         guard isSameDevice(bluetoothPeripheral) else { return }
         state = bluetoothPeripheral.state
-        AppDelegate.instance.connectedDevices.append(bluetoothPeripheral)
+        //AppDelegate.instance.connectedDevices.append(bluetoothPeripheral)
     }
 
     func didDisconnect(bluetoothPeripheral: CBPeripheral) {
