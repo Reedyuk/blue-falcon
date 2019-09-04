@@ -44,6 +44,44 @@ try {
 }
 ```
 
+### BlueFalcon API
+
+The basic functionality of the api is listed below, this should be a simplistic as possible and is the same in any platform.
+
+```kotlin
+fun connect(bluetoothPeripheral: BluetoothPeripheral)
+fun disconnect(bluetoothPeripheral: BluetoothPeripheral)
+fun scan()
+fun stopScanning()
+fun readCharacteristic(
+    bluetoothPeripheral: BluetoothPeripheral,
+    bluetoothCharacteristic: BluetoothCharacteristic
+)
+fun notifyCharacteristic(
+    bluetoothPeripheral: BluetoothPeripheral,
+    bluetoothCharacteristic: BluetoothCharacteristic,
+    notify: Boolean
+)
+fun writeCharacteristic(
+    bluetoothPeripheral: BluetoothPeripheral,
+    bluetoothCharacteristic: BluetoothCharacteristic,
+    value: String
+)
+```
+
+### BlueFalcon Delegate Methods
+
+In your platform layer, you need to implement a delegate to get notified when an event occurs, e.g. Device discovered.
+
+```kotlin
+fun didDiscoverDevice(bluetoothPeripheral: BluetoothPeripheral)
+fun didConnect(bluetoothPeripheral: BluetoothPeripheral)
+fun didDisconnect(bluetoothPeripheral: BluetoothPeripheral)
+fun didDiscoverServices(bluetoothPeripheral: BluetoothPeripheral)
+fun didDiscoverCharacteristics(bluetoothPeripheral: BluetoothPeripheral)
+fun didCharacteristcValueChanged(bluetoothPeripheral: BluetoothPeripheral, bluetoothCharacteristic: BluetoothCharacteristic)
+```
+
 ## Examples
 
 This repo contains examples for ios and android in the examples folder, install their dependencies, and run it locally:
