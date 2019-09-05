@@ -44,6 +44,9 @@ struct DevicesView : View {
                 self.viewModel.onAppear()
                 self.scan()
             }
+            .onDisappear {
+                self.viewModel.onDisapear()
+            }
         }
         .colorScheme(.dark)
     }

@@ -9,6 +9,7 @@
 import Foundation
 import library
 import CoreBluetooth
+import Combine
 
 class DeviceViewModel: ObservableObject {
 

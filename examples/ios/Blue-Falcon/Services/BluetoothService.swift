@@ -17,6 +17,8 @@ class BluetoothService {
     var detectedDeviceDelegates: [BluetoothServiceDetectedDeviceDelegate] = []
     var connectedDeviceDelegate: [(UUID, BluetoothServiceConnectedDeviceDelegate)] = []
 
+    //create some sort of notification queue which waits x seconds before refreshing.
+
     init() {
         blueFalcon.delegates.add(self)
     }
@@ -77,6 +79,7 @@ extension BluetoothService: BlueFalconDelegate {
     }
 
 }
+
 
 protocol BluetoothServiceDetectedDeviceDelegate {
     func discoveredDevice(devices: [CBPeripheral])
