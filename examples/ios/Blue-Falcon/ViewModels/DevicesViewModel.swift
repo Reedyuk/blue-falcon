@@ -21,10 +21,7 @@ class DevicesViewModel: ObservableObject {
     }
 
     func onDisapear() {
-        AppDelegate.instance.bluetoothService.detectedDeviceDelegates.removeAll({
-            (delegate: BluetoothServiceDetectedDeviceDelegate) -> Bool in
-            return delegate == self
-        })
+        AppDelegate.instance.bluetoothService.removeDetectedDeviceDelegate(delegate: self)
     }
 
     func scan() throws {

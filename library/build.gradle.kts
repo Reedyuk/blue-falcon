@@ -17,6 +17,7 @@ buildscript {
     dependencies {
         classpath("org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version")
         classpath("com.android.tools.build:gradle:$android_tools_version")
+        classpath("com.jfrog.bintray.gradle:gradle-bintray-plugin:1.8.4")
     }
 }
 
@@ -27,6 +28,17 @@ plugins {
     id("com.android.library")
 }
 
+val sonatypeStaging = "https://oss.sonatype.org/service/local/staging/deploy/maven2/"
+val sonatypeSnapshots = "https://oss.sonatype.org/content/repositories/snapshots/"
+val sonatypePassword: String? by project
+val sonatypeUsername: String? by project
+
+//val sonatypePasswordEnv: String? = System.getenv()["SONATYPE_PASSWORD"]
+//val sonatypeUsernameEnv: String? = System.getenv()["SONATYPE_USERNAME"]
+
+val sonatypePasswordEnv: String? = "P@ssword1234"
+val sonatypeUsernameEnv: String? = "Reedyuk"
+
 repositories {
     mavenLocal()
     mavenCentral()
@@ -35,15 +47,12 @@ repositories {
     maven(url = "https://kotlin.bintray.com/kotlinx")
     maven(url = "https://dl.bintray.com/kotlin/kotlin-dev")
     maven(url = "https://dl.bintray.com/kotlin/kotlin-eap")
-    maven(url = "https://dl.bintray.com/pocketbyte/hydra/")
 }
 
 val kotlin_version: String by project
 val android_tools_version: String by project
-val project_version: String by project
-
-group = "dev.bluefalcon"
-version = project_version
+val version: String by project
+val group: String by project
 
 kotlin {
     cocoapods {
@@ -129,7 +138,7 @@ android {
         minSdkVersion(24)
         targetSdkVersion(29)
         versionCode = 1
-        versionName = project_version
+        versionName = version
         testInstrumentationRunner = "android.support.test.runner.AndroidJUnitRunner"
     }
     buildTypes {
@@ -148,4 +157,51 @@ android {
         exclude("META-INF/*.kotlin_module")
     }
 
+}
+
+publishing {
+    publications.withType(MavenPublication::class) {
+        pom {
+            name.set("Blue Falcon")
+            description.set("Kotlin Multiplatform Bluetooth Library")
+            url.set("https://github.com/reedyuk/blue-falcon")
+            licenses {
+                license {
+                    name.set("The Apache License, Version 2.0")
+                    url.set("http://www.apache.org/licenses/LICENSE-2.0.txt")
+                }
+            }
+            developers {
+                developer {
+                    id.set("Reedyuk")
+                    name.set("Andrew Reed")
+                    email.set("andrew_reed@hotmail.com")
+                }
+            }
+            scm {
+                url.set("https://github.com/reedyuk/blue-falcon")
+                connection.set("scm:git:git://git@github.com:reedyuk/blue-falcon.git")
+                developerConnection.set("scm:git:ssh://git@github.com:reedyuk/blue-falcon.git")
+            }
+        }
+    }
+    repositories {
+        maven {
+
+            url = uri(sonatypeStaging)
+            credentials {
+                username = sonatypeUsername ?: sonatypeUsernameEnv ?: ""
+                password = sonatypePassword ?: sonatypePasswordEnv ?: ""
+            }
+        }
+
+        maven {
+            name = "snapshot"
+            url = uri(sonatypeSnapshots)
+            credentials {
+                username = sonatypeUsername ?: sonatypeUsernameEnv ?: ""
+                password = sonatypePassword ?: sonatypePasswordEnv ?: ""
+            }
+        }
+    }
 }
