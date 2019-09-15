@@ -24,6 +24,12 @@ struct DeviceCharacteristicCell: View {
                     Text("ID: ").bold()
                     Text(viewModel.name)
                 }
+                if viewModel.reading {
+                    HStack {
+                        Text("Reading...")
+                        ActivityIndicator(isAnimating: .constant(true), style: .medium)
+                    }
+                }
                 if viewModel.characterisicValue != nil {
                     HStack {
                         Text("Value: ").bold()

@@ -19,6 +19,7 @@ class DeviceCharacteristicCellViewModel: Identifiable, ObservableObject {
     let device: CBPeripheral
     @Published var notify: Bool = false
     @Published var characterisicValue: String? = nil
+    @Published var reading: Bool = false
 
     init(id: CBUUID, characteristic: CBCharacteristic, device: CBPeripheral) {
         self.id = id
@@ -37,6 +38,7 @@ class DeviceCharacteristicCellViewModel: Identifiable, ObservableObject {
 
     //consider moving to the characteristic cell view model.
     func readCharacteristicTapped(_ characteristic: CBCharacteristic) {
+        reading = true
         AppDelegate.instance.bluetoothService.readCharacteristic(
             bluetoothPeripheral: device,
             bluetoothCharacteristic: characteristic
@@ -77,6 +79,7 @@ class DeviceCharacteristicCellViewModel: Identifiable, ObservableObject {
 extension DeviceCharacteristicCellViewModel: BluetoothServiceCharacteristicDelegate {
 
     func characteristcValueChanged() {
+        reading = false
         guard let characteristicData = characteristic.value else { return }
         characterisicValue = String(decoding: characteristicData, as: UTF8.self)
     }
