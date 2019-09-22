@@ -7,17 +7,23 @@ import dev.bluefalcon.BluetoothPeripheral
 import java.nio.charset.Charset
 import android.text.InputType
 import android.widget.EditText
+import dev.bluefalcon.BluetoothCharacteristic
 import dev.bluefalcon.activities.DeviceServiceActivity
+import dev.bluefalcon.services.BluetoothServiceCharacteristicDelegate
 
 
 class DeviceCharacteristicViewModel(
     private val deviceServiceActivity: DeviceServiceActivity,
     private val deviceServiceViewModel: DeviceServiceViewModel,
     private val device: BluetoothPeripheral,
-    var characteristic: BluetoothGattCharacteristic) {
+    var characteristic: BluetoothGattCharacteristic): BluetoothServiceCharacteristicDelegate {
 
     var notify = false
     val id = characteristic.uuid
+
+    init {
+        BlueFalconApplication.instance.bluetoothService.characteristicDelegates[characteristic.uuid] = this
+    }
 
     fun value(): String {
         characteristic.value?.let { data ->
@@ -29,7 +35,7 @@ class DeviceCharacteristicViewModel(
     }
 
     fun readCharacteristicTapped() {
-        BlueFalconApplication.instance.blueFalcon.readCharacteristic(
+        BlueFalconApplication.instance.bluetoothService.readCharacteristic(
             device,
             characteristic
         )
@@ -37,7 +43,7 @@ class DeviceCharacteristicViewModel(
 
     fun notifyCharacteristicTapped() {
         notify = !notify
-        BlueFalconApplication.instance.blueFalcon.notifyCharacteristic(
+        BlueFalconApplication.instance.bluetoothService.notifyCharacteristic(
             device,
             characteristic,
             notify
@@ -53,7 +59,7 @@ class DeviceCharacteristicViewModel(
         builder.setView(input)
 
         builder.setPositiveButton("OK") { _, _ ->
-            BlueFalconApplication.instance.blueFalcon.writeCharacteristic(
+            BlueFalconApplication.instance.bluetoothService.writeCharacteristic(
                 device,
                 characteristic,
                 input.text.toString()
@@ -61,6 +67,11 @@ class DeviceCharacteristicViewModel(
         }
         builder.setNegativeButton("Cancel") { dialog, _ -> dialog.cancel() }
         builder.show()
+    }
+
+    override fun characteristcValueChanged(bluetoothCharacteristic: BluetoothCharacteristic) {
+        characteristic = bluetoothCharacteristic
+        deviceServiceViewModel.notifyValueChanged()
     }
 
 }

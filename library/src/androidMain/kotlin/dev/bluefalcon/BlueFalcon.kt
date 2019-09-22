@@ -11,11 +11,6 @@ import android.content.pm.PackageManager
 
 actual class BlueFalcon(private val context: Context) {
 
-    init {
-        if (context.checkSelfPermission(Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED)
-            throw BluetoothPermissionException()
-    }
-
     actual val delegates: MutableSet<BlueFalconDelegate> = mutableSetOf()
     private val bluetoothManager = context.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
     private val mBluetoothScanCallBack = BluetoothScanCallBack()
@@ -40,6 +35,8 @@ actual class BlueFalcon(private val context: Context) {
     }
 
     actual fun scan() {
+        if (context.checkSelfPermission(Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED)
+            throw BluetoothPermissionException()
         log("BT Scan started")
         isScanning = true
         val filter = ScanFilter.Builder().build()

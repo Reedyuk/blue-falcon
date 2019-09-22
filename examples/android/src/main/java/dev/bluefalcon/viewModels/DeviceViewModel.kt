@@ -3,18 +3,17 @@ package dev.bluefalcon.viewModels
 import android.bluetooth.BluetoothGattService
 import android.util.Log
 import dev.bluefalcon.BlueFalconApplication
-import dev.bluefalcon.BlueFalconDelegate
-import dev.bluefalcon.BluetoothCharacteristic
 import dev.bluefalcon.BluetoothPeripheral
 import dev.bluefalcon.adapters.DeviceAdapter
 import dev.bluefalcon.observables.StandardObservableProperty
 import dev.bluefalcon.views.DeviceActivityUI
 import dev.bluefalcon.activities.DeviceActivity
+import dev.bluefalcon.services.BluetoothServiceConnectedDeviceDelegate
 
 class DeviceViewModel(
-    val deviceActivity: DeviceActivity,
+    private val deviceActivity: DeviceActivity,
     var bluetoothPeripheral: BluetoothPeripheral
-) : BlueFalconDelegate {
+) : BluetoothServiceConnectedDeviceDelegate {
 
     val deviceActivityUI = DeviceActivityUI(this)
     val services: List<BluetoothGattService> get() = bluetoothPeripheral.services
@@ -26,31 +25,29 @@ class DeviceViewModel(
                 if (bluetoothPeripheral.bluetoothDevice.name != null) bluetoothPeripheral.bluetoothDevice.name else ""
 
     init {
-        BlueFalconApplication.instance.blueFalcon.connect(bluetoothPeripheral)
+        BlueFalconApplication.instance.bluetoothService.connect(bluetoothPeripheral)
     }
 
     fun destroy() {
-        BlueFalconApplication.instance.blueFalcon.disconnect(bluetoothPeripheral)
-        BlueFalconApplication.instance.blueFalcon.delegates.remove(this)
+        BlueFalconApplication.instance.bluetoothService.disconnect(bluetoothPeripheral)
+        removeDelegate()
     }
 
     fun addDelegate() {
-        BlueFalconApplication.instance.blueFalcon.delegates.add(this)
+        BlueFalconApplication.instance.bluetoothService.connectedDeviceDelegates[bluetoothPeripheral.bluetoothDevice.address] = this
     }
 
     fun removeDelegate() {
-        BlueFalconApplication.instance.blueFalcon.delegates.remove(this)
+        BlueFalconApplication.instance.bluetoothService.connectedDeviceDelegates.remove(
+            bluetoothPeripheral.bluetoothDevice.address
+        )
     }
 
-    override fun didDiscoverDevice(bluetoothPeripheral: BluetoothPeripheral) {}
-
-    override fun didConnect(bluetoothPeripheral: BluetoothPeripheral) {
+    override fun connectedDevice() {
         connectionStatus.value = "Connected"
     }
 
-    override fun didDisconnect(bluetoothPeripheral: BluetoothPeripheral) {}
-
-    override fun didDiscoverServices(bluetoothPeripheral: BluetoothPeripheral) {
+    override fun discoveredServices(bluetoothPeripheral: BluetoothPeripheral) {
         Log.v("Bluefalcon", "Services in view model ${bluetoothPeripheral.services}")
         this.bluetoothPeripheral = bluetoothPeripheral
         deviceActivity.runOnUiThread {
@@ -59,10 +56,4 @@ class DeviceViewModel(
         }
     }
 
-    override fun didDiscoverCharacteristics(bluetoothPeripheral: BluetoothPeripheral) {}
-
-    override fun didCharacteristcValueChanged(
-        bluetoothPeripheral: BluetoothPeripheral,
-        bluetoothCharacteristic: BluetoothCharacteristic
-    ) {}
 }
