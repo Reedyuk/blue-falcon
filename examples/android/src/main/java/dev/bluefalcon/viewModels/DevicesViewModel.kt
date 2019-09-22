@@ -5,29 +5,29 @@ import androidx.core.app.ActivityCompat
 import dev.bluefalcon.*
 import dev.bluefalcon.activities.DevicesActivity
 import dev.bluefalcon.adapters.DevicesAdapter
+import dev.bluefalcon.services.BluetoothServiceDetectedDeviceDelegate
 import dev.bluefalcon.views.DevicesActivityUI
 
-class DevicesViewModel(private val devicesActivity: DevicesActivity) : BlueFalconDelegate {
+class DevicesViewModel(private val devicesActivity: DevicesActivity): BluetoothServiceDetectedDeviceDelegate {
 
-    val devices: MutableList<BluetoothPeripheral> = arrayListOf()
-    val devicesAdapter = DevicesAdapter(this)
+    var devices: List<BluetoothPeripheral> = emptyList()
+    val devicesAdapter = DevicesAdapter(emptyList())
     val devicesActivityUI = DevicesActivityUI(this)
 
     fun setupBluetooth() {
         try {
-            addDelegate()
-            BlueFalconApplication.instance.blueFalcon.scan()
+            BlueFalconApplication.instance.bluetoothService.scan()
         } catch (exception: BluetoothPermissionException) {
             requestLocationPermission()
         }
     }
 
     fun addDelegate() {
-        BlueFalconApplication.instance.blueFalcon.delegates.add(this)
+        BlueFalconApplication.instance.bluetoothService.detectedDeviceDelegates.add(this)
     }
 
     fun removeDelegate() {
-        BlueFalconApplication.instance.blueFalcon.delegates.remove(this)
+        BlueFalconApplication.instance.bluetoothService.detectedDeviceDelegates.remove(this)
     }
 
     private fun requestLocationPermission() {
@@ -35,24 +35,12 @@ class DevicesViewModel(private val devicesActivity: DevicesActivity) : BlueFalco
         ActivityCompat.requestPermissions(devicesActivity, permission, 0)
     }
 
-    override fun didDiscoverDevice(bluetoothPeripheral: BluetoothPeripheral) {
-        if (devices.firstOrNull { it.bluetoothDevice == bluetoothPeripheral.bluetoothDevice } == null) {
-            devices.add(bluetoothPeripheral)
+    override fun discoveredDevice(devices: List<BluetoothPeripheral>) {
+        devicesActivity.runOnUiThread {
+            this.devices = devices
+            devicesAdapter.devices = devices
             devicesAdapter.notifyDataSetChanged()
         }
     }
-
-    override fun didConnect(bluetoothPeripheral: BluetoothPeripheral) {}
-
-    override fun didDisconnect(bluetoothPeripheral: BluetoothPeripheral) {}
-
-    override fun didDiscoverServices(bluetoothPeripheral: BluetoothPeripheral) {}
-
-    override fun didDiscoverCharacteristics(bluetoothPeripheral: BluetoothPeripheral) {}
-
-    override fun didCharacteristcValueChanged(
-        bluetoothPeripheral: BluetoothPeripheral,
-        bluetoothCharacteristic: BluetoothCharacteristic
-    ) {}
 
 }

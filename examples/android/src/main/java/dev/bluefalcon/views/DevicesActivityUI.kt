@@ -18,11 +18,9 @@ class DevicesActivityUI(private val viewModel: DevicesViewModel) : AnkoComponent
             listView {
                 adapter = viewModel.devicesAdapter
             }.onItemClick { _, _, index, _ ->
-                viewModel.devicesAdapter.getItem(index).let {
-                    owner.startActivity<DeviceActivity>(
-                        "device" to viewModel.devicesAdapter.getItem(index).bluetoothDevice
-                    )
-                }
+                owner.startActivity<DeviceActivity>(
+                    "device" to viewModel.devices[index].bluetoothDevice
+                )
             }
         }
     }

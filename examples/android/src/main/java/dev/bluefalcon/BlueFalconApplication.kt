@@ -1,6 +1,7 @@
 package dev.bluefalcon
 
 import android.app.Application
+import dev.bluefalcon.services.BluetoothService
 
 class BlueFalconApplication: Application() {
 
@@ -9,8 +10,8 @@ class BlueFalconApplication: Application() {
             private set
     }
 
-    val blueFalcon: BlueFalcon by lazy {
-        BlueFalcon(this)
+    val bluetoothService: BluetoothService by lazy {
+        BluetoothService()
     }
 
     override fun onCreate() {
