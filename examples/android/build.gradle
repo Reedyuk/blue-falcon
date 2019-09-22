@@ -5,6 +5,7 @@ buildscript {
     repositories {
         mavenLocal()
         jcenter()
+        mavenCentral()
         google()
         maven{url = "https://dl.bintray.com/jetbrains/kotlin-native-dependencies"}
         maven{url = "https://maven.google.com"}
@@ -49,8 +50,11 @@ android {
 }
 
 dependencies {
-    implementation project(':library')
-    implementation fileTree(dir: 'library', include: ['*.jar'])
+    //implementation project(':library')
+    //implementation fileTree(dir: 'library', include: ['*.jar'])
+
+    implementation 'dev.bluefalcon:library-android:0.0.3'
+
     implementation "org.jetbrains.kotlin:kotlin-stdlib-jdk7:$kotlin_version"
     implementation 'androidx.appcompat:appcompat:1.0.2'
     implementation 'androidx.core:core-ktx:1.0.2'

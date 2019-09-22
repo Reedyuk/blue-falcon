@@ -1,3 +1,4 @@
+import java.util.*
 
 buildscript {
     val kotlin_version: String by project
@@ -25,19 +26,20 @@ plugins {
     id("org.jetbrains.kotlin.multiplatform")
     id("org.jetbrains.kotlin.native.cocoapods")
     id("maven-publish")
-    id("com.android.library")
+    id("signing")
 }
 
 val sonatypeStaging = "https://oss.sonatype.org/service/local/staging/deploy/maven2/"
 val sonatypeSnapshots = "https://oss.sonatype.org/content/repositories/snapshots/"
-val sonatypePassword: String? by project
-val sonatypeUsername: String? by project
 
-//val sonatypePasswordEnv: String? = System.getenv()["SONATYPE_PASSWORD"]
-//val sonatypeUsernameEnv: String? = System.getenv()["SONATYPE_USERNAME"]
+val local = Properties()
+val localProperties: File = rootProject.file("local.properties")
+if (localProperties.exists()) {
+    localProperties.inputStream().use { local.load(it) }
+}
 
-val sonatypePasswordEnv: String? = "P@ssword1234"
-val sonatypeUsernameEnv: String? = "Reedyuk"
+val sonatypePasswordEnv = local.getProperty("sonatypePasswordEnv")
+val sonatypeUsernameEnv = local.getProperty("sonatypeUsernameEnv")
 
 repositories {
     mavenLocal()
@@ -49,10 +51,7 @@ repositories {
     maven(url = "https://dl.bintray.com/kotlin/kotlin-eap")
 }
 
-val kotlin_version: String by project
-val android_tools_version: String by project
-val version: String by project
-val group: String by project
+configurations.create("compileClasspath")
 
 kotlin {
     cocoapods {
@@ -60,7 +59,16 @@ kotlin {
         summary = "Blue-Falcon a multiplatform bluetooth library"
         homepage = "http://www.bluefalcon.dev"
     }
-    android("android")
+
+    //need to use jvm because android doesnt export type alias
+    jvm("android") {
+        compilations.all {
+            kotlinOptions {
+                jvmTarget = "1.8"
+            }
+        }
+    }
+
     js {
         val main by compilations.getting {
             kotlinOptions {
@@ -98,6 +106,7 @@ kotlin {
         val androidMain by getting {
             dependencies {
                 implementation("org.jetbrains.kotlin:kotlin-stdlib")
+                compileOnly("org.robolectric:android-all:9-robolectric-4913185-2")
             }
         }
 
@@ -132,45 +141,44 @@ kotlin {
     }
 }
 
-android {
-    compileSdkVersion(29)
-    defaultConfig {
-        minSdkVersion(24)
-        targetSdkVersion(29)
-        versionCode = 1
-        versionName = version
-        testInstrumentationRunner = "android.support.test.runner.AndroidJUnitRunner"
-    }
-    buildTypes {
-        getByName("release") {
-            isMinifyEnabled = false
-            proguardFiles(getDefaultProguardFile("proguard-android.txt"), "proguard-rules.pro")
-        }
-    }
-    sourceSets {
-        getByName("main") {
-            manifest.srcFile("src/main/AndroidManifest.xml")
-        }
-    }
+fun SigningExtension.whenRequired(block: () -> Boolean) {
+    setRequired(block)
+}
 
-    packagingOptions {
-        exclude("META-INF/*.kotlin_module")
-    }
-
+val javadocJar by tasks.creating(Jar::class) {
+    archiveClassifier.value("javadoc")
 }
 
 publishing {
-    publications.withType(MavenPublication::class) {
+    repositories {
+        maven {
+            url = uri(sonatypeStaging)
+
+            credentials {
+                username = sonatypeUsernameEnv
+                password = sonatypePasswordEnv
+            }
+        }
+    }
+
+    publications.all {
+        this as MavenPublication
+
+        println(name)
+        artifact(javadocJar)
+
         pom {
-            name.set("Blue Falcon")
+            name.set("dev.bluefalcon")
             description.set("Kotlin Multiplatform Bluetooth Library")
             url.set("https://github.com/reedyuk/blue-falcon")
+
             licenses {
                 license {
-                    name.set("The Apache License, Version 2.0")
-                    url.set("http://www.apache.org/licenses/LICENSE-2.0.txt")
+                    name.set("MIT License")
+                    url.set("http://opensource.org/licenses/MIT")
                 }
             }
+
             developers {
                 developer {
                     id.set("Reedyuk")
@@ -178,30 +186,19 @@ publishing {
                     email.set("andrew_reed@hotmail.com")
                 }
             }
+
             scm {
                 url.set("https://github.com/reedyuk/blue-falcon")
                 connection.set("scm:git:git://git@github.com:reedyuk/blue-falcon.git")
                 developerConnection.set("scm:git:ssh://git@github.com:reedyuk/blue-falcon.git")
             }
+
         }
     }
-    repositories {
-        maven {
 
-            url = uri(sonatypeStaging)
-            credentials {
-                username = sonatypeUsername ?: sonatypeUsernameEnv ?: ""
-                password = sonatypePassword ?: sonatypePasswordEnv ?: ""
-            }
-        }
+}
 
-        maven {
-            name = "snapshot"
-            url = uri(sonatypeSnapshots)
-            credentials {
-                username = sonatypeUsername ?: sonatypeUsernameEnv ?: ""
-                password = sonatypePassword ?: sonatypePasswordEnv ?: ""
-            }
-        }
-    }
+signing {
+    whenRequired { gradle.taskGraph.hasTask("publish") }
+    sign(publishing.publications)
 }
