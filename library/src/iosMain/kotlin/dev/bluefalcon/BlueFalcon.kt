@@ -145,10 +145,9 @@ actual class BlueFalcon {
         ) {
             if (error != null) {
                 println("Error with characteristic discovery ${didDiscoverCharacteristicsForService}")
-            } else {
-                delegates.forEach {
-                    it.didDiscoverCharacteristics(peripheral)
-                }
+            }
+            delegates.forEach {
+                it.didDiscoverCharacteristics(peripheral)
             }
         }
 
@@ -157,6 +156,9 @@ actual class BlueFalcon {
             didUpdateValueForCharacteristic: CBCharacteristic,
             error: NSError?
         ) {
+            if (error != null) {
+                println("Error with characteristic update ${error}")
+            }
             println("didUpdateValueForCharacteristic")
             delegates.forEach {
                 it.didCharacteristcValueChanged(

@@ -41,12 +41,10 @@ struct DeviceView : View {
         }
         .navigationBarTitle(deviceViewModel.title)
         .onAppear {
-            self.deviceViewModel.addDelegate()
-            self.deviceViewModel.connect()
-            self.deviceViewModel.refreshViewModel()
+            self.deviceViewModel.onAppear()
         }
         .onDisappear {
-            self.deviceViewModel.removeDelegate()
+            self.deviceViewModel.onDisapear()
         }
     }
 

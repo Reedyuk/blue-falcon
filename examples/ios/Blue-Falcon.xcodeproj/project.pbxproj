@@ -7,6 +7,8 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		00F292BB23204BCC00CC1B2E /* BluetoothService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00F292BA23204BCC00CC1B2E /* BluetoothService.swift */; };
+		00F292BD2320507600CC1B2E /* BluetoothScanningState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00F292BC2320507600CC1B2E /* BluetoothScanningState.swift */; };
 		29BA30B3CD68DA1563FEDE72 /* Pods_Blue_FalconTests.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = B526CB3F28C7FE940A5E947C /* Pods_Blue_FalconTests.framework */; };
 		30A2DF892B24294E43FA2C05 /* Pods_Blue_Falcon.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 7DCB1F90714D69E9DFB9A15C /* Pods_Blue_Falcon.framework */; };
 		4902C4ED231127B4009D1416 /* DevicesViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4902C4EC231127B4009D1416 /* DevicesViewModel.swift */; };
@@ -52,6 +54,8 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		00F292BA23204BCC00CC1B2E /* BluetoothService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BluetoothService.swift; sourceTree = "<group>"; };
+		00F292BC2320507600CC1B2E /* BluetoothScanningState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BluetoothScanningState.swift; sourceTree = "<group>"; };
 		12998B1BEDD755009B26AC20 /* Pods-Blue-Falcon.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Blue-Falcon.release.xcconfig"; path = "Target Support Files/Pods-Blue-Falcon/Pods-Blue-Falcon.release.xcconfig"; sourceTree = "<group>"; };
 		28CE099E84C76E60CE8E17AE /* Pods_Blue_FalconUITests.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_Blue_FalconUITests.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		42D534E1A926A5304B97EAC6 /* Pods-Blue-FalconUITests.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Blue-FalconUITests.release.xcconfig"; path = "Target Support Files/Pods-Blue-FalconUITests/Pods-Blue-FalconUITests.release.xcconfig"; sourceTree = "<group>"; };
@@ -119,6 +123,14 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		00F292B923204B3300CC1B2E /* Services */ = {
+			isa = PBXGroup;
+			children = (
+				00F292BA23204BCC00CC1B2E /* BluetoothService.swift */,
+			);
+			path = Services;
+			sourceTree = "<group>";
+		};
 		4902C4EB2311279A009D1416 /* ViewModels */ = {
 			isa = PBXGroup;
 			children = (
@@ -170,6 +182,7 @@
 		491323672306BE1A0035A693 /* Blue-Falcon */ = {
 			isa = PBXGroup;
 			children = (
+				00F292B923204B3300CC1B2E /* Services */,
 				49BD3E87231C573100960C6F /* Models */,
 				498B07F7231A7E8F00CA8EC1 /* Controllers */,
 				4902C4F023112857009D1416 /* Views */,
@@ -244,6 +257,7 @@
 			isa = PBXGroup;
 			children = (
 				49BD3E88231C575900960C6F /* BluetoothConnectionState.swift */,
+				00F292BC2320507600CC1B2E /* BluetoothScanningState.swift */,
 			);
 			path = Models;
 			sourceTree = "<group>";
@@ -477,6 +491,8 @@
 				4902C4FA2311920C009D1416 /* DeviceServiceView.swift in Sources */,
 				4902C4FC23119B26009D1416 /* DeviceServiceCellViewModel.swift in Sources */,
 				49CF49432316594A00B30A4C /* DeviceCharacteristicCell.swift in Sources */,
+				00F292BB23204BCC00CC1B2E /* BluetoothService.swift in Sources */,
+				00F292BD2320507600CC1B2E /* BluetoothScanningState.swift in Sources */,
 				4902C4EF231127C4009D1416 /* DevicesCellViewModel.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

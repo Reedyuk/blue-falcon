@@ -24,10 +24,16 @@ struct DeviceCharacteristicCell: View {
                     Text("ID: ").bold()
                     Text(viewModel.name)
                 }
-                if viewModel.characteristic.value != nil {
+                if viewModel.reading {
+                    HStack {
+                        Text("Reading...")
+                        ActivityIndicator(isAnimating: .constant(true), style: .medium)
+                    }
+                }
+                if viewModel.characterisicValue != nil {
                     HStack {
                         Text("Value: ").bold()
-                        Text(String(decoding: viewModel.characteristic.value ?? Data(), as: UTF8.self))
+                        Text(viewModel.characterisicValue!)
                     }
                 }
             }
@@ -68,6 +74,12 @@ struct DeviceCharacteristicCell: View {
                 }
                 Spacer()
             }.padding()
+        }
+        .onAppear {
+            self.viewModel.onAppear()
+        }
+        .onDisappear {
+            self.viewModel.onDisapear()
         }
     }
 }

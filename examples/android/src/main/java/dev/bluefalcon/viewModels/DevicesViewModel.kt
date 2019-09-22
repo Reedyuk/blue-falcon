@@ -17,7 +17,7 @@ class DevicesViewModel(private val devicesActivity: DevicesActivity) : BlueFalco
         try {
             addDelegate()
             BlueFalconApplication.instance.blueFalcon.scan()
-        } catch (exception: PermissionException) {
+        } catch (exception: BluetoothPermissionException) {
             requestLocationPermission()
         }
     }
