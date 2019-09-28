@@ -74,7 +74,16 @@ actual class BlueFalcon(private val context: Context) {
     ) {
         mGattClientCallback.gattForDevice(bluetoothPeripheral.bluetoothDevice)?.let { gatt ->
             fetchCharacteristic(bluetoothCharacteristic, gatt)
-                .forEach { gatt.setCharacteristicNotification(it, notify) }
+                .forEach {
+                    gatt.setCharacteristicNotification(it, notify)
+                    it.descriptors.forEach {descriptor ->
+                        descriptor.value = if (notify) BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE else byteArrayOf(
+                            0x00,
+                            0x00
+                        )
+                        gatt.writeDescriptor(descriptor)
+                    }
+                }
         }
     }
 

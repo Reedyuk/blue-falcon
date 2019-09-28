@@ -2,6 +2,9 @@ package dev.bluefalcon.services
 
 import dev.bluefalcon.*
 import java.util.*
+import android.os.Build
+import androidx.annotation.RequiresApi
+
 
 class BluetoothService: BlueFalconDelegate {
 
@@ -35,6 +38,7 @@ class BluetoothService: BlueFalconDelegate {
         blueFalcon.readCharacteristic(bluetoothPeripheral, bluetoothCharacteristic)
     }
 
+    @RequiresApi(Build.VERSION_CODES.JELLY_BEAN_MR2)
     fun notifyCharacteristic(
             bluetoothPeripheral: BluetoothPeripheral,
             bluetoothCharacteristic: BluetoothCharacteristic,
