@@ -8,7 +8,7 @@ import androidx.annotation.RequiresApi
 
 class BluetoothService: BlueFalconDelegate {
 
-    private val blueFalcon = BlueFalcon(BlueFalconApplication.instance)
+    private val blueFalcon = BlueFalcon(BlueFalconApplication.instance, null)
 
     private val devices: MutableList<BluetoothPeripheral> = mutableListOf()
     val detectedDeviceDelegates: MutableList<BluetoothServiceDetectedDeviceDelegate> = mutableListOf()

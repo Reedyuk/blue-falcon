@@ -8,14 +8,24 @@ import android.bluetooth.le.ScanResult
 import android.bluetooth.le.ScanSettings
 import android.content.Context
 import android.content.pm.PackageManager
+import android.os.ParcelUuid
+import java.util.*
 
-actual class BlueFalcon(private val context: Context) {
+actual class BlueFalcon actual constructor(serviceUUID: String?) {
 
     actual val delegates: MutableSet<BlueFalconDelegate> = mutableSetOf()
-    private val bluetoothManager = context.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
+    private lateinit var context: Context
+    private var serviceUUID: String? = null
+    private lateinit var bluetoothManager: BluetoothManager
     private val mBluetoothScanCallBack = BluetoothScanCallBack()
     private val mGattClientCallback = GattClientCallback()
     actual var isScanning: Boolean = false
+
+    constructor(context: Context, serviceUUID: String?) : this(serviceUUID) {
+        this.context = context
+        this.serviceUUID = serviceUUID
+        this.bluetoothManager = context.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
+    }
 
     actual fun connect(bluetoothPeripheral: BluetoothPeripheral) {
         log("connect")
@@ -39,7 +49,12 @@ actual class BlueFalcon(private val context: Context) {
             throw BluetoothPermissionException()
         log("BT Scan started")
         isScanning = true
-        val filter = ScanFilter.Builder().build()
+
+        val filterBuilder = ScanFilter.Builder()
+        serviceUUID?.let {
+            filterBuilder.setServiceUuid(ParcelUuid(UUID.fromString(it)))
+        }
+        val filter = filterBuilder.build()
         val filters = listOf(filter)
         val settings = ScanSettings.Builder()
             .setScanMode(ScanSettings.SCAN_MODE_LOW_POWER)

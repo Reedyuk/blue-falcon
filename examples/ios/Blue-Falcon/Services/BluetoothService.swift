@@ -12,7 +12,7 @@ import CoreBluetooth
 
 class BluetoothService {
 
-    private let blueFalcon = BlueFalcon()
+    private let blueFalcon = BlueFalcon(serviceUUID: nil)
     private var devices: [CBPeripheral] = []
     var detectedDeviceDelegates: [BluetoothServiceDetectedDeviceDelegate] = []
     var connectedDeviceDelegates: [(UUID, BluetoothServiceConnectedDeviceDelegate)] = []

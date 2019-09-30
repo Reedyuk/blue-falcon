@@ -1,6 +1,6 @@
 package dev.bluefalcon
 
-actual class BlueFalcon {
+actual class BlueFalcon actual constructor(serviceUUID: String?) {
 
     actual val delegates: MutableSet<BlueFalconDelegate> = mutableSetOf()
     actual var isScanning: Boolean = false

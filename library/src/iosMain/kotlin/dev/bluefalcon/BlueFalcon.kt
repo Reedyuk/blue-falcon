@@ -4,7 +4,7 @@ import platform.CoreBluetooth.*
 import platform.Foundation.*
 import platform.darwin.NSObject
 
-actual class BlueFalcon {
+actual class BlueFalcon actual constructor(serviceUUID: String?) {
 
     actual val delegates: MutableSet<BlueFalconDelegate> = mutableSetOf()
 
