@@ -72,6 +72,7 @@ class BluetoothService: BlueFalconDelegate {
 
     override fun didDiscoverServices(bluetoothPeripheral: BluetoothPeripheral) {
         connectedDeviceDelegates[bluetoothPeripheral.bluetoothDevice.address]?.discoveredServices(bluetoothPeripheral)
+        blueFalcon.changeMTU(bluetoothPeripheral, 250)
     }
 
     override fun didCharacteristcValueChanged(bluetoothPeripheral: BluetoothPeripheral, bluetoothCharacteristic: BluetoothCharacteristic) {
@@ -81,6 +82,8 @@ class BluetoothService: BlueFalconDelegate {
     override fun didDisconnect(bluetoothPeripheral: BluetoothPeripheral) {}
 
     override fun didDiscoverCharacteristics(bluetoothPeripheral: BluetoothPeripheral) {}
+
+    override fun didUpdateMTU(bluetoothPeripheral: BluetoothPeripheral) {}
 
 }
 

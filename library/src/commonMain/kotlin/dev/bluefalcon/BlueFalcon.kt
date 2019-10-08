@@ -28,4 +28,6 @@ expect class BlueFalcon(serviceUUID: String?) {
         value: String
     )
 
+    fun changeMTU(bluetoothPeripheral: BluetoothPeripheral, mtuSize: Int)
+
 }

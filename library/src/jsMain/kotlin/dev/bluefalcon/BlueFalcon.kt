@@ -44,4 +44,8 @@ actual class BlueFalcon actual constructor(serviceUUID: String?) {
         TODO("not implemented")
     }
 
+    actual fun changeMTU(bluetoothPeripheral: BluetoothPeripheral, mtuSize: Int) {
+        TODO("not implemented")
+    }
+
 }

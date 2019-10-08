@@ -73,6 +73,13 @@ actual class BlueFalcon actual constructor(serviceUUID: String?) {
         }
     }
 
+    actual fun changeMTU(bluetoothPeripheral: BluetoothPeripheral, mtuSize: Int) {
+        println("Change MTU size called but not needed.")
+        delegates.forEach {
+            it.didUpdateMTU(bluetoothPeripheral)
+        }
+    }
+
     inner class BluetoothPeripheralManager: NSObject(), CBCentralManagerDelegateProtocol {
         override fun centralManagerDidUpdateState(central: CBCentralManager) {
             when (central.state) {

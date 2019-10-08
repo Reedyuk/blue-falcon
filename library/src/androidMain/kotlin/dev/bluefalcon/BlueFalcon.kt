@@ -116,6 +116,10 @@ actual class BlueFalcon actual constructor(serviceUUID: String?) {
         }
     }
 
+    actual fun changeMTU(bluetoothPeripheral: BluetoothPeripheral, mtuSize: Int) {
+        mGattClientCallback.gattForDevice(bluetoothPeripheral.bluetoothDevice)?.requestMtu(mtuSize)
+    }
+
     inner class BluetoothScanCallBack: ScanCallback() {
 
         override fun onScanResult(callbackType: Int, result: ScanResult?) {
@@ -189,6 +193,14 @@ actual class BlueFalcon actual constructor(serviceUUID: String?) {
         override fun onMtuChanged(gatt: BluetoothGatt?, mtu: Int, status: Int) {
             super.onMtuChanged(gatt, mtu, status)
             log("onMtuChanged$mtu status:$status")
+            if (status != BluetoothGatt.GATT_SUCCESS) {
+                return
+            }
+            gatt?.device?.let { bluetoothDevice ->
+                delegates.forEach {
+                    it.didUpdateMTU(BluetoothPeripheral(bluetoothDevice))
+                }
+            }
         }
 
         override fun onCharacteristicRead(gatt: BluetoothGatt?, characteristic: BluetoothGattCharacteristic?, status: Int) {

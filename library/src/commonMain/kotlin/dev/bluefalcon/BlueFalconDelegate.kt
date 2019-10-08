@@ -11,4 +11,5 @@ interface BlueFalconDelegate {
         bluetoothPeripheral: BluetoothPeripheral,
         bluetoothCharacteristic: BluetoothCharacteristic
     )
+    fun didUpdateMTU(bluetoothPeripheral: BluetoothPeripheral)
 }
