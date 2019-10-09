@@ -1,21 +1,48 @@
-  os: osx
-  osx_image: xcode11
-  language: android
-  jdk: oraclejdk8
+matrix:
+  include:
 
-  env:
-    global:
-      - ANDROID_API_LEVEL=28
-      - ANDROID_BUILD_TOOLS_VERSION=28.0.3
+    - language: android
+      android:
+        components:
+          - tools
+          - platform-tools
+          - build-tools-28.0.3
+          - android-28
+          - extra-android-support
+          - extra-google-m2repository
+          - extra-android-m2repository
 
-  android:
-    components:
-      - tools
-      - tools # Running this twice get's the latest build tools (https://github.com/codepath/android_guides/wiki/Setting-up-Travis-CI)
-      - platform-tools
-      - android-${ANDROID_API_LEVEL}
-      - build-tools-${ANDROID_BUILD_TOOLS_VERSION}
-      - extra
+      script:
+        - ./gradlew ktlint connectedcheck
 
-  script:
-    - ./gradlew build
+    - osx_image: xcode11
+      language: objective-c
+
+      before_install:
+        - pod repo update --silent
+        - gem install xcpretty
+        - brew cask install homebrew/cask-versions/java8
+        - export JAVA_HOME=$(/usr/libexec/java_home -v 1.8)
+
+      install:
+        - cd examples/ios
+        - pod install
+        - cd ..
+
+      script:
+        - ./gradlew :library:build --configure-on-demand
+        - cd examples/ios
+        - swiftlint
+        - set -o pipefail && xcodebuild -workspace Blue-Falcon.xcworkspace -scheme 'Blue-Falcon' -destination 'platform=iOS Simulator,name=iPhone 6s Plus' build test CODE_SIGN_IDENTITY=- | xcpretty -c
+
+      after_failure:
+        - cat xcodebuild.log
+
+      before_cache:
+        - rm -f  $HOME/.gradle/caches/modules-2/modules-2.lock
+        - rm -fr $HOME/.gradle/caches/*/plugin-resolution/
+
+      cache:
+        directories:
+          - $HOME/.gradle/caches/
+          - $HOME/.gradle/wrapper/
