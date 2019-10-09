@@ -21,8 +21,6 @@ matrix:
       before_install:
         - pod repo update --silent
         - gem install xcpretty
-        - brew cask install homebrew/cask-versions/java8
-        - export JAVA_HOME=$(/usr/libexec/java_home -v 1.8)
 
       install:
         - cd examples/ios
@@ -32,7 +30,6 @@ matrix:
       script:
         - ./gradlew :library:build --configure-on-demand
         - cd examples/ios
-        - swiftlint
         - set -o pipefail && xcodebuild -workspace Blue-Falcon.xcworkspace -scheme 'Blue-Falcon' -destination 'platform=iOS Simulator,name=iPhone 6s Plus' build test CODE_SIGN_IDENTITY=- | xcpretty -c
 
       after_failure:
