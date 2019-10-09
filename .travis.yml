@@ -13,7 +13,7 @@ matrix:
           - extra-android-m2repository
 
       script:
-        - ./gradlew ktlint connectedcheck
+        - ./gradlew :library:build --configure-on-demand
 
     - osx_image: xcode11
       language: objective-c
