@@ -38,7 +38,7 @@ blueFalcon.scan()
 #### Install
 
 ```kotlin
-implementation 'dev.bluefalcon:library-android:0.0.3'
+implementation 'dev.bluefalcon:library-android:0.5.0'
 ```
 
 The Android sdk requires an Application context, we do this by passing in on the BlueFalcon constructor, in this example we are calling the code from an activity(this).
