@@ -13,7 +13,7 @@ matrix:
           - extra-android-m2repository
 
       script:
-        - ./gradlew :library:androidProcessResources NO-SOURCE
+        - ./gradlew :library:androidProcessResources
         - ./gradlew :library:compileKotlinAndroid
         - ./gradlew :library:androidMainClasses
         - ./gradlew :library:androidJar
