@@ -13,7 +13,10 @@ matrix:
           - extra-android-m2repository
 
       script:
-        - ./gradlew :library:build --configure-on-demand
+        - ./gradlew :library:androidProcessResources NO-SOURCE
+        - ./gradlew :library:compileKotlinAndroid
+        - ./gradlew :library:androidMainClasses
+        - ./gradlew :library:androidJar
 
     - osx_image: xcode11
       language: objective-c
@@ -28,7 +31,9 @@ matrix:
         - cd ..
 
       script:
-        - ./gradlew :library:build --configure-on-demand
+        - ./gradlew :library:compileKotlinIos
+        - ./gradlew :library:linkDebugFrameworkIos
+        - ./gradlew :library:linkReleaseFrameworkIos
         - cd examples/ios
         - set -o pipefail && xcodebuild -workspace Blue-Falcon.xcworkspace -scheme 'Blue-Falcon' -destination 'platform=iOS Simulator,name=iPhone 6s Plus' build test CODE_SIGN_IDENTITY=- | xcpretty -c
 
