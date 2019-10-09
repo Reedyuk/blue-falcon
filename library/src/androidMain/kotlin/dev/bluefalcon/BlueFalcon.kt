@@ -42,6 +42,7 @@ actual class BlueFalcon actual constructor(serviceUUID: String?) {
 
     actual fun stopScanning() {
         isScanning = false
+        bluetoothManager.adapter?.bluetoothLeScanner?.stopScan(mBluetoothScanCallBack)
     }
 
     actual fun scan() {
