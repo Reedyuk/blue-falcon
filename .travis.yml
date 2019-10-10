@@ -31,6 +31,7 @@ matrix:
         - cd ..
 
       script:
+        - chmod +x gradlew
         - ./gradlew :library:compileKotlinIos
         - ./gradlew :library:linkDebugFrameworkIos
         - ./gradlew :library:linkReleaseFrameworkIos
