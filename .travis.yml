@@ -23,6 +23,7 @@ matrix:
       before_install:
         - pod repo update --silent
         - gem install xcpretty
+        - chmod +x gradlew
 
       install:
         - cd examples/ios
