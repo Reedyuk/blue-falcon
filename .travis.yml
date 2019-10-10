@@ -1,29 +1,50 @@
-language: java
-jdk: openjdk11
+matrix:
+  include:
+    - language: android
+      android:
+        components:
+          - tools
+          - platform-tools
+          - build-tools-28.0.3
+          - android-29
+          - extra-android-support
+          - extra-google-m2repository
+          - extra-android-m2repository
 
-os:
-  - osx
-  - linux
+      script:
+        - ./gradlew :library:androidProcessResources
+        - ./gradlew :library:compileKotlinAndroid
+        - ./gradlew :library:androidMainClasses
+        - ./gradlew :library:androidJar
 
-before_install:
-  - chmod +x gradlew
+    - osx_image: xcode11
+      language: objective-c
 
-script: ./gradlew check
+      before_install:
+        - pod repo update --silent
+        - gem install xcpretty
 
-before_cache:
-  - rm -f  $HOME/.gradle/caches/modules-2/modules-2.lock
-  - rm -fr $HOME/.gradle/caches/*/plugin-resolution/
+      install:
+        - cd examples/ios
+        - pod install
+        - cd ..
 
-cache:
-  directories:
-    - "$HOME/.gradle/caches/"
-    - "$HOME/.gradle/wrapper/"
-    - "$HOME/.konan/cache/"
+      script:
+        - chmod +x gradlew
+        - ./gradlew :library:compileKotlinIos
+        - ./gradlew :library:linkDebugFrameworkIos
+        - ./gradlew :library:linkReleaseFrameworkIos
+        - cd examples/ios
+        - set -o pipefail && xcodebuild -workspace Blue-Falcon.xcworkspace -scheme 'Blue-Falcon' -destination 'platform=iOS Simulator,name=iPhone 6s Plus' build test CODE_SIGN_IDENTITY=- | xcpretty -c
 
-deploy:
-  provider: script
-  script: ./gradlew publish
-  skip_cleanup: true
-  on:
-    tags: true
-    branch: master
+      after_failure:
+        - cat xcodebuild.log
+
+      before_cache:
+        - rm -f  $HOME/.gradle/caches/modules-2/modules-2.lock
+        - rm -fr $HOME/.gradle/caches/*/plugin-resolution/
+
+      cache:
+        directories:
+          - $HOME/.gradle/caches/
+          - $HOME/.gradle/wrapper/ 
