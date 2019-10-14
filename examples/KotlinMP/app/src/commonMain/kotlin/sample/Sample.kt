@@ -16,4 +16,6 @@ class Proxy {
 
 fun main() {
     println(hello())
+    val bluetoothService = BluetoothService()
+    bluetoothService.scan()
 }

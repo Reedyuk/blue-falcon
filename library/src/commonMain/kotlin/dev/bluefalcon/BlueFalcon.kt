@@ -1,6 +1,6 @@
 package dev.bluefalcon
 
-expect class BlueFalcon(serviceUUID: String?) {
+expect class BlueFalcon(context: ApplicationContext, serviceUUID: String?) {
 
     val delegates: MutableSet<BlueFalconDelegate>
     var isScanning: Boolean

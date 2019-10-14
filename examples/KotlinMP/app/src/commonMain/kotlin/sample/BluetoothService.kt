@@ -1,8 +1,13 @@
 package sample
 
+import dev.bluefalcon.BlueFalcon
+import dev.bluefalcon.BlueFalconDelegate
+import dev.bluefalcon.BluetoothCharacteristic
+import dev.bluefalcon.BluetoothPeripheral
+
 class BluetoothService {
 
-    private val blueFalcon = BlueFalcon(null)
+    private val blueFalcon = BlueFalcon()
     private val bluetoothDelegate = BluetoothDelegate()
 
     init {
@@ -10,7 +15,11 @@ class BluetoothService {
     }
 
     fun scan() {
-        blueFalcon.scan()
+        try {
+            blueFalcon.scan()
+        } catch (exception: Exception) {
+            print("Exception")
+        }
     }
 
     fun connect(bluetoothPeripheral: BluetoothPeripheral) {
@@ -46,22 +55,36 @@ class BluetoothService {
 
     internal class BluetoothDelegate: BlueFalconDelegate {
 
-        override fun didDiscoverDevice(bluetoothPeripheral: BluetoothPeripheral) {}
+        override fun didDiscoverDevice(bluetoothPeripheral: BluetoothPeripheral) {
+            println("didDiscoverDevice")
+        }
 
-        override fun didConnect(bluetoothPeripheral: BluetoothPeripheral) {}
+        override fun didConnect(bluetoothPeripheral: BluetoothPeripheral) {
+            println("didConnect")
+        }
 
-        override fun didDiscoverServices(bluetoothPeripheral: BluetoothPeripheral) {}
+        override fun didDiscoverServices(bluetoothPeripheral: BluetoothPeripheral) {
+            println("didDiscoverServices")
+        }
 
         override fun didCharacteristcValueChanged(
             bluetoothPeripheral: BluetoothPeripheral,
             bluetoothCharacteristic: BluetoothCharacteristic
-        ) {}
+        ) {
+            println("didCharacteristcValueChanged")
+        }
 
-        override fun didDisconnect(bluetoothPeripheral: BluetoothPeripheral) {}
+        override fun didDisconnect(bluetoothPeripheral: BluetoothPeripheral) {
+            println("didDisconnect")
+        }
 
-        override fun didDiscoverCharacteristics(bluetoothPeripheral: BluetoothPeripheral) {}
+        override fun didDiscoverCharacteristics(bluetoothPeripheral: BluetoothPeripheral) {
+            println("didDiscoverCharacteristics")
+        }
 
-        override fun didUpdateMTU(bluetoothPeripheral: BluetoothPeripheral) {}
+        override fun didUpdateMTU(bluetoothPeripheral: BluetoothPeripheral) {
+            println("didUpdateMTU")
+        }
 
     }
 }

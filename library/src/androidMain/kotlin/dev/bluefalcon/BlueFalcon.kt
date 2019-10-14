@@ -11,21 +11,15 @@ import android.content.pm.PackageManager
 import android.os.ParcelUuid
 import java.util.*
 
-actual class BlueFalcon actual constructor(serviceUUID: String?) {
-
+actual class BlueFalcon actual constructor(
+    private val context: ApplicationContext,
+    private val serviceUUID: String?
+) {
     actual val delegates: MutableSet<BlueFalconDelegate> = mutableSetOf()
-    private lateinit var context: Context
-    private var serviceUUID: String? = null
-    private lateinit var bluetoothManager: BluetoothManager
+    private val bluetoothManager: BluetoothManager = context.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
     private val mBluetoothScanCallBack = BluetoothScanCallBack()
     private val mGattClientCallback = GattClientCallback()
     actual var isScanning: Boolean = false
-
-    constructor(context: Context, serviceUUID: String?) : this(serviceUUID) {
-        this.context = context
-        this.serviceUUID = serviceUUID
-        this.bluetoothManager = context.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
-    }
 
     actual fun connect(bluetoothPeripheral: BluetoothPeripheral) {
         log("connect")
