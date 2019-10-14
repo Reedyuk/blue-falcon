@@ -5,9 +5,8 @@ import dev.bluefalcon.BlueFalconDelegate
 import dev.bluefalcon.BluetoothCharacteristic
 import dev.bluefalcon.BluetoothPeripheral
 
-class BluetoothService {
+class BluetoothService(private val blueFalcon: BlueFalcon) {
 
-    private val blueFalcon = BlueFalcon()
     private val bluetoothDelegate = BluetoothDelegate()
 
     init {
@@ -15,11 +14,7 @@ class BluetoothService {
     }
 
     fun scan() {
-        try {
-            blueFalcon.scan()
-        } catch (exception: Exception) {
-            print("Exception")
-        }
+        blueFalcon.scan()
     }
 
     fun connect(bluetoothPeripheral: BluetoothPeripheral) {
