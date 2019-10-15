@@ -13,6 +13,10 @@ class BluetoothService(private val blueFalcon: BlueFalcon) {
         blueFalcon.delegates.add(bluetoothDelegate)
     }
 
+    fun addDevicesDelegate(devicesDelegate: DevicesDelegate) {
+        bluetoothDelegate.deviceDelegate = devicesDelegate
+    }
+
     fun scan() {
         blueFalcon.scan()
     }
@@ -50,8 +54,13 @@ class BluetoothService(private val blueFalcon: BlueFalcon) {
 
     internal class BluetoothDelegate: BlueFalconDelegate {
 
+        val devices: MutableList<BluetoothPeripheral> = mutableListOf()
+        var deviceDelegate: DevicesDelegate? = null
+
         override fun didDiscoverDevice(bluetoothPeripheral: BluetoothPeripheral) {
             println("didDiscoverDevice")
+            devices.add(bluetoothPeripheral)
+            deviceDelegate?.didDiscoverDevice(bluetoothPeripheral)
         }
 
         override fun didConnect(bluetoothPeripheral: BluetoothPeripheral) {
@@ -82,4 +91,8 @@ class BluetoothService(private val blueFalcon: BlueFalcon) {
         }
 
     }
+}
+
+interface DevicesDelegate {
+    fun didDiscoverDevice(bluetoothPeripheral: BluetoothPeripheral)
 }

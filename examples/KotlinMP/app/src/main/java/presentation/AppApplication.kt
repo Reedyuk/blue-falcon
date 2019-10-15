@@ -1,20 +1,22 @@
 package presentation
 
 import android.app.Application
-import android.content.Context
+import dev.bluefalcon.BlueFalcon
 import sample.BluetoothService
 
 class AppApplication : Application() {
 
     companion object {
+        lateinit var instance: AppApplication
+            private set
+    }
 
-        lateinit var appContext: Context
-        lateinit var bluetoothService = BluetoothService(BlueFalcon(appContext, null))
+    val bluetoothService by lazy {
+        BluetoothService(BlueFalcon(instance, null))
     }
 
     override fun onCreate() {
         super.onCreate()
-
-        appContext = applicationContext
+        instance = this
     }
 }

@@ -11,10 +11,6 @@ expect object Platform {
     val name: String
 }
 
-expect class Blue(context: ApplicationContext) {
-    val blueFalcon: BlueFalcon
-}
-
 fun hello(): String = "Hello from ${Platform.name}"
 
 class Proxy {
@@ -23,6 +19,4 @@ class Proxy {
 
 fun main() {
     println(hello())
-//    val bluetoothService = BluetoothService()
-//    bluetoothService.scan()
 }
