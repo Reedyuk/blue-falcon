@@ -4,36 +4,29 @@ import android.Manifest
 import android.os.Bundle
 import android.support.v4.app.ActivityCompat
 import android.support.v7.app.AppCompatActivity
-import android.widget.TextView
-import dev.bluefalcon.BluetoothPermissionException
+import org.jetbrains.anko.setContentView
 import presentation.AppApplication
 import presentation.viewmodels.DevicesViewModel
 import presentation.viewmodels.DevicesViewModelOutput
-import sample.*
+import presentation.views.DevicesActivityUI
 
 class DevicesActivity : AppCompatActivity(), DevicesViewModelOutput {
 
-    private val viewModel = DevicesViewModel(this)
+    private val viewModel = DevicesViewModel(this, AppApplication.instance.bluetoothService)
+    private val devicesUI = DevicesActivityUI(viewModel)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        Sample().checkMe()
-        setContentView(R.layout.activity_main)
-        findViewById<TextView>(R.id.main_text).text = hello()
-        AppApplication.instance.bluetoothService.addDevicesDelegate(viewModel)
-        setupBluetooth()
+        devicesUI.setContentView(this)
+        viewModel.scan()
     }
 
     override fun refresh() {
-        print("Bluetooth Device "+viewModel.devices[viewModel.devices.size-1].bluetoothDevice.address)
+        devicesUI.refresh()
     }
 
-    fun setupBluetooth() {
-        try {
-            AppApplication.instance.bluetoothService.scan()
-        } catch (exception: BluetoothPermissionException) {
-            requestLocationPermission()
-        }
+    override fun requiresBluetoothPermission() {
+        requestLocationPermission()
     }
 
     private fun requestLocationPermission() {
@@ -43,7 +36,7 @@ class DevicesActivity : AppCompatActivity(), DevicesViewModelOutput {
 
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
-        setupBluetooth()
+        viewModel.scan()
     }
     
 }

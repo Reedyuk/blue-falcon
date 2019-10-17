@@ -16,16 +16,16 @@ class DeviceViewModel: ObservableObject {
     @Published var state: CBPeripheralState = .connecting
     @Published var deviceServiceCellViewModels: [DeviceServiceCellViewModel] = []
 
-    let device: CBPeripheral
+    let device: BluetoothPeripheral
     let title: String
 
-    init(device: CBPeripheral) {
+    init(device: BluetoothPeripheral) {
         self.device = device
-        title = "\(device.identifier.uuidString) \(device.name ?? "")"
+        title = "\(device.bluetoothDevice.identifier.uuidString) \(device.name ?? "")"
     }
 
     func onAppear() {
-        AppDelegate.instance.bluetoothService.connectedDeviceDelegates.append((device.identifier, self))
+        AppDelegate.instance.bluetoothService.connectedDeviceDelegates.append((device.bluetoothDevice.identifier, self))
         connect()
     }
 
@@ -46,7 +46,7 @@ extension DeviceViewModel: BluetoothServiceConnectedDeviceDelegate {
     }
 
     func discoveredServices() {
-        guard let services = device.services else { return }
+        guard let services = device.bluetoothDevice.services else { return }
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
             self.deviceServiceCellViewModels = services.map({ service -> DeviceServiceCellViewModel in
                 DeviceServiceCellViewModel(id: service.uuid, service: service)

@@ -14,11 +14,11 @@ import CoreBluetooth
 class DeviceServiceViewModel: ObservableObject {
 
     let service: CBService
-    let device: CBPeripheral
+    let device: BluetoothPeripheral
     var characteristics: [CBCharacteristic] = []
     @Published var deviceCharacteristicCellViewModels: [DeviceCharacteristicCellViewModel] = []
 
-    init(service: CBService, device: CBPeripheral) {
+    init(service: CBService, device: BluetoothPeripheral) {
         self.service = service
         self.device = device
         self.characteristics = service.characteristics ?? []

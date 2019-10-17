@@ -2,4 +2,6 @@ package dev.bluefalcon
 
 import platform.CoreBluetooth.CBPeripheral
 
-actual typealias BluetoothPeripheral = CBPeripheral
+actual class BluetoothPeripheral(val bluetoothDevice: CBPeripheral) {
+    actual val name: String? = bluetoothDevice.name
+}

@@ -8,9 +8,10 @@
 
 import Foundation
 import CoreBluetooth
+import library
 
 struct DevicesCellViewModel: Identifiable {
     var id: String
     let name: String
-    let device: CBPeripheral
+    let device: BluetoothPeripheral
 }

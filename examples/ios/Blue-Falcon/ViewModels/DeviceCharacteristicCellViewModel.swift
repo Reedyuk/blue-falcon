@@ -16,12 +16,12 @@ class DeviceCharacteristicCellViewModel: Identifiable, ObservableObject {
     var id: CBUUID
     let name: String
     let characteristic: CBCharacteristic
-    let device: CBPeripheral
+    let device: BluetoothPeripheral
     @Published var notify: Bool = false
     @Published var characterisicValue: String? = nil
     @Published var reading: Bool = false
 
-    init(id: CBUUID, characteristic: CBCharacteristic, device: CBPeripheral) {
+    init(id: CBUUID, characteristic: CBCharacteristic, device: BluetoothPeripheral) {
         self.id = id
         self.name = characteristic.uuid.description
         self.characteristic = characteristic

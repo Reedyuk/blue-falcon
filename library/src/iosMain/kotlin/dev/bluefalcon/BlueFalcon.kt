@@ -20,11 +20,11 @@ actual class BlueFalcon actual constructor(
     }
 
     actual fun connect(bluetoothPeripheral: BluetoothPeripheral) {
-        centralManager.connectPeripheral(bluetoothPeripheral, null)
+        centralManager.connectPeripheral(bluetoothPeripheral.bluetoothDevice, null)
     }
 
     actual fun disconnect(bluetoothPeripheral: BluetoothPeripheral) {
-        centralManager.cancelPeripheralConnection(bluetoothPeripheral)
+        centralManager.cancelPeripheralConnection(bluetoothPeripheral.bluetoothDevice)
     }
 
     @Throws
@@ -36,7 +36,13 @@ actual class BlueFalcon actual constructor(
             CBManagerStateUnsupported -> throw BluetoothUnsupportedException()
             CBManagerStateUnauthorized -> throw BluetoothPermissionException()
             CBManagerStatePoweredOff -> throw BluetoothNotEnabledException()
-            CBManagerStatePoweredOn -> centralManager.scanForPeripheralsWithServices(listOf(serviceUUID), null)
+            CBManagerStatePoweredOn -> {
+                if (serviceUUID != null) {
+                    centralManager.scanForPeripheralsWithServices(listOf(serviceUUID), null)
+                } else {
+                    centralManager.scanForPeripheralsWithServices(null, null)
+                }
+            }
         }
     }
 
@@ -49,7 +55,7 @@ actual class BlueFalcon actual constructor(
         bluetoothPeripheral: BluetoothPeripheral,
         bluetoothCharacteristic: BluetoothCharacteristic
     ) {
-        bluetoothPeripheral.readValueForCharacteristic(bluetoothCharacteristic)
+        bluetoothPeripheral.bluetoothDevice.readValueForCharacteristic(bluetoothCharacteristic)
     }
 
     actual fun notifyCharacteristic(
@@ -57,7 +63,7 @@ actual class BlueFalcon actual constructor(
         bluetoothCharacteristic: BluetoothCharacteristic,
         notify: Boolean
     ) {
-        bluetoothPeripheral.setNotifyValue(notify, bluetoothCharacteristic)
+        bluetoothPeripheral.bluetoothDevice.setNotifyValue(notify, bluetoothCharacteristic)
     }
 
     actual fun writeCharacteristic(
@@ -67,7 +73,7 @@ actual class BlueFalcon actual constructor(
     ) {
         val formattedString = NSString.create(string = value)
         formattedString.dataUsingEncoding(NSUTF8StringEncoding)?.let {
-            bluetoothPeripheral.writeValue(
+            bluetoothPeripheral.bluetoothDevice.writeValue(
                 it,
                 bluetoothCharacteristic,
                 CBCharacteristicWriteWithResponse
@@ -103,16 +109,18 @@ actual class BlueFalcon actual constructor(
         ) {
             if (isScanning) {
                 log("Discovered device ${didDiscoverPeripheral.name}")
+                val device = BluetoothPeripheral(didDiscoverPeripheral)
                 delegates.forEach {
-                    it.didDiscoverDevice(didDiscoverPeripheral)
+                    it.didDiscoverDevice(device)
                 }
             }
         }
 
         override fun centralManager(central: CBCentralManager, didConnectPeripheral: CBPeripheral) {
             log("DidConnectPeripheral ${didConnectPeripheral.name}")
+            val device = BluetoothPeripheral(didConnectPeripheral)
             delegates.forEach {
-                it.didConnect(didConnectPeripheral)
+                it.didConnect(device)
             }
             didConnectPeripheral.delegate = peripheralDelegate
             didConnectPeripheral.discoverServices(null)
@@ -120,8 +128,9 @@ actual class BlueFalcon actual constructor(
 
         override fun centralManager(central: CBCentralManager, didDisconnectPeripheral: CBPeripheral, error: NSError?) {
             log("DidDisconnectPeripheral ${didDisconnectPeripheral.name}")
+            val device = BluetoothPeripheral(didDisconnectPeripheral)
             delegates.forEach {
-                it.didDisconnect(didDisconnectPeripheral)
+                it.didDisconnect(device)
             }
         }
 
@@ -136,8 +145,9 @@ actual class BlueFalcon actual constructor(
             if (didDiscoverServices != null) {
                 println("Error with service discovery ${didDiscoverServices}")
             } else {
+                val device = BluetoothPeripheral(peripheral)
                 delegates.forEach {
-                    it.didDiscoverServices(peripheral)
+                    it.didDiscoverServices(device)
                 }
                 peripheral.services
                     ?.mapNotNull { it as? CBService }
@@ -155,8 +165,9 @@ actual class BlueFalcon actual constructor(
             if (error != null) {
                 println("Error with characteristic discovery ${didDiscoverCharacteristicsForService}")
             }
+            val device = BluetoothPeripheral(peripheral)
             delegates.forEach {
-                it.didDiscoverCharacteristics(peripheral)
+                it.didDiscoverCharacteristics(device)
             }
         }
 
@@ -169,9 +180,10 @@ actual class BlueFalcon actual constructor(
                 println("Error with characteristic update ${error}")
             }
             println("didUpdateValueForCharacteristic")
+            val device = BluetoothPeripheral(peripheral)
             delegates.forEach {
                 it.didCharacteristcValueChanged(
-                    peripheral,
+                    device,
                     didUpdateValueForCharacteristic
                 )
             }

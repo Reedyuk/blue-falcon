@@ -33,14 +33,14 @@ class DevicesViewModel: ObservableObject {
 
 extension DevicesViewModel: BluetoothServiceDetectedDeviceDelegate {
 
-    func discoveredDevice(devices: [CBPeripheral]) {
+    func discoveredDevice(devices: [BluetoothPeripheral]) {
         devicesViewModels = devices.map { device -> DevicesCellViewModel in
             var deviceName = ""
             if let name = device.name {
                 deviceName += " \(name)"
             }
             return DevicesCellViewModel(
-                id: device.identifier.uuidString,
+                id: device.bluetoothDevice.identifier.uuidString,
                 name: deviceName,
                 device: device
             )

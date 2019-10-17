@@ -1,3 +1,5 @@
 package dev.bluefalcon
 
-expect class BluetoothPeripheral
+expect class BluetoothPeripheral {
+    val name: String?
+}

@@ -1,13 +1,19 @@
-package dev.bluefalcon.views
+package presentation.views
 
-import android.graphics.Color
-import dev.bluefalcon.activities.DeviceActivity
-import dev.bluefalcon.activities.DevicesActivity
-import dev.bluefalcon.viewModels.DevicesViewModel
 import org.jetbrains.anko.*
 import org.jetbrains.anko.sdk27.coroutines.onItemClick
+import presentation.activities.DevicesActivity
+import presentation.adapters.DevicesAdapter
+import presentation.viewmodels.DevicesViewModel
 
 class DevicesActivityUI(private val viewModel: DevicesViewModel) : AnkoComponent<DevicesActivity> {
+
+    private val devicesAdapter = DevicesAdapter(viewModel.deviceViewModels())
+
+    fun refresh() {
+        devicesAdapter.deviceViewModels = viewModel.deviceViewModels()
+        devicesAdapter.notifyDataSetChanged()
+    }
 
     override fun createView(ui : AnkoContext<DevicesActivity>) = with(ui) {
         verticalLayout {
@@ -17,11 +23,8 @@ class DevicesActivityUI(private val viewModel: DevicesViewModel) : AnkoComponent
                 }
             }
             listView {
-                adapter = viewModel.devicesAdapter
+                adapter = devicesAdapter
             }.onItemClick { _, _, index, _ ->
-                owner.startActivity<DeviceActivity>(
-                    "device" to viewModel.devices[index].bluetoothDevice
-                )
             }
         }
     }

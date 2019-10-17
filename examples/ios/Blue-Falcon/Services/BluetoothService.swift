@@ -9,11 +9,12 @@
 import Foundation
 import library
 import CoreBluetooth
+import UIKit
 
 class BluetoothService {
 
-    private let blueFalcon = BlueFalcon(serviceUUID: nil)
-    private var devices: [CBPeripheral] = []
+    private let blueFalcon = BlueFalcon(context: UIView(), serviceUUID:  nil)
+    private var devices: [BluetoothPeripheral] = []
     var detectedDeviceDelegates: [BluetoothServiceDetectedDeviceDelegate] = []
     var connectedDeviceDelegates: [(UUID, BluetoothServiceConnectedDeviceDelegate)] = []
     var characteristicDelegates: [(CBUUID, BluetoothServiceCharacteristicDelegate)] = []
@@ -28,12 +29,12 @@ class BluetoothService {
         try blueFalcon.scan()
     }
 
-    func connect(bluetoothPeripheral: CBPeripheral) {
+    func connect(bluetoothPeripheral: BluetoothPeripheral) {
         blueFalcon.connect(bluetoothPeripheral: bluetoothPeripheral)
     }
 
     func notifyCharacteristic(
-        bluetoothPeripheral: CBPeripheral,
+        bluetoothPeripheral: BluetoothPeripheral,
         bluetoothCharacteristic: CBCharacteristic,
         notify: Bool
     ) {
@@ -45,14 +46,14 @@ class BluetoothService {
     }
 
     func readCharacteristic(
-        bluetoothPeripheral: CBPeripheral,
+        bluetoothPeripheral: BluetoothPeripheral,
         bluetoothCharacteristic: CBCharacteristic
     ) {
         blueFalcon.readCharacteristic(bluetoothPeripheral: bluetoothPeripheral, bluetoothCharacteristic: bluetoothCharacteristic)
     }
 
     func writeCharacteristic(
-        bluetoothPeripheral: CBPeripheral,
+        bluetoothPeripheral: BluetoothPeripheral,
         bluetoothCharacteristic: CBCharacteristic,
         value: String
     ) {
@@ -91,37 +92,39 @@ class BluetoothService {
 
 extension BluetoothService: BlueFalconDelegate {
 
-    func didDiscoverDevice(bluetoothPeripheral: CBPeripheral) {
-        guard !devices.contains(bluetoothPeripheral) else { return }
+    func didDiscoverDevice(bluetoothPeripheral: BluetoothPeripheral) {
+        guard (devices.first {
+            $0.bluetoothDevice.identifier == bluetoothPeripheral.bluetoothDevice.identifier
+        } == nil) else { return }
         devices.append(bluetoothPeripheral)
         detectedDeviceDelegates.forEach { delegate in
             delegate.discoveredDevice(devices: devices)
         }
     }
 
-    func didConnect(bluetoothPeripheral: CBPeripheral) {
-        bluetoothServiceConnectedDeviceDelegates(bluetoothPeripheralId: bluetoothPeripheral.identifier)
+    func didConnect(bluetoothPeripheral: BluetoothPeripheral) {
+        bluetoothServiceConnectedDeviceDelegates(bluetoothPeripheralId: bluetoothPeripheral.bluetoothDevice.identifier)
         .forEach { bluetoothServiceConnectedDeviceDelegate in
             bluetoothServiceConnectedDeviceDelegate.connectedDevice()
         }
     }
 
-    func didDisconnect(bluetoothPeripheral: CBPeripheral) {
+    func didDisconnect(bluetoothPeripheral: BluetoothPeripheral) {
 
     }
 
-    func didDiscoverServices(bluetoothPeripheral: CBPeripheral) {
-        bluetoothServiceConnectedDeviceDelegates(bluetoothPeripheralId: bluetoothPeripheral.identifier)
+    func didDiscoverServices(bluetoothPeripheral: BluetoothPeripheral) {
+        bluetoothServiceConnectedDeviceDelegates(bluetoothPeripheralId: bluetoothPeripheral.bluetoothDevice.identifier)
         .forEach { bluetoothServiceConnectedDeviceDelegate in
             bluetoothServiceConnectedDeviceDelegate.discoveredServices()
         }
     }
 
-    func didDiscoverCharacteristics(bluetoothPeripheral: CBPeripheral) {
+    func didDiscoverCharacteristics(bluetoothPeripheral: BluetoothPeripheral) {
     }
 
     func didCharacteristcValueChanged(
-        bluetoothPeripheral: CBPeripheral,
+        bluetoothPeripheral: BluetoothPeripheral,
         bluetoothCharacteristic: CBCharacteristic
     ) {
         bluetoothServiceCharacteristicDelegates(bluetoothCharacteristicId: bluetoothCharacteristic.uuid)
@@ -130,7 +133,7 @@ extension BluetoothService: BlueFalconDelegate {
         }
     }
 
-    func didUpdateMTU(bluetoothPeripheral: CBPeripheral) {}
+    func didUpdateMTU(bluetoothPeripheral: BluetoothPeripheral) {}
 
     private func bluetoothServiceConnectedDeviceDelegates(bluetoothPeripheralId: UUID) -> [BluetoothServiceConnectedDeviceDelegate] {
         return connectedDeviceDelegates.compactMap { connectedDeviceDelegateTuple -> BluetoothServiceConnectedDeviceDelegate? in
@@ -148,7 +151,7 @@ extension BluetoothService: BlueFalconDelegate {
 
 
 protocol BluetoothServiceDetectedDeviceDelegate: class {
-    func discoveredDevice(devices: [CBPeripheral])
+    func discoveredDevice(devices: [BluetoothPeripheral])
 }
 
 protocol BluetoothServiceConnectedDeviceDelegate: class {
