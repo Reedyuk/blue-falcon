@@ -36,7 +36,7 @@ actual class BlueFalcon actual constructor(
             CBManagerStateUnsupported -> throw BluetoothUnsupportedException()
             CBManagerStateUnauthorized -> throw BluetoothPermissionException()
             CBManagerStatePoweredOff -> throw BluetoothNotEnabledException()
-            CBManagerStatePoweredOn -> centralManager.scanForPeripheralsWithServices(null, null)
+            CBManagerStatePoweredOn -> centralManager.scanForPeripheralsWithServices(listOf(serviceUUID), null)
         }
     }
 

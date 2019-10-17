@@ -10,7 +10,3 @@ class BluetoothResettingException(message: String = "Bluetooth service is curren
 
 class BluetoothUnknownException(message: String = "Unknown error happened"): Exception(message)
 
-// handle different states:
-// bluetooth off
-// device does not support bluetooth
-// permission for bluetooth
