@@ -1,4 +1,4 @@
-# ![Blue Falcon](bluefalcon.png) Blue-Falcon [![Build Status](https://api.travis-ci.com/Reedyuk/blue-falcon.svg?branch=master)](https://api.travis-ci.com/Reedyuk/blue-falcon) [![Kotlin](https://img.shields.io/badge/kotlin-1.5.1-blue.svg)](http://kotlinlang.org)
+# ![Blue Falcon](bluefalcon.png) Blue-Falcon [![Build Status](https://api.travis-ci.com/Reedyuk/blue-falcon.svg?branch=master)](https://api.travis-ci.com/Reedyuk/blue-falcon) [![Kotlin](https://img.shields.io/badge/kotlin-1.3.50-blue.svg)](http://kotlinlang.org)
 
 A Bluetooth "Cross Platform" Kotlin Multiplatform library for iOS and Android. 
 
@@ -38,7 +38,7 @@ blueFalcon.scan()
 #### Install
 
 ```kotlin
-implementation 'dev.bluefalcon:library-android:0.5.0'
+implementation 'dev.bluefalcon:library-android:0.5.1'
 ```
 
 The Android sdk requires an Application context, we do this by passing in on the BlueFalcon constructor, in this example we are calling the code from an activity(this).
