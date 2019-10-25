@@ -175,8 +175,9 @@ actual class BlueFalcon actual constructor(
             }
             gatt?.device?.let { bluetoothDevice ->
                 gatt.services.let { services ->
+                    log("onServicesDiscovered -> $services")
                     val bluetoothPeripheral = BluetoothPeripheral(bluetoothDevice)
-                    bluetoothPeripheral.services = services.toList()
+                    bluetoothPeripheral.deviceServices = services.toList()
                     delegates.forEach {
                         it.didDiscoverServices(bluetoothPeripheral)
                         it.didDiscoverCharacteristics(bluetoothPeripheral)

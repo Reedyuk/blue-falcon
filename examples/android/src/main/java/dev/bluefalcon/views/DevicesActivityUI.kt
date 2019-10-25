@@ -1,6 +1,5 @@
 package dev.bluefalcon.views
 
-import android.graphics.Color
 import dev.bluefalcon.activities.DeviceActivity
 import dev.bluefalcon.activities.DevicesActivity
 import dev.bluefalcon.viewModels.DevicesViewModel

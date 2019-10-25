@@ -2,9 +2,10 @@ package presentation.views
 
 import org.jetbrains.anko.*
 import org.jetbrains.anko.sdk27.coroutines.onItemClick
+import presentation.activities.DeviceActivity
 import presentation.activities.DevicesActivity
 import presentation.adapters.DevicesAdapter
-import presentation.viewmodels.DevicesViewModel
+import presentation.viewmodels.devices.DevicesViewModel
 
 class DevicesActivityUI(private val viewModel: DevicesViewModel) : AnkoComponent<DevicesActivity> {
 
@@ -25,6 +26,9 @@ class DevicesActivityUI(private val viewModel: DevicesViewModel) : AnkoComponent
             listView {
                 adapter = devicesAdapter
             }.onItemClick { _, _, index, _ ->
+                owner.startActivity<DeviceActivity>(
+                    "device" to viewModel.devices[index].bluetoothDevice
+                )
             }
         }
     }

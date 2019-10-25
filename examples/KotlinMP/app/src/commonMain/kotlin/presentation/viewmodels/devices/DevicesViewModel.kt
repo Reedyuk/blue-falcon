@@ -1,6 +1,7 @@
-package presentation.viewmodels
+package presentation.viewmodels.devices
 
 import dev.bluefalcon.*
+import presentation.viewmodels.DevicesItemViewModel
 import sample.BluetoothService
 import sample.DevicesDelegate
 import sample.scan
@@ -10,7 +11,7 @@ class DevicesViewModel(
     private val bluetoothService: BluetoothService
 ): DevicesDelegate {
 
-    private val devices: MutableList<BluetoothPeripheral> = mutableListOf()
+    val devices: MutableList<BluetoothPeripheral> = mutableListOf()
 
     init {
         bluetoothService.addDevicesDelegate(this)

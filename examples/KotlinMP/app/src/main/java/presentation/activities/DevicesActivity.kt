@@ -6,8 +6,8 @@ import android.support.v4.app.ActivityCompat
 import android.support.v7.app.AppCompatActivity
 import org.jetbrains.anko.setContentView
 import presentation.AppApplication
-import presentation.viewmodels.DevicesViewModel
-import presentation.viewmodels.DevicesViewModelOutput
+import presentation.viewmodels.devices.DevicesViewModel
+import presentation.viewmodels.devices.DevicesViewModelOutput
 import presentation.views.DevicesActivityUI
 
 class DevicesActivity : AppCompatActivity(), DevicesViewModelOutput {
