@@ -55,7 +55,7 @@ actual class BlueFalcon actual constructor(
         bluetoothPeripheral: BluetoothPeripheral,
         bluetoothCharacteristic: BluetoothCharacteristic
     ) {
-        bluetoothPeripheral.bluetoothDevice.readValueForCharacteristic(bluetoothCharacteristic.characteristic)
+        bluetoothPeripheral.bluetoothDevice.readValueForCharacteristic(bluetoothCharacteristic)
     }
 
     actual fun notifyCharacteristic(
@@ -63,7 +63,7 @@ actual class BlueFalcon actual constructor(
         bluetoothCharacteristic: BluetoothCharacteristic,
         notify: Boolean
     ) {
-        bluetoothPeripheral.bluetoothDevice.setNotifyValue(notify, bluetoothCharacteristic.characteristic)
+        bluetoothPeripheral.bluetoothDevice.setNotifyValue(notify, bluetoothCharacteristic)
     }
 
     actual fun writeCharacteristic(
@@ -75,7 +75,7 @@ actual class BlueFalcon actual constructor(
         formattedString.dataUsingEncoding(NSUTF8StringEncoding)?.let {
             bluetoothPeripheral.bluetoothDevice.writeValue(
                 it,
-                bluetoothCharacteristic.characteristic,
+                bluetoothCharacteristic,
                 CBCharacteristicWriteWithResponse
             )
         }
@@ -109,7 +109,7 @@ actual class BlueFalcon actual constructor(
         ) {
             if (isScanning) {
                 log("Discovered device ${didDiscoverPeripheral.name}")
-                val device = BluetoothPeripheral(didDiscoverPeripheral)
+                val device = BluetoothPeripheral(didDiscoverPeripheral, rssiValue = RSSI.floatValue)
                 delegates.forEach {
                     it.didDiscoverDevice(device)
                 }
@@ -118,7 +118,7 @@ actual class BlueFalcon actual constructor(
 
         override fun centralManager(central: CBCentralManager, didConnectPeripheral: CBPeripheral) {
             log("DidConnectPeripheral ${didConnectPeripheral.name}")
-            val device = BluetoothPeripheral(didConnectPeripheral)
+            val device = BluetoothPeripheral(didConnectPeripheral, rssiValue = null)
             delegates.forEach {
                 it.didConnect(device)
             }
@@ -128,7 +128,7 @@ actual class BlueFalcon actual constructor(
 
         override fun centralManager(central: CBCentralManager, didDisconnectPeripheral: CBPeripheral, error: NSError?) {
             log("DidDisconnectPeripheral ${didDisconnectPeripheral.name}")
-            val device = BluetoothPeripheral(didDisconnectPeripheral)
+            val device = BluetoothPeripheral(didDisconnectPeripheral, rssiValue = null)
             delegates.forEach {
                 it.didDisconnect(device)
             }
@@ -145,7 +145,7 @@ actual class BlueFalcon actual constructor(
             if (didDiscoverServices != null) {
                 println("Error with service discovery ${didDiscoverServices}")
             } else {
-                val device = BluetoothPeripheral(peripheral)
+                val device = BluetoothPeripheral(peripheral, rssiValue = null)
                 delegates.forEach {
                     it.didDiscoverServices(device)
                 }
@@ -165,7 +165,7 @@ actual class BlueFalcon actual constructor(
             if (error != null) {
                 println("Error with characteristic discovery ${didDiscoverCharacteristicsForService}")
             }
-            val device = BluetoothPeripheral(peripheral)
+            val device = BluetoothPeripheral(peripheral, rssiValue = null)
             delegates.forEach {
                 it.didDiscoverCharacteristics(device)
             }
@@ -180,8 +180,7 @@ actual class BlueFalcon actual constructor(
                 println("Error with characteristic update ${error}")
             }
             println("didUpdateValueForCharacteristic")
-            val device = BluetoothPeripheral(peripheral)
-            val characteristic = BluetoothCharacteristic(didUpdateValueForCharacteristic)
+            val device = BluetoothPeripheral(peripheral, rssiValue = null)
             delegates.forEach {
                 it.didCharacteristcValueChanged(
                     device,

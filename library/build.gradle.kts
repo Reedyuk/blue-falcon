@@ -197,7 +197,7 @@ publishing {
 
 }
 
-signing {
+/*signing {
     whenRequired { gradle.taskGraph.hasTask("publish") }
     sign(publishing.publications)
-}
+}*/

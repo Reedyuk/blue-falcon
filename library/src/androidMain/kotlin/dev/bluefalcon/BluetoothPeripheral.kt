@@ -8,5 +8,7 @@ actual class BluetoothPeripheral(val bluetoothDevice: BluetoothDevice) {
     actual val services: List<BluetoothService>
         get() = deviceServices
 
+    actual val rssi: Float? = null
+
     var deviceServices: List<BluetoothService> = listOf()
 }
