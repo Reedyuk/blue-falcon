@@ -18,7 +18,7 @@ class DeviceViewModel (
     }
 
     fun deviceServiceViewModels(): List<DeviceServiceViewModel> = bluetoothDevice.services.map {
-        DeviceServiceViewModel()
+        DeviceServiceViewModel(it)
     }
 
     private fun connectDevice() {

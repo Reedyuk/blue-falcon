@@ -1,3 +1,5 @@
 package dev.bluefalcon
 
-expect class BluetoothService
+expect class BluetoothService {
+    val name: String?
+}
