@@ -1,11 +1,11 @@
 package dev.bluefalcon.adapters
 
-import android.bluetooth.BluetoothGattService
 import android.os.Build
 import android.view.View
 import android.view.ViewGroup
 import android.widget.BaseAdapter
 import androidx.annotation.RequiresApi
+import dev.bluefalcon.BluetoothService
 import dev.bluefalcon.viewModels.DeviceViewModel
 import org.jetbrains.anko.dip
 import org.jetbrains.anko.padding
@@ -19,14 +19,14 @@ class DeviceAdapter(private val viewModel : DeviceViewModel) : BaseAdapter() {
         val item = getItem(i)
         return with(parent!!.context) {
             relativeLayout {
-                textView(item.uuid.toString()) {
+                textView(item.name) {
                     padding = dip(10)
                 }
             }
         }
     }
 
-    override fun getItem(position : Int) : BluetoothGattService = viewModel.services[position]
+    override fun getItem(position : Int) : BluetoothService = viewModel.services[position]
 
     override fun getCount() : Int = viewModel.services.size
 

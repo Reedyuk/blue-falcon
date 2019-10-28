@@ -1,9 +1,9 @@
 package dev.bluefalcon.viewModels
 
-import android.bluetooth.BluetoothGattService
 import android.util.Log
 import dev.bluefalcon.BlueFalconApplication
 import dev.bluefalcon.BluetoothPeripheral
+import dev.bluefalcon.BluetoothService
 import dev.bluefalcon.adapters.DeviceAdapter
 import dev.bluefalcon.observables.StandardObservableProperty
 import dev.bluefalcon.views.DeviceActivityUI
@@ -16,7 +16,7 @@ class DeviceViewModel(
 ) : BluetoothServiceConnectedDeviceDelegate {
 
     val deviceActivityUI = DeviceActivityUI(this)
-    val services: List<BluetoothGattService> get() = bluetoothPeripheral.services
+    val services: List<BluetoothService> get() = bluetoothPeripheral.services
     val deviceAdapter = DeviceAdapter(this)
     var connectionStatus = StandardObservableProperty("Connecting...")
 
