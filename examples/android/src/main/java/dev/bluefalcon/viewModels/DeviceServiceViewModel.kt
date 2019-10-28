@@ -27,5 +27,12 @@ class DeviceServiceViewModel(
         }
     }
 
-    private fun createCharacteristicViewModels() = characteristics.map { characteristic -> DeviceCharacteristicViewModel(deviceServiceActivity, this, device, characteristic) }
+    private fun createCharacteristicViewModels() = characteristics.map { characteristic ->
+        DeviceCharacteristicViewModel(
+            deviceServiceActivity,
+            this,
+            device,
+            BluetoothCharacteristic(characteristic)
+        )
+    }
 }

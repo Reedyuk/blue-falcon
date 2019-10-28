@@ -16,23 +16,16 @@ class DeviceCharacteristicViewModel(
     private val deviceServiceActivity: DeviceServiceActivity,
     private val deviceServiceViewModel: DeviceServiceViewModel,
     private val device: BluetoothPeripheral,
-    var characteristic: BluetoothGattCharacteristic): BluetoothServiceCharacteristicDelegate {
+    var characteristic: BluetoothCharacteristic): BluetoothServiceCharacteristicDelegate {
 
     var notify = false
-    val id = characteristic.uuid
+    val id = characteristic.characteristic.uuid
 
     init {
-        BlueFalconApplication.instance.bluetoothService.characteristicDelegates[characteristic.uuid] = this
+        BlueFalconApplication.instance.bluetoothService.characteristicDelegates[characteristic.characteristic.uuid] = this
     }
 
-    fun value(): String {
-        characteristic.value?.let { data ->
-            String(data, Charset.defaultCharset()).let {
-                return it
-            }
-        }
-        return ""
-    }
+    fun value(): String? = characteristic.value
 
     fun readCharacteristicTapped() {
         BlueFalconApplication.instance.bluetoothService.readCharacteristic(

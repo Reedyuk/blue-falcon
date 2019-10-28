@@ -76,7 +76,7 @@ class BluetoothService: BlueFalconDelegate {
     }
 
     override fun didCharacteristcValueChanged(bluetoothPeripheral: BluetoothPeripheral, bluetoothCharacteristic: BluetoothCharacteristic) {
-        characteristicDelegates[bluetoothCharacteristic.uuid]?.characteristcValueChanged(bluetoothCharacteristic)
+        characteristicDelegates[bluetoothCharacteristic.characteristic.uuid]?.characteristcValueChanged(bluetoothCharacteristic)
     }
 
     override fun didDisconnect(bluetoothPeripheral: BluetoothPeripheral) {}

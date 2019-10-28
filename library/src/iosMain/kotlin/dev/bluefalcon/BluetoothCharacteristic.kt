@@ -12,6 +12,8 @@ actual class BluetoothCharacteristic(val characteristic: CBCharacteristic) {
             characteristic.value?.let {
                 
             }
+
+            return ""
             //String()
             //characteristic.value
             //TODO("not implemented") //To change initializer of created properties use File | Settings | File Templates.
