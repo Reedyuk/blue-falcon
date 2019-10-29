@@ -15,6 +15,8 @@ actual class BlueFalcon actual constructor(
     private val peripheralDelegate = PeripheralDelegate()
     actual var isScanning: Boolean = false
 
+    private var didPrepareForScanBlock: (() -> Unit)? = null
+
     init {
         centralManager = CBCentralManager(bluetoothPeripheralManager, null)
     }
@@ -28,21 +30,22 @@ actual class BlueFalcon actual constructor(
     }
 
     @Throws
+    actual fun prepareForScan(completion: (() -> Unit)) {
+        didPrepareForScanBlock = completion
+
+        if (centralManager.state == CBManagerStatePoweredOn) {
+            didPrepareForScanBlock?.invoke()
+            didPrepareForScanBlock = null
+        }
+    }
+
     actual fun scan() {
         isScanning = true
-        when(centralManager.state) {
-            CBManagerStateUnknown -> throw BluetoothUnknownException()
-            CBManagerStateResetting -> throw BluetoothResettingException()
-            CBManagerStateUnsupported -> throw BluetoothUnsupportedException()
-            CBManagerStateUnauthorized -> throw BluetoothPermissionException()
-            CBManagerStatePoweredOff -> throw BluetoothNotEnabledException()
-            CBManagerStatePoweredOn -> {
-                if (serviceUUID != null) {
-                    centralManager.scanForPeripheralsWithServices(listOf(serviceUUID), null)
-                } else {
-                    centralManager.scanForPeripheralsWithServices(null, null)
-                }
-            }
+
+        if (serviceUUID != null) {
+            centralManager.scanForPeripheralsWithServices(listOf(serviceUUID), null)
+        } else {
+            centralManager.scanForPeripheralsWithServices(null, null)
         }
     }
 
@@ -96,7 +99,12 @@ actual class BlueFalcon actual constructor(
                 CBManagerStateUnsupported -> log("State 2 is .unsupported")
                 CBManagerStateUnauthorized -> log("State 3 is .unauthorised")
                 CBManagerStatePoweredOff -> log("State 4 is .poweredOff")
-                CBManagerStatePoweredOn -> log("State 5 is .poweredOn")
+                CBManagerStatePoweredOn -> {
+                    log("State 5 is .poweredOn")
+                    log("Now you can scan()")
+                    didPrepareForScanBlock?.invoke()
+                    didPrepareForScanBlock = null
+                }
                 else -> log("State ${central.state.toInt()}")
             }
         }

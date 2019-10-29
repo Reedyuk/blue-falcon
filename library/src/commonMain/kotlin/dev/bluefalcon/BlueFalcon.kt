@@ -8,6 +8,7 @@ expect class BlueFalcon(context: ApplicationContext, serviceUUID: String?) {
     fun connect(bluetoothPeripheral: BluetoothPeripheral)
     fun disconnect(bluetoothPeripheral: BluetoothPeripheral)
 
+    fun prepareForScan(completion: (() -> Unit))
     fun scan()
     fun stopScanning()
 

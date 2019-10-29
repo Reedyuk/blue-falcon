@@ -17,6 +17,10 @@ actual class BlueFalcon actual constructor(context: ApplicationContext, serviceU
         TODO("not implemented") //To change body of created functions use File | Settings | File Templates.
     }
 
+    actual fun prepareForScan(completion: (() -> Unit)) {
+        TODO("not implemented") //To change body of created functions use File | Settings | File Templates.
+    }
+
     actual fun scan() {
         TODO("not implemented") //To change body of created functions use File | Settings | File Templates.
     }
