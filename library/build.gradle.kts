@@ -80,14 +80,8 @@ kotlin {
         }
     }
 
-    val buildForDevice = project.findProperty("kotlin.native.cocoapods.target") == "ios_arm"
-    val iosMain by sourceSets.creating
-    if (buildForDevice) {
-        iosArm64("ios64")
-        sourceSets["ios64Main"].dependsOn(iosMain)
-    } else {
-        iosX64("ios")
-    }
+    iosArm64()
+    iosX64()
 
     sourceSets {
         val commonMain by getting {
@@ -115,12 +109,6 @@ kotlin {
                 implementation(kotlin("test"))
                 implementation(kotlin("test-junit"))
                 implementation("com.android.support.test:runner:1.0.2")
-            }
-        }
-
-        val iosMain by getting {
-            dependencies {
-                implementation("org.jetbrains.kotlin:kotlin-stdlib")
             }
         }
 
@@ -197,7 +185,7 @@ publishing {
 
 }
 
-signing {
+/*signing {
     whenRequired { gradle.taskGraph.hasTask("publish") }
     sign(publishing.publications)
-}
+}*/
