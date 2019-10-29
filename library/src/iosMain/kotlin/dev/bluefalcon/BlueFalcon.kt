@@ -55,7 +55,7 @@ actual class BlueFalcon actual constructor(
         bluetoothPeripheral: BluetoothPeripheral,
         bluetoothCharacteristic: BluetoothCharacteristic
     ) {
-        bluetoothPeripheral.bluetoothDevice.readValueForCharacteristic(bluetoothCharacteristic)
+        bluetoothPeripheral.bluetoothDevice.readValueForCharacteristic(bluetoothCharacteristic.characteristic)
     }
 
     actual fun notifyCharacteristic(
@@ -63,7 +63,7 @@ actual class BlueFalcon actual constructor(
         bluetoothCharacteristic: BluetoothCharacteristic,
         notify: Boolean
     ) {
-        bluetoothPeripheral.bluetoothDevice.setNotifyValue(notify, bluetoothCharacteristic)
+        bluetoothPeripheral.bluetoothDevice.setNotifyValue(notify, bluetoothCharacteristic.characteristic)
     }
 
     actual fun writeCharacteristic(
@@ -75,7 +75,7 @@ actual class BlueFalcon actual constructor(
         formattedString.dataUsingEncoding(NSUTF8StringEncoding)?.let {
             bluetoothPeripheral.bluetoothDevice.writeValue(
                 it,
-                bluetoothCharacteristic,
+                bluetoothCharacteristic.characteristic,
                 CBCharacteristicWriteWithResponse
             )
         }
@@ -181,6 +181,7 @@ actual class BlueFalcon actual constructor(
             }
             println("didUpdateValueForCharacteristic")
             val device = BluetoothPeripheral(peripheral, rssiValue = null)
+            val characteristic = BluetoothCharacteristic(didUpdateValueForCharacteristic)
             delegates.forEach {
                 it.didCharacteristcValueChanged(
                     device,
