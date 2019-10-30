@@ -66,11 +66,9 @@ class BluetoothService(private val blueFalcon: BlueFalcon) {
 
         override fun didDiscoverDevice(bluetoothPeripheral: BluetoothPeripheral) {
             println("didDiscoverDevice")
-            bluetoothPeripheral.name?.let { name ->
-                if (devices.firstOrNull { device -> device.name == name } == null) {
-                    devices.add(bluetoothPeripheral)
-                    deviceDelegate?.didDiscoverDevice(bluetoothPeripheral)
-                }
+            if (devices.firstOrNull { device -> device.uuid == bluetoothPeripheral.uuid } == null) {
+                devices.add(bluetoothPeripheral)
+                deviceDelegate?.didDiscoverDevice(bluetoothPeripheral)
             }
         }
 

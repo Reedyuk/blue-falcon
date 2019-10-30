@@ -20,10 +20,6 @@ class DevicesViewController: UITableViewController {
             bluetoothService: AppDelegate.instance.bluetoothService
         )
         deviceViewModels = viewModel.deviceViewModels()
-    }
-
-    override func viewDidAppear(_ animated: Bool) {
-        super.viewDidAppear(animated)
         viewModel.scan()
     }
 

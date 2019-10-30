@@ -7,9 +7,9 @@ class DeviceCharacteristicViewModel(private val characteristic: BluetoothCharact
     val displayName = characteristic.name
     fun value(): String {
         characteristic.value?.let { data ->
-            String(data, Charset.defaultCharset()).let {
+            /*String(data, Charset.defaultCharset()).let {
                 return it
-            }
+            }*/
         }
         return ""
     }

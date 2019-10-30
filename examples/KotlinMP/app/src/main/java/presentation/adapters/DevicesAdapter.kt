@@ -6,7 +6,7 @@ import android.widget.BaseAdapter
 import org.jetbrains.anko.linearLayout
 import org.jetbrains.anko.padding
 import org.jetbrains.anko.textView
-import presentation.viewmodels.DevicesItemViewModel
+import presentation.viewmodels.devices.DevicesItemViewModel
 
 class DevicesAdapter(var deviceViewModels : List<DevicesItemViewModel>) : BaseAdapter() {
 

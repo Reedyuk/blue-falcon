@@ -1,7 +1,11 @@
 package presentation.viewmodels.devices
 
+import MainCompat
 import dev.bluefalcon.*
-import presentation.viewmodels.DevicesItemViewModel
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import sample.BluetoothService
 import sample.DevicesDelegate
 import sample.scan
@@ -25,8 +29,10 @@ class DevicesViewModel(
             if (exception is BluetoothPermissionException) {
                 output.requiresBluetoothPermission()
             } else {
-                //delay few seconds and retry
-                scan()
+                GlobalScope.launch(Dispatchers.MainCompat) {
+                    delay(1000)
+                    scan()
+                }
             }
         }
     }

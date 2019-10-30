@@ -7,6 +7,8 @@ actual class BluetoothPeripheral(val bluetoothDevice: BluetoothDevice) {
         get() = bluetoothDevice.name ?: bluetoothDevice.address
     actual val services: List<BluetoothService>
         get() = deviceServices
+    actual val uuid: String
+        get() = bluetoothDevice.address
 
     actual val rssi: Float? = null
 
