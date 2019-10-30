@@ -1,3 +1,6 @@
 package dev.bluefalcon
 
-expect class BluetoothCharacteristic
+expect class BluetoothCharacteristic {
+    val name: String?
+    val value: String?
+}

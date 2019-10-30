@@ -1,5 +1,7 @@
 package presentation.viewmodels.device
 
-class DeviceServiceViewModel {
-    val displayName = "Service"
+import dev.bluefalcon.BluetoothService
+
+class DeviceServiceViewModel(service: BluetoothService) {
+    val displayName = service.name
 }

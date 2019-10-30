@@ -67,7 +67,9 @@ actual class BlueFalcon actual constructor(
         gatt: BluetoothGatt): List<BluetoothCharacteristic> =
         gatt.services.flatMap { service ->
             service.characteristics.filter {
-                it.uuid == bluetoothCharacteristic.uuid
+                it.uuid == bluetoothCharacteristic.characteristic.uuid
+            }.map {
+                BluetoothCharacteristic(it)
             }
         }
 
@@ -77,7 +79,7 @@ actual class BlueFalcon actual constructor(
     ) {
         mGattClientCallback.gattForDevice(bluetoothPeripheral.bluetoothDevice)?.let { gatt ->
             fetchCharacteristic(bluetoothCharacteristic, gatt)
-                .forEach { gatt.readCharacteristic(it) }
+                .forEach { gatt.readCharacteristic(it.characteristic) }
         }
     }
 
@@ -89,8 +91,8 @@ actual class BlueFalcon actual constructor(
         mGattClientCallback.gattForDevice(bluetoothPeripheral.bluetoothDevice)?.let { gatt ->
             fetchCharacteristic(bluetoothCharacteristic, gatt)
                 .forEach {
-                    gatt.setCharacteristicNotification(it, notify)
-                    it.descriptors.forEach {descriptor ->
+                    gatt.setCharacteristicNotification(it.characteristic, notify)
+                    it.characteristic.descriptors.forEach {descriptor ->
                         descriptor.value = if (notify) BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE else byteArrayOf(
                             0x00,
                             0x00
@@ -109,8 +111,8 @@ actual class BlueFalcon actual constructor(
         mGattClientCallback.gattForDevice(bluetoothPeripheral.bluetoothDevice)?.let { gatt ->
             fetchCharacteristic(bluetoothCharacteristic, gatt)
                 .forEach {
-                    it.setValue(value)
-                    gatt.writeCharacteristic(it)
+                    it.characteristic.setValue(value)
+                    gatt.writeCharacteristic(it.characteristic)
                 }
         }
     }
@@ -181,7 +183,7 @@ actual class BlueFalcon actual constructor(
                 gatt.services.let { services ->
                     log("onServicesDiscovered -> $services")
                     val bluetoothPeripheral = BluetoothPeripheral(bluetoothDevice)
-                    bluetoothPeripheral.deviceServices = services.toList()
+                    bluetoothPeripheral.deviceServices = services.map { BluetoothService(it) }
                     delegates.forEach {
                         it.didDiscoverServices(bluetoothPeripheral)
                         it.didDiscoverCharacteristics(bluetoothPeripheral)
@@ -213,9 +215,10 @@ actual class BlueFalcon actual constructor(
 
         private fun handleCharacteristicValueChange(gatt: BluetoothGatt?, characteristic: BluetoothGattCharacteristic?) {
             characteristic?.let { forcedCharacteristic ->
+                val characteristic = BluetoothCharacteristic(forcedCharacteristic)
                 gatt?.device?.let { bluetoothDevice ->
                     delegates.forEach {
-                        it.didCharacteristcValueChanged(BluetoothPeripheral(bluetoothDevice), forcedCharacteristic)
+                        it.didCharacteristcValueChanged(BluetoothPeripheral(bluetoothDevice), characteristic)
                     }
                 }
             }

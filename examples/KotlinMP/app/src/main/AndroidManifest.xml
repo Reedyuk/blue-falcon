@@ -20,6 +20,8 @@
         </activity>
         <activity android:name="presentation.activities.DeviceActivity">
         </activity>
+        <activity android:name="presentation.activities.DeviceServiceActivity">
+        </activity>
     </application>
 
 </manifest>

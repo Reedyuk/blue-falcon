@@ -11,6 +11,7 @@ class DeviceViewModel (
 ): DeviceConnectDelegate {
 
     val displayName: String = bluetoothDevice.name ?: "Unidentified"
+    val services: List<dev.bluefalcon.BluetoothService> get() = bluetoothDevice.services
 
     init {
         bluetoothService.addDeviceConnectDelegate(this)
@@ -18,7 +19,7 @@ class DeviceViewModel (
     }
 
     fun deviceServiceViewModels(): List<DeviceServiceViewModel> = bluetoothDevice.services.map {
-        DeviceServiceViewModel()
+        DeviceServiceViewModel(it)
     }
 
     private fun connectDevice() {
