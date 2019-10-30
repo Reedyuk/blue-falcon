@@ -12,6 +12,8 @@ local.properties
 android/mobile/release/*
 ios.xcworkspace/
 
+*.hprof
+
 .DS_Store
 .externalNativeBuild
 
