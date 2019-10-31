@@ -33,6 +33,26 @@ class DevicesViewController: UITableViewController {
         return cell
     }
 
+    override func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
+        performSegue(
+            withIdentifier: "deviceViewController",
+            sender: viewModel.devices[indexPath.row]
+        )
+    }
+
+    override func prepare(for segue: UIStoryboardSegue, sender: Any?) {
+        if let deviceViewController = segue.destination as? DeviceViewController,
+            let device = sender as? LibraryBluetoothPeripheral {
+            deviceViewController.bluetoothDevice = device
+            let viewModel = DeviceViewModel(
+                output: deviceViewController,
+                bluetoothDevice: device,
+                bluetoothService: AppDelegate.instance.bluetoothService
+            )
+            deviceViewController.viewModel = viewModel
+        }
+    }
+
 }
 
 extension DevicesViewController: DevicesViewModelOutput {

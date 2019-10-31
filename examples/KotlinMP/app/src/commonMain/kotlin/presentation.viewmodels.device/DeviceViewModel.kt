@@ -28,7 +28,9 @@ class DeviceViewModel (
 
     override fun didDeviceConnect(bluetoothPeripheral: BluetoothPeripheral) {
         bluetoothDevice = bluetoothPeripheral
-        output.refresh()
+        if (bluetoothDevice.services.isNotEmpty()) {
+            output.refresh()
+        }
     }
 
     override fun didDiscoverServices(bluetoothPeripheral: BluetoothPeripheral) {
