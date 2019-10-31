@@ -10,6 +10,7 @@
 		0009BCD2235677C3004864CD /* app.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 0009BCD1235677C3004864CD /* app.framework */; };
 		0009BCD723567C52004864CD /* DevicesViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0009BCD623567C52004864CD /* DevicesViewController.swift */; };
 		00F6C34D236B80C40030B6CA /* DeviceViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00F6C34C236B80C40030B6CA /* DeviceViewController.swift */; };
+		00F6C34F236B92FF0030B6CA /* DeviceServiceViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00F6C34E236B92FF0030B6CA /* DeviceServiceViewController.swift */; };
 		497C6BA523589E550026F539 /* Strings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 497C6BA423589E550026F539 /* Strings.swift */; };
 		F861D7E1207FA40F0085E80D /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = F861D7E0207FA40F0085E80D /* AppDelegate.swift */; };
 		F861D7E6207FA40F0085E80D /* Main.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = F861D7E4207FA40F0085E80D /* Main.storyboard */; };
@@ -53,6 +54,7 @@
 		0009BCD1235677C3004864CD /* app.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = app.framework; path = ../app/build/bin/ios/debugFramework/app.framework; sourceTree = "<group>"; };
 		0009BCD623567C52004864CD /* DevicesViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DevicesViewController.swift; sourceTree = "<group>"; };
 		00F6C34C236B80C40030B6CA /* DeviceViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceViewController.swift; sourceTree = "<group>"; };
+		00F6C34E236B92FF0030B6CA /* DeviceServiceViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceServiceViewController.swift; sourceTree = "<group>"; };
 		497C6BA423589E550026F539 /* Strings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Strings.swift; sourceTree = "<group>"; };
 		F861D7DD207FA40F0085E80D /* Kotlin MP.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Kotlin MP.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		F861D7E0207FA40F0085E80D /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
@@ -106,6 +108,7 @@
 			children = (
 				0009BCD623567C52004864CD /* DevicesViewController.swift */,
 				00F6C34C236B80C40030B6CA /* DeviceViewController.swift */,
+				00F6C34E236B92FF0030B6CA /* DeviceServiceViewController.swift */,
 			);
 			path = controllers;
 			sourceTree = "<group>";
@@ -293,6 +296,7 @@
 				0009BCD723567C52004864CD /* DevicesViewController.swift in Sources */,
 				497C6BA523589E550026F539 /* Strings.swift in Sources */,
 				F861D7E1207FA40F0085E80D /* AppDelegate.swift in Sources */,
+				00F6C34F236B92FF0030B6CA /* DeviceServiceViewController.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

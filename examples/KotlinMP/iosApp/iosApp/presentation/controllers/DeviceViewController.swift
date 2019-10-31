@@ -25,7 +25,21 @@ class DeviceViewController: UITableViewController {
     }
 
     override func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
-        
+        let service = viewModel.services[indexPath.row]
+        performSegue(withIdentifier: "DeviceServiceViewController", sender: service)
+    }
+
+    override func prepare(for segue: UIStoryboardSegue, sender: Any?) {
+        if let deviceViewController = segue.destination as? DeviceServiceViewController,
+            let service = sender as? LibraryBluetoothService {
+            deviceViewController.service = service
+            let viewModel = DeviceCharacteristicsViewModel(
+                output: deviceViewController,
+                service: service,
+                characteristics: service.characteristics
+            )
+            deviceViewController.viewModel = viewModel
+        }
     }
 
 }
