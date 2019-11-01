@@ -23,6 +23,10 @@ class BluetoothService(private val blueFalcon: BlueFalcon) {
         bluetoothDelegate.deviceConnectDelegate = deviceConnectDelegate
     }
 
+    fun addDeviceCharacteristicDelegate(deviceCharacteristicDelegate: DeviceCharacteristicDelegate) {
+        bluetoothDelegate.deviceCharacteristicDelegate = deviceCharacteristicDelegate
+    }
+
     internal fun performScan() {
         blueFalcon.scan()
     }
@@ -63,6 +67,7 @@ class BluetoothService(private val blueFalcon: BlueFalcon) {
         private val devices: MutableList<BluetoothPeripheral> = mutableListOf()
         var deviceDelegate: DevicesDelegate? = null
         var deviceConnectDelegate: DeviceConnectDelegate? = null
+        var deviceCharacteristicDelegate: DeviceCharacteristicDelegate? = null
 
         override fun didDiscoverDevice(bluetoothPeripheral: BluetoothPeripheral) {
             println("didDiscoverDevice")
@@ -86,7 +91,10 @@ class BluetoothService(private val blueFalcon: BlueFalcon) {
             bluetoothPeripheral: BluetoothPeripheral,
             bluetoothCharacteristic: BluetoothCharacteristic
         ) {
-            println("didCharacteristcValueChanged")
+            println("didCharacteristcValueChanged ${bluetoothCharacteristic.value}")
+            bluetoothCharacteristic.value?.let {
+                deviceCharacteristicDelegate?.didCharacteristcValueChanged(it)
+            }
         }
 
         override fun didDisconnect(bluetoothPeripheral: BluetoothPeripheral) {
@@ -111,4 +119,8 @@ interface DevicesDelegate {
 interface DeviceConnectDelegate {
     fun didDeviceConnect(bluetoothPeripheral: BluetoothPeripheral)
     fun didDiscoverServices(bluetoothPeripheral: BluetoothPeripheral)
+}
+
+interface DeviceCharacteristicDelegate {
+    fun didCharacteristcValueChanged(value: String)
 }

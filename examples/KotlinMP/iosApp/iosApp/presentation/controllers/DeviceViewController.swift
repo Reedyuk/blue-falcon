@@ -34,7 +34,8 @@ class DeviceViewController: UITableViewController {
             let service = sender as? LibraryBluetoothService {
             deviceViewController.service = service
             let viewModel = DeviceCharacteristicsViewModel(
-                output: deviceViewController,
+                bluetoothService: AppDelegate.instance.bluetoothService,
+                bluetoothDevice: bluetoothDevice,
                 service: service,
                 characteristics: service.characteristics
             )

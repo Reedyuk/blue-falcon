@@ -6,7 +6,7 @@ import sample.DeviceConnectDelegate
 
 class DeviceViewModel (
     private val output: DeviceViewModelOutput,
-    private var bluetoothDevice: BluetoothPeripheral,
+    var bluetoothDevice: BluetoothPeripheral,
     private val bluetoothService: BluetoothService
 ): DeviceConnectDelegate {
 

@@ -1,34 +1,39 @@
 package presentation.viewmodels.deviceservice
 
 import dev.bluefalcon.BluetoothCharacteristic
+import dev.bluefalcon.BluetoothPeripheral
+import sample.BluetoothService
+import sample.DeviceCharacteristicDelegate
 
-class DeviceCharacteristicViewModel(private val characteristic: BluetoothCharacteristic) {
-
+class DeviceCharacteristicViewModel(
+    private val bluetoothService: BluetoothService,
+    private var bluetoothDevice: BluetoothPeripheral,
+    private val characteristic: BluetoothCharacteristic
+): DeviceCharacteristicDelegate {
+    var output: DeviceCharacteristicViewModelOutput? = null
     val displayName = characteristic.name
-    fun value(): String {
-        characteristic.value?.let { data ->
-            /*String(data, Charset.defaultCharset()).let {
-                return it
-            }*/
-        }
-        return ""
+    var notify: Boolean = false
+    fun value(): String = characteristic.value ?: ""
+
+    init {
+        bluetoothService.addDeviceCharacteristicDelegate(this)
     }
 
     fun readCharacteristicTapped() {
-//        BlueFalconApplication.instance.bluetoothService.readCharacteristic(
-//            device,
-//            characteristic
-//        )
+        bluetoothService.readCharacteristic(
+            bluetoothDevice,
+            characteristic
+        )
     }
 
     fun notifyCharacteristicTapped() {
-//        notify = !notify
-//        BlueFalconApplication.instance.bluetoothService.notifyCharacteristic(
-//            device,
-//            characteristic,
-//            notify
-//        )
-//        deviceServiceViewModel.notifyValueChanged()
+        notify = !notify
+        bluetoothService.notifyCharacteristic(
+            bluetoothDevice,
+            characteristic,
+            notify
+        )
+        output?.refresh()
     }
 
     fun writeCharactersticTapped() {
@@ -48,4 +53,12 @@ class DeviceCharacteristicViewModel(private val characteristic: BluetoothCharact
 //        builder.setNegativeButton("Cancel") { dialog, _ -> dialog.cancel() }
 //        builder.show()
     }
+
+    override fun didCharacteristcValueChanged(value: String) {
+        output?.refresh()
+    }
+}
+
+interface DeviceCharacteristicViewModelOutput {
+    fun refresh()
 }

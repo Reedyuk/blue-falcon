@@ -11,6 +11,7 @@
 		0009BCD723567C52004864CD /* DevicesViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0009BCD623567C52004864CD /* DevicesViewController.swift */; };
 		00F6C34D236B80C40030B6CA /* DeviceViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00F6C34C236B80C40030B6CA /* DeviceViewController.swift */; };
 		00F6C34F236B92FF0030B6CA /* DeviceServiceViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00F6C34E236B92FF0030B6CA /* DeviceServiceViewController.swift */; };
+		492323AA236CC7DF0018F820 /* CharacteristicViewCell.swift in Sources */ = {isa = PBXBuildFile; fileRef = 492323A9236CC7DF0018F820 /* CharacteristicViewCell.swift */; };
 		497C6BA523589E550026F539 /* Strings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 497C6BA423589E550026F539 /* Strings.swift */; };
 		F861D7E1207FA40F0085E80D /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = F861D7E0207FA40F0085E80D /* AppDelegate.swift */; };
 		F861D7E6207FA40F0085E80D /* Main.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = F861D7E4207FA40F0085E80D /* Main.storyboard */; };
@@ -55,6 +56,7 @@
 		0009BCD623567C52004864CD /* DevicesViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DevicesViewController.swift; sourceTree = "<group>"; };
 		00F6C34C236B80C40030B6CA /* DeviceViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceViewController.swift; sourceTree = "<group>"; };
 		00F6C34E236B92FF0030B6CA /* DeviceServiceViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceServiceViewController.swift; sourceTree = "<group>"; };
+		492323A9236CC7DF0018F820 /* CharacteristicViewCell.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CharacteristicViewCell.swift; sourceTree = "<group>"; };
 		497C6BA423589E550026F539 /* Strings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Strings.swift; sourceTree = "<group>"; };
 		F861D7DD207FA40F0085E80D /* Kotlin MP.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Kotlin MP.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		F861D7E0207FA40F0085E80D /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
@@ -98,6 +100,7 @@
 		0009BCD423567C39004864CD /* presentation */ = {
 			isa = PBXGroup;
 			children = (
+				492323A8236CC7D00018F820 /* views */,
 				0009BCD523567C39004864CD /* controllers */,
 			);
 			path = presentation;
@@ -111,6 +114,14 @@
 				00F6C34E236B92FF0030B6CA /* DeviceServiceViewController.swift */,
 			);
 			path = controllers;
+			sourceTree = "<group>";
+		};
+		492323A8236CC7D00018F820 /* views */ = {
+			isa = PBXGroup;
+			children = (
+				492323A9236CC7DF0018F820 /* CharacteristicViewCell.swift */,
+			);
+			path = views;
 			sourceTree = "<group>";
 		};
 		F861D7D4207FA40F0085E80D = {
@@ -295,6 +306,7 @@
 				00F6C34D236B80C40030B6CA /* DeviceViewController.swift in Sources */,
 				0009BCD723567C52004864CD /* DevicesViewController.swift in Sources */,
 				497C6BA523589E550026F539 /* Strings.swift in Sources */,
+				492323AA236CC7DF0018F820 /* CharacteristicViewCell.swift in Sources */,
 				F861D7E1207FA40F0085E80D /* AppDelegate.swift in Sources */,
 				00F6C34F236B92FF0030B6CA /* DeviceServiceViewController.swift in Sources */,
 			);
