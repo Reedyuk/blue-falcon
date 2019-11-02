@@ -162,6 +162,7 @@ actual class BlueFalcon actual constructor(
             gatt?.let { bluetoothGatt ->
                 bluetoothGatt.device.let {
                     addGatt(bluetoothGatt)
+                    bluetoothGatt.readRemoteRssi()
                     bluetoothGatt.discoverServices()
                     delegates.forEach {
                         it.didConnect(BluetoothPeripheral(bluetoothGatt.device))
@@ -197,6 +198,19 @@ actual class BlueFalcon actual constructor(
             gatt?.device?.let { bluetoothDevice ->
                 delegates.forEach {
                     it.didUpdateMTU(BluetoothPeripheral(bluetoothDevice))
+                }
+            }
+        }
+
+        override fun onReadRemoteRssi(gatt: BluetoothGatt?, rssi: Int, status: Int) {
+            log("onReadRemoteRssi $rssi")
+            gatt?.device?.let { bluetoothDevice ->
+                val bluetoothPeripheral = BluetoothPeripheral(bluetoothDevice)
+                bluetoothPeripheral.rssi = rssi.toFloat()
+                delegates.forEach {
+                    it.didRssiUpdate(
+                        bluetoothPeripheral
+                    )
                 }
             }
         }

@@ -11,7 +11,7 @@ class DeviceViewModel (
 ): DeviceConnectDelegate {
 
     val displayName: String = bluetoothDevice.name ?: "Unidentified"
-    val rssi: Float? = bluetoothDevice.rssi
+    val rssi: Float? get() = bluetoothDevice.rssi
     val services: List<dev.bluefalcon.BluetoothService> get() = bluetoothDevice.services
 
     init {
@@ -35,6 +35,12 @@ class DeviceViewModel (
     }
 
     override fun didDiscoverServices(bluetoothPeripheral: BluetoothPeripheral) {
+        bluetoothDevice = bluetoothPeripheral
+        output.refresh()
+    }
+
+    override fun didRssiChange(bluetoothPeripheral: BluetoothPeripheral) {
+        println("didRssiChange ${bluetoothPeripheral.rssi}")
         bluetoothDevice = bluetoothPeripheral
         output.refresh()
     }

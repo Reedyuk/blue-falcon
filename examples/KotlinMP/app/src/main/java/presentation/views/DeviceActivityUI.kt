@@ -1,5 +1,6 @@
 package presentation.views
 
+import android.widget.TextView
 import org.jetbrains.anko.*
 import org.jetbrains.anko.sdk27.coroutines.onItemClick
 import presentation.activities.DeviceActivity
@@ -13,9 +14,13 @@ class DeviceActivityUI(
 ): AnkoComponent<DeviceActivity> {
 
     private val deviceAdapter = DeviceAdapter(viewModel.deviceServiceViewModels())
+    private lateinit var rssiTextView: TextView
 
     fun refresh() {
         deviceActivity.runOnUiThread {
+            viewModel.rssi?.let {
+                rssiTextView.text = "RSSI: ${viewModel.rssi}"
+            }
             deviceAdapter.deviceServiceViewModels = viewModel.deviceServiceViewModels()
             deviceAdapter.notifyDataSetChanged()
         }
@@ -28,6 +33,7 @@ class DeviceActivityUI(
                     centerHorizontally()
                 }
             }
+            rssiTextView = textView("RSSI: ${viewModel.rssi}")
             listView {
                 adapter = deviceAdapter
             }.onItemClick { _, _, index, _ ->

@@ -40,7 +40,7 @@ class BluetoothService {
     ) {
         blueFalcon.notifyCharacteristic(
             bluetoothPeripheral: bluetoothPeripheral,
-            bluetoothCharacteristic: bluetoothCharacteristic,
+            bluetoothCharacteristic: BluetoothCharacteristic(characteristic: bluetoothCharacteristic),
             notify: notify
         )
     }
@@ -49,7 +49,10 @@ class BluetoothService {
         bluetoothPeripheral: BluetoothPeripheral,
         bluetoothCharacteristic: CBCharacteristic
     ) {
-        blueFalcon.readCharacteristic(bluetoothPeripheral: bluetoothPeripheral, bluetoothCharacteristic: bluetoothCharacteristic)
+        blueFalcon.readCharacteristic(
+            bluetoothPeripheral: bluetoothPeripheral,
+            bluetoothCharacteristic: BluetoothCharacteristic(characteristic: bluetoothCharacteristic)
+        )
     }
 
     func writeCharacteristic(
@@ -59,7 +62,7 @@ class BluetoothService {
     ) {
         blueFalcon.writeCharacteristic(
             bluetoothPeripheral: bluetoothPeripheral,
-            bluetoothCharacteristic: bluetoothCharacteristic,
+            bluetoothCharacteristic: BluetoothCharacteristic(characteristic: bluetoothCharacteristic),
             value: value
         )
     }
@@ -91,6 +94,9 @@ class BluetoothService {
 }
 
 extension BluetoothService: BlueFalconDelegate {
+    
+    func didRssiUpdate(bluetoothPeripheral: BluetoothPeripheral) {
+    }
 
     func didDiscoverDevice(bluetoothPeripheral: BluetoothPeripheral) {
         guard (devices.first {
@@ -125,9 +131,9 @@ extension BluetoothService: BlueFalconDelegate {
 
     func didCharacteristcValueChanged(
         bluetoothPeripheral: BluetoothPeripheral,
-        bluetoothCharacteristic: CBCharacteristic
+        bluetoothCharacteristic: BluetoothCharacteristic
     ) {
-        bluetoothServiceCharacteristicDelegates(bluetoothCharacteristicId: bluetoothCharacteristic.uuid)
+        bluetoothServiceCharacteristicDelegates(bluetoothCharacteristicId: bluetoothCharacteristic.characteristic.uuid)
         .forEach { bluetoothServiceCharacteristicDelegate in
             bluetoothServiceCharacteristicDelegate.characteristcValueChanged()
         }

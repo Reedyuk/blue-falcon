@@ -109,6 +109,11 @@ class BluetoothService(private val blueFalcon: BlueFalcon) {
             println("didUpdateMTU")
         }
 
+        override fun didRssiUpdate(bluetoothPeripheral: BluetoothPeripheral) {
+            println("didRssiUpdate")
+            deviceConnectDelegate?.didRssiChange(bluetoothPeripheral)
+        }
+
     }
 }
 
@@ -119,6 +124,7 @@ interface DevicesDelegate {
 interface DeviceConnectDelegate {
     fun didDeviceConnect(bluetoothPeripheral: BluetoothPeripheral)
     fun didDiscoverServices(bluetoothPeripheral: BluetoothPeripheral)
+    fun didRssiChange(bluetoothPeripheral: BluetoothPeripheral)
 }
 
 interface DeviceCharacteristicDelegate {

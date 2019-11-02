@@ -5,7 +5,7 @@ import platform.CoreBluetooth.CBService
 
 actual class BluetoothPeripheral(val bluetoothDevice: CBPeripheral, val rssiValue: Float?) {
     actual val name: String? = bluetoothDevice.name
-    actual val rssi: Float? = rssiValue
+    actual var rssi: Float? = rssiValue
     actual val services: List<BluetoothService>
         get() = bluetoothDevice.services?.map {
             BluetoothService(it as CBService)
