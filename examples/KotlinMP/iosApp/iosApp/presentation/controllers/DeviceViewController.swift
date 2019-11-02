@@ -14,6 +14,32 @@ class DeviceViewController: UITableViewController {
     private var deviceViewModels: [DeviceServiceViewModel] = []
     var bluetoothDevice: LibraryBluetoothPeripheral!
 
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        tableView.tableHeaderView = createHeaderView()
+    }
+
+    private func createHeaderView() -> UIView {
+        let deviceName = viewModel.displayName
+        let rssi = viewModel.rssi
+        let headerView = UIView(
+            frame: CGRect(x: 0, y: 0, width: tableView.frame.width, height: 100)
+        )
+        let titleLabel = UILabel(
+            frame: CGRect(x: 20, y: 10, width: tableView.frame.width-40, height: 44)
+        )
+        titleLabel.text = deviceName
+        headerView.addSubview(titleLabel)
+        let rssiLabel = UILabel(
+            frame: CGRect(x: 20, y: 40, width: tableView.frame.width-40, height: 44)
+        )
+        if let rssiForced = rssi {
+            rssiLabel.text = "rssi: \(rssiForced)"
+        }
+        headerView.addSubview(rssiLabel)
+        return headerView
+    }
+
     override func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
         return deviceViewModels.count
     }

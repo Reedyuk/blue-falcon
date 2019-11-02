@@ -8,12 +8,12 @@ import sample.DeviceCharacteristicDelegate
 class DeviceCharacteristicViewModel(
     private val bluetoothService: BluetoothService,
     private var bluetoothDevice: BluetoothPeripheral,
-    private val characteristic: BluetoothCharacteristic
+    private val characteristic: BluetoothCharacteristic,
+    var output: DeviceCharacteristicViewModelOutput?
 ): DeviceCharacteristicDelegate {
-    var output: DeviceCharacteristicViewModelOutput? = null
     val displayName = characteristic.name
     var notify: Boolean = false
-    fun value(): String = characteristic.value ?: ""
+    var value: String = ""
 
     init {
         bluetoothService.addDeviceCharacteristicDelegate(this)
@@ -36,25 +36,16 @@ class DeviceCharacteristicViewModel(
         output?.refresh()
     }
 
-    fun writeCharactersticTapped() {
-//        val builder = AlertDialog.Builder(deviceServiceActivity)
-//        builder.setTitle("Input value to send to characteristic")
-//        val input = EditText(deviceServiceActivity)
-//        input.inputType = InputType.TYPE_CLASS_TEXT
-//        builder.setView(input)
-//
-//        builder.setPositiveButton("OK") { _, _ ->
-//            BlueFalconApplication.instance.bluetoothService.writeCharacteristic(
-//                device,
-//                characteristic,
-//                input.text.toString()
-//            )
-//        }
-//        builder.setNegativeButton("Cancel") { dialog, _ -> dialog.cancel() }
-//        builder.show()
+    fun writeCharactersticTapped(value: String) {
+        bluetoothService.writeCharacteristic(
+            bluetoothDevice,
+            characteristic,
+            value
+        )
     }
 
     override fun didCharacteristcValueChanged(value: String) {
+        this.value = value
         output?.refresh()
     }
 }

@@ -4,6 +4,7 @@ import org.jetbrains.anko.*
 import org.jetbrains.anko.sdk27.coroutines.onItemClick
 import presentation.activities.DeviceServiceActivity
 import presentation.adapters.DeviceServiceAdapter
+import presentation.viewmodels.deviceservice.DeviceCharacteristicViewModel
 import presentation.viewmodels.deviceservice.DeviceCharacteristicsViewModel
 
 class DeviceServiceActivityUI(
@@ -11,11 +12,15 @@ class DeviceServiceActivityUI(
     private val viewModel: DeviceCharacteristicsViewModel
 ): AnkoComponent<DeviceServiceActivity> {
 
-    private val deviceAdapter = DeviceServiceAdapter(viewModel.deviceCharacteristicViewModels())
+    private val deviceAdapter = DeviceServiceAdapter(
+        deviceServiceActivity,
+        createViewModels()
+    )
+
+    private fun createViewModels(): List<DeviceCharacteristicViewModel> = viewModel.deviceCharacteristicViewModels(deviceServiceActivity)
 
     fun refresh() {
         deviceServiceActivity.runOnUiThread {
-            deviceAdapter.deviceCharacteristicsViewModels = viewModel.deviceCharacteristicViewModels()
             deviceAdapter.notifyDataSetChanged()
         }
     }

@@ -11,7 +11,7 @@ import app
 class DeviceServiceViewController: UITableViewController {
 
     var viewModel: DeviceCharacteristicsViewModel!
-    private lazy var deviceViewModels: [DeviceCharacteristicViewModel] = viewModel.deviceCharacteristicViewModels()
+    private lazy var deviceViewModels: [DeviceCharacteristicViewModel] = viewModel.deviceCharacteristicViewModels(output: nil)
     var bluetoothDevice: LibraryBluetoothPeripheral!
     var service: LibraryBluetoothService!
 

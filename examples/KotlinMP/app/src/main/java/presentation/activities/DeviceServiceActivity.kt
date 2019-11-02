@@ -9,11 +9,11 @@ import dev.bluefalcon.BluetoothPeripheral
 import dev.bluefalcon.BluetoothService
 import org.jetbrains.anko.setContentView
 import presentation.AppApplication
+import presentation.viewmodels.deviceservice.DeviceCharacteristicViewModelOutput
 import presentation.viewmodels.deviceservice.DeviceCharacteristicsViewModel
 import presentation.views.DeviceServiceActivityUI
 
-class DeviceServiceActivity: AppCompatActivity() {
-
+class DeviceServiceActivity: AppCompatActivity(), DeviceCharacteristicViewModelOutput {
     private lateinit var viewModel: DeviceCharacteristicsViewModel
     private lateinit var deviceUI: DeviceServiceActivityUI
 
@@ -32,6 +32,10 @@ class DeviceServiceActivity: AppCompatActivity() {
         )
         deviceUI = DeviceServiceActivityUI(this, viewModel)
         deviceUI.setContentView(this)
+    }
+
+    override fun refresh() {
+        deviceUI.refresh()
     }
 
 }

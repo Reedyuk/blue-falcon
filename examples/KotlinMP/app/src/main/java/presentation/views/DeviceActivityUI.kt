@@ -32,7 +32,7 @@ class DeviceActivityUI(
                 adapter = deviceAdapter
             }.onItemClick { _, _, index, _ ->
                 owner.startActivity<DeviceServiceActivity>(
-                    "device" to viewModel.bluetoothDevice,
+                    "device" to viewModel.bluetoothDevice.bluetoothDevice,
                     "service" to viewModel.services[index].service
                 )
             }

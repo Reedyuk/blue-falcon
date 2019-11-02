@@ -23,7 +23,7 @@ class CharacteristicViewCell: UITableViewCell {
 
     private func redraw() {
         nameLabel.text = viewModel.displayName
-        readValueLabel.text = viewModel.value()
+        readValueLabel.text = viewModel.value
         notifyButton.titleLabel?.text = "Notify \(viewModel.notify.description)"
     }
 
@@ -36,7 +36,20 @@ class CharacteristicViewCell: UITableViewCell {
     }
 
     @IBAction func writePressed() {
-        viewModel.writeCharactersticTapped()
+        let alert = UIAlertController(
+            title: "Characteristic Write",
+            message: "Please enter a value to write to the characteristic",
+            preferredStyle: .alert
+        )
+        alert.addTextField { textfield in
+            textfield.placeholder = "Enter value"
+        }
+        alert.addAction(UIAlertAction(title: "OK", style: .default, handler: { _ in
+            guard let input = alert.textFields?.first?.text else { return }
+            self.viewModel.writeCharactersticTapped(value: input)
+        }))
+        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+        AppDelegate.instance.window?.rootViewController?.present(alert, animated: true)
     }
 
 }

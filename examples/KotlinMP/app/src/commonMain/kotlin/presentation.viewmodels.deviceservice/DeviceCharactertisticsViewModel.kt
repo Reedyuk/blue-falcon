@@ -12,11 +12,12 @@ class DeviceCharacteristicsViewModel(
 ) {
     val displayName = service.name ?: ""
 
-    fun deviceCharacteristicViewModels(): List<DeviceCharacteristicViewModel> = characteristics.map {
+    fun deviceCharacteristicViewModels(output: DeviceCharacteristicViewModelOutput?): List<DeviceCharacteristicViewModel> = characteristics.map {
         DeviceCharacteristicViewModel(
             bluetoothService,
             bluetoothDevice,
-            it
+            it,
+            output
         )
     }
 

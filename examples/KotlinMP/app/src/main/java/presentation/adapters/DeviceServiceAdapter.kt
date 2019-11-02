@@ -1,14 +1,21 @@
 package presentation.adapters
 
+import android.app.AlertDialog
 import android.graphics.Typeface
+import android.text.InputType
 import android.view.View
 import android.view.ViewGroup
 import android.widget.BaseAdapter
+import android.widget.EditText
 import org.jetbrains.anko.*
 import org.jetbrains.anko.sdk27.coroutines.onClick
+import presentation.activities.DeviceServiceActivity
 import presentation.viewmodels.deviceservice.DeviceCharacteristicViewModel
 
-class DeviceServiceAdapter(var deviceCharacteristicsViewModels : List<DeviceCharacteristicViewModel>) : BaseAdapter() {
+class DeviceServiceAdapter(
+    private val deviceServiceActivity: DeviceServiceActivity,
+    var deviceCharacteristicsViewModels : List<DeviceCharacteristicViewModel>
+) : BaseAdapter() {
 
     override fun getView(i : Int, v : View?, parent : ViewGroup?) : View {
         val item = getItem(i)
@@ -25,13 +32,13 @@ class DeviceServiceAdapter(var deviceCharacteristicsViewModels : List<DeviceChar
                         textView("Value: ") {
                             typeface = Typeface.DEFAULT_BOLD
                         }
-                        textView(item.value())
+                        textView(item.value)
                     }
                     linearLayout {
                         textView("Notify: ") {
                             typeface = Typeface.DEFAULT_BOLD
                         }
-                        //textView(item.notify.toString())
+                        textView(item.notify.toString())
                     }
                 }
                 linearLayout {
@@ -47,7 +54,16 @@ class DeviceServiceAdapter(var deviceCharacteristicsViewModels : List<DeviceChar
                     }
                     button("Write") {
                         onClick {
-                            item.writeCharactersticTapped()
+                            val builder = AlertDialog.Builder(deviceServiceActivity)
+                            builder.setTitle("Input value to send to characteristic")
+                            val input = EditText(deviceServiceActivity)
+                            input.inputType = InputType.TYPE_CLASS_TEXT
+                            builder.setView(input)
+                            builder.setPositiveButton("OK") { _, _ ->
+                                item.writeCharactersticTapped(input.text.toString())
+                            }
+                            builder.setNegativeButton("Cancel") { dialog, _ -> dialog.cancel() }
+                            builder.show()
                         }
                     }
                 }

@@ -11,6 +11,7 @@ class DeviceViewModel (
 ): DeviceConnectDelegate {
 
     val displayName: String = bluetoothDevice.name ?: "Unidentified"
+    val rssi: Float? = bluetoothDevice.rssi
     val services: List<dev.bluefalcon.BluetoothService> get() = bluetoothDevice.services
 
     init {
