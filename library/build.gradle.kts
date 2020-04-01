@@ -3,6 +3,7 @@ import java.util.*
 buildscript {
     val kotlin_version: String by project
     val android_tools_version: String by project
+    val bintray_plugin_version: String by project
 
     repositories {
         mavenLocal()
@@ -18,7 +19,7 @@ buildscript {
     dependencies {
         classpath("org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version")
         classpath("com.android.tools.build:gradle:$android_tools_version")
-        classpath("com.jfrog.bintray.gradle:gradle-bintray-plugin:1.8.4")
+        classpath("com.jfrog.bintray.gradle:gradle-bintray-plugin:$bintray_plugin_version")
     }
 }
 
@@ -28,18 +29,6 @@ plugins {
     id("maven-publish")
     id("signing")
 }
-
-val sonatypeStaging = "https://oss.sonatype.org/service/local/staging/deploy/maven2/"
-val sonatypeSnapshots = "https://oss.sonatype.org/content/repositories/snapshots/"
-
-val local = Properties()
-val localProperties: File = rootProject.file("local.properties")
-if (localProperties.exists()) {
-    localProperties.inputStream().use { local.load(it) }
-}
-
-val sonatypePasswordEnv = local.getProperty("sonatypePasswordEnv")
-val sonatypeUsernameEnv = local.getProperty("sonatypeUsernameEnv")
 
 repositories {
     mavenLocal()
@@ -136,6 +125,29 @@ val javadocJar by tasks.creating(Jar::class) {
     archiveClassifier.value("javadoc")
 }
 
+//expose properties
+val sonatypeStaging = "https://oss.sonatype.org/service/local/staging/deploy/maven2/"
+val sonatypeSnapshots = "https://oss.sonatype.org/content/repositories/snapshots/"
+
+val local = Properties()
+val localProperties: File = rootProject.file("local.properties")
+if (localProperties.exists()) {
+    localProperties.inputStream().use { local.load(it) }
+}
+
+val sonatypePasswordEnv = local.getProperty("sonatypePasswordEnv")
+val sonatypeUsernameEnv = local.getProperty("sonatypeUsernameEnv")
+
+val projectGithubUrl: String by project
+val projectGithubSCM: String by project
+val projectGithubSCMSSL: String by project
+val projectDescription: String by project
+
+val developerId: String by project
+val developerName: String by project
+val developerEmail: String by project
+val group: String by project
+
 publishing {
     repositories {
         maven {
@@ -155,9 +167,9 @@ publishing {
         artifact(javadocJar)
 
         pom {
-            name.set("dev.bluefalcon")
-            description.set("Kotlin Multiplatform Bluetooth Library")
-            url.set("https://github.com/reedyuk/blue-falcon")
+            name.set(group)
+            description.set(projectDescription)
+            url.set(projectGithubUrl)
 
             licenses {
                 license {
@@ -168,16 +180,16 @@ publishing {
 
             developers {
                 developer {
-                    id.set("Reedyuk")
-                    name.set("Andrew Reed")
-                    email.set("andrew_reed@hotmail.com")
+                    id.set(developerId)
+                    name.set(developerName)
+                    email.set(developerEmail)
                 }
             }
 
             scm {
-                url.set("https://github.com/reedyuk/blue-falcon")
-                connection.set("scm:git:git://git@github.com:reedyuk/blue-falcon.git")
-                developerConnection.set("scm:git:ssh://git@github.com:reedyuk/blue-falcon.git")
+                url.set(projectGithubUrl)
+                connection.set(projectGithubSCM)
+                developerConnection.set(projectGithubSCMSSL)
             }
 
         }
