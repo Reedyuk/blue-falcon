@@ -19,11 +19,12 @@ actual class BlueFalcon actual constructor(
     private val bluetoothManager: BluetoothManager = context.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
     private val mBluetoothScanCallBack = BluetoothScanCallBack()
     private val mGattClientCallback = GattClientCallback()
+    var transportMethod: Int = BluetoothDevice.TRANSPORT_AUTO
     actual var isScanning: Boolean = false
 
     actual fun connect(bluetoothPeripheral: BluetoothPeripheral) {
         log("connect")
-        bluetoothPeripheral.bluetoothDevice.connectGatt(context, false, mGattClientCallback)
+        bluetoothPeripheral.bluetoothDevice.connectGatt(context, false, mGattClientCallback, transportMethod)
     }
 
     actual fun disconnect(bluetoothPeripheral: BluetoothPeripheral) {
