@@ -54,6 +54,26 @@ class DeviceServiceAdapter(var viewModels : List<DeviceCharacteristicViewModel>)
                         }
                     }
                 }
+                if (item.descriptors.isNotEmpty()) {
+                    verticalLayout {
+                        textView("Descriptors") {
+                            typeface = Typeface.DEFAULT_BOLD
+                        }
+                        linearLayout {
+                            textView("Values")
+                            item.descriptorValues.forEach {
+                                textView(" ${it.key}: ${it.value} ")
+                            }
+                        }
+                        linearLayout {
+                            button("Read") {
+                                onClick {
+                                    item.readDescriptorTapped()
+                                }
+                            }
+                        }
+                    }
+                }
             }
         }
     }

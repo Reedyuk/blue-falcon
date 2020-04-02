@@ -114,6 +114,15 @@ actual class BlueFalcon actual constructor(
         }
     }
 
+    actual fun readDescriptor(
+        bluetoothPeripheral: BluetoothPeripheral,
+        bluetoothCharacteristic: BluetoothCharacteristic,
+        bluetoothCharacteristicDescriptor: BluetoothCharacteristicDescriptor
+    ) {
+        mGattClientCallback.gattForDevice(bluetoothPeripheral.bluetoothDevice)?.readDescriptor(bluetoothCharacteristicDescriptor)
+        log("readDescriptor -> ${bluetoothCharacteristicDescriptor.uuid}")
+    }
+
     actual fun changeMTU(bluetoothPeripheral: BluetoothPeripheral, mtuSize: Int) {
         mGattClientCallback.gattForDevice(bluetoothPeripheral.bluetoothDevice)?.requestMtu(mtuSize)
     }
@@ -222,6 +231,21 @@ actual class BlueFalcon actual constructor(
 
         override fun onCharacteristicChanged(gatt: BluetoothGatt?, characteristic: BluetoothGattCharacteristic?) {
             handleCharacteristicValueChange(gatt, characteristic)
+        }
+
+        override fun onDescriptorRead(gatt: BluetoothGatt?, descriptor: BluetoothGattDescriptor?, status: Int) {
+            log("onDescriptorRead $descriptor")
+            descriptor?.let { forcedDescriptor ->
+                gatt?.device?.let { bluetoothDevice ->
+                    log("onDescriptorRead value ${forcedDescriptor.value}")
+                    delegates.forEach {
+                        it.didReadDescriptor(
+                            BluetoothPeripheral(bluetoothDevice),
+                            forcedDescriptor
+                        )
+                    }
+                }
+            }
         }
 
         private fun handleCharacteristicValueChange(gatt: BluetoothGatt?, characteristic: BluetoothGattCharacteristic?) {

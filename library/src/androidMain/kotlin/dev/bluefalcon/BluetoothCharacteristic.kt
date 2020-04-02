@@ -1,6 +1,7 @@
 package dev.bluefalcon
 
 import android.bluetooth.BluetoothGattCharacteristic
+import android.bluetooth.BluetoothGattDescriptor
 import java.nio.charset.Charset
 
 actual class BluetoothCharacteristic(val characteristic: BluetoothGattCharacteristic) {
@@ -10,4 +11,8 @@ actual class BluetoothCharacteristic(val characteristic: BluetoothGattCharacteri
         get() = characteristic.value?.let { data ->
             return String(data, Charset.defaultCharset())
         }
+    actual val descriptors: List<BluetoothCharacteristicDescriptor>
+        get() = characteristic.descriptors
 }
+
+actual typealias BluetoothCharacteristicDescriptor = BluetoothGattDescriptor

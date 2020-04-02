@@ -66,6 +66,18 @@ class BluetoothService {
             value: value
         )
     }
+    
+    func readDescriptor(
+        bluetoothPeripheral: BluetoothPeripheral,
+        bluetoothCharacteristic: CBCharacteristic,
+        bluetoothDescriptor: CBDescriptor
+    ) {
+        blueFalcon.readDescriptor(
+            bluetoothPeripheral: bluetoothPeripheral,
+            bluetoothCharacteristic: BluetoothCharacteristic(characteristic: bluetoothCharacteristic),
+            bluetoothCharacteristicDescriptor: bluetoothDescriptor
+        )
+    }
 
     func removeDetectedDeviceDelegate(delegate: BluetoothServiceDetectedDeviceDelegate) {
         for (index, storedDelegate) in AppDelegate.instance.bluetoothService.detectedDeviceDelegates.enumerated() {
@@ -94,6 +106,10 @@ class BluetoothService {
 }
 
 extension BluetoothService: BlueFalconDelegate {
+
+    func didReadDescriptor(bluetoothPeripheral: BluetoothPeripheral, bluetoothCharacteristicDescriptor: CBDescriptor) {
+        print("BT Service didReadDescriptor -> \(bluetoothCharacteristicDescriptor.value)")
+    }
     
     func didRssiUpdate(bluetoothPeripheral: BluetoothPeripheral) {
     }

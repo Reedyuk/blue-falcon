@@ -1,4 +1,4 @@
-# ![Blue Falcon](bluefalcon.png) Blue-Falcon [![Build Status](https://api.travis-ci.com/Reedyuk/blue-falcon.svg?branch=master)](https://api.travis-ci.com/Reedyuk/blue-falcon) [![Kotlin](https://img.shields.io/badge/kotlin-1.3.70-blue.svg)](http://kotlinlang.org)
+# ![Blue Falcon](bluefalcon.png) Blue-Falcon [![Build Status](https://api.travis-ci.com/Reedyuk/blue-falcon.svg?branch=master)](https://api.travis-ci.com/Reedyuk/blue-falcon) [![Kotlin](https://img.shields.io/badge/kotlin-1.3.71-blue.svg)](http://kotlinlang.org)
 
 A Bluetooth "Cross Platform" Kotlin Multiplatform library for iOS and Android. 
 
@@ -32,7 +32,7 @@ blueFalcon.scan()
 #### Install
 
 ```kotlin
-implementation 'dev.bluefalcon:library-android:0.5.6'
+implementation 'dev.bluefalcon:library-android:0.6.1'
 ```
 
 The Android sdk requires an Application context, we do this by passing in on the BlueFalcon constructor, in this example we are calling the code from an activity(this).
@@ -71,6 +71,11 @@ The basic functionality of the api is listed below, this should be a simplistic 
         bluetoothCharacteristic: BluetoothCharacteristic,
         value: String
     )
+    fun readDescriptor(
+        bluetoothPeripheral: BluetoothPeripheral,
+        bluetoothCharacteristic: BluetoothCharacteristic,
+        bluetoothCharacteristicDescriptor: BluetoothCharacteristicDescriptor
+    )
     fun changeMTU(bluetoothPeripheral: BluetoothPeripheral, mtuSize: Int)
 ```
 
@@ -80,7 +85,7 @@ This repo contains examples for kotlin MP, ios and android in the examples folde
 
 ### Kotlin MP
 
-Open the kotlin MP example directory in InteliJ and then run the targets.
+Open the kotlin MP example directory in InteliJ and then run the install targets.
 
 ### iOS
 

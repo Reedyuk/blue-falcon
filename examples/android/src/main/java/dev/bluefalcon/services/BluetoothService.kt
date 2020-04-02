@@ -1,6 +1,5 @@
 package dev.bluefalcon.services
 
-import android.bluetooth.BluetoothDevice
 import dev.bluefalcon.*
 import java.util.*
 import android.os.Build
@@ -18,8 +17,6 @@ class BluetoothService: BlueFalconDelegate {
 
     init {
         blueFalcon.delegates.add(this)
-        // By default this is AUTO.
-        blueFalcon.transportMethod = BluetoothDevice.TRANSPORT_LE
     }
 
     fun scan() {
@@ -58,6 +55,15 @@ class BluetoothService: BlueFalconDelegate {
         blueFalcon.writeCharacteristic(bluetoothPeripheral, bluetoothCharacteristic, value)
     }
 
+    fun readDescriptor(
+        bluetoothPeripheral: BluetoothPeripheral,
+        bluetoothCharacteristic: BluetoothCharacteristic,
+        bluetoothCharacteristicDescriptor: BluetoothCharacteristicDescriptor
+    ) {
+        log("btservice readDescriptor")
+        blueFalcon.readDescriptor(bluetoothPeripheral, bluetoothCharacteristic, bluetoothCharacteristicDescriptor)
+    }
+
     override fun didDiscoverDevice(bluetoothPeripheral: BluetoothPeripheral) {
         if (devices.firstOrNull {
             it.bluetoothDevice.address == bluetoothPeripheral.bluetoothDevice.address
@@ -76,6 +82,13 @@ class BluetoothService: BlueFalconDelegate {
     override fun didDiscoverServices(bluetoothPeripheral: BluetoothPeripheral) {
         connectedDeviceDelegates[bluetoothPeripheral.bluetoothDevice.address]?.discoveredServices(bluetoothPeripheral)
         blueFalcon.changeMTU(bluetoothPeripheral, 250)
+    }
+
+    override fun didReadDescriptor(
+        bluetoothPeripheral: BluetoothPeripheral,
+        bluetoothCharacteristicDescriptor: BluetoothCharacteristicDescriptor
+    ) {
+        characteristicDelegates[bluetoothCharacteristicDescriptor.characteristic.uuid]?.descriptorValueChanged(bluetoothCharacteristicDescriptor)
     }
 
     override fun didRssiUpdate(bluetoothPeripheral: BluetoothPeripheral) {
@@ -105,4 +118,5 @@ interface BluetoothServiceConnectedDeviceDelegate {
 
 interface BluetoothServiceCharacteristicDelegate {
     fun characteristcValueChanged(bluetoothCharacteristic: BluetoothCharacteristic)
+    fun descriptorValueChanged(bluetoothCharacteristicDescriptor: BluetoothCharacteristicDescriptor)
 }

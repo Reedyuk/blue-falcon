@@ -1,9 +1,6 @@
 package sample
 
-import dev.bluefalcon.BlueFalcon
-import dev.bluefalcon.BlueFalconDelegate
-import dev.bluefalcon.BluetoothCharacteristic
-import dev.bluefalcon.BluetoothPeripheral
+import dev.bluefalcon.*
 
 expect fun BluetoothService.scan()
 
@@ -44,6 +41,13 @@ class BluetoothService(private val blueFalcon: BlueFalcon) {
         bluetoothCharacteristic: BluetoothCharacteristic
     ) {
         blueFalcon.readCharacteristic(bluetoothPeripheral, bluetoothCharacteristic)
+        bluetoothCharacteristic.descriptors.forEach { descriptor ->
+            blueFalcon.readDescriptor(
+                bluetoothPeripheral,
+                bluetoothCharacteristic,
+                descriptor
+            )
+        }
     }
 
     fun notifyCharacteristic(
@@ -85,6 +89,13 @@ class BluetoothService(private val blueFalcon: BlueFalcon) {
         override fun didDiscoverServices(bluetoothPeripheral: BluetoothPeripheral) {
             println("didDiscoverServices")
             deviceConnectDelegate?.didDiscoverServices(bluetoothPeripheral)
+        }
+
+        override fun didReadDescriptor(
+            bluetoothPeripheral: BluetoothPeripheral,
+            bluetoothCharacteristicDescriptor: BluetoothCharacteristicDescriptor
+        ) {
+            println("read descriptor ${bluetoothCharacteristicDescriptor}")
         }
 
         override fun didCharacteristcValueChanged(

@@ -16,6 +16,14 @@ class DeviceCharacteristicCellViewModel: Identifiable, ObservableObject {
     var id: CBUUID
     let name: String
     let characteristic: CBCharacteristic
+    let descriptors: [CBDescriptor]
+    var descriptorData: [Descriptor] {
+        descriptors.compactMap {
+            guard let data = $0.value as? Data else { return nil }
+            let dataString = String(decoding: data, as: UTF8.self)
+            return Descriptor(data: dataString)
+        }
+    }
     let device: BluetoothPeripheral
     @Published var notify: Bool = false
     @Published var characterisicValue: String? = nil
@@ -26,6 +34,7 @@ class DeviceCharacteristicCellViewModel: Identifiable, ObservableObject {
         self.name = characteristic.uuid.description
         self.characteristic = characteristic
         self.device = device
+        self.descriptors = characteristic.descriptors ?? []
     }
 
     func onAppear() {
