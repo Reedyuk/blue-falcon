@@ -74,6 +74,16 @@ struct DeviceCharacteristicCell: View {
                 }
                 Spacer()
             }.padding()
+            if !self.viewModel.descriptors.isEmpty {
+                VStack(alignment: HorizontalAlignment.leading, spacing: 10) {
+                    HStack {
+                        Text("Descriptors: ").bold()
+                        ForEach(self.viewModel.descriptorData, id: \.id) { descriptor in
+                            Text("\(descriptor.id) \(descriptor.data)")
+                        }
+                    }
+                }.padding()
+            }
         }
         .onAppear {
             self.viewModel.onAppear()

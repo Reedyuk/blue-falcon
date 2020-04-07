@@ -44,6 +44,14 @@ actual class BlueFalcon actual constructor(context: ApplicationContext, serviceU
         TODO("not implemented")
     }
 
+    actual fun readDescriptor(
+        bluetoothPeripheral: BluetoothPeripheral,
+        bluetoothCharacteristic: BluetoothCharacteristic,
+        bluetoothCharacteristicDescriptor: BluetoothCharacteristicDescriptor
+    ) {
+        TODO("not implemented")
+    }
+
     actual fun changeMTU(bluetoothPeripheral: BluetoothPeripheral, mtuSize: Int) {
         TODO("not implemented")
     }

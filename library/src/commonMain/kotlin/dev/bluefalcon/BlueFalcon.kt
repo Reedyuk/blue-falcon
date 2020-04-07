@@ -28,6 +28,12 @@ expect class BlueFalcon(context: ApplicationContext, serviceUUID: String?) {
         value: String
     )
 
+    fun readDescriptor(
+        bluetoothPeripheral: BluetoothPeripheral,
+        bluetoothCharacteristic: BluetoothCharacteristic,
+        bluetoothCharacteristicDescriptor: BluetoothCharacteristicDescriptor
+    )
+
     fun changeMTU(bluetoothPeripheral: BluetoothPeripheral, mtuSize: Int)
 
 }

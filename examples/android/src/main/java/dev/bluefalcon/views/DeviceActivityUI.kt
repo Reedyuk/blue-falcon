@@ -33,7 +33,7 @@ class DeviceActivityUI(private val viewModel: DeviceViewModel) : AnkoComponent<D
             }.onItemClick { _, _, index, _ ->
                 viewModel.deviceAdapter.getItem(index).let {
                     owner.startActivity<DeviceServiceActivity>(
-                        "service" to viewModel.deviceAdapter.getItem(index),
+                        "service" to viewModel.deviceAdapter.getItem(index).service,
                         "device" to viewModel.bluetoothPeripheral.bluetoothDevice
                     )
                 }

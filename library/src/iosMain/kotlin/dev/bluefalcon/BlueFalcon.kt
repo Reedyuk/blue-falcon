@@ -81,6 +81,14 @@ actual class BlueFalcon actual constructor(
         }
     }
 
+    actual fun readDescriptor(
+        bluetoothPeripheral: BluetoothPeripheral,
+        bluetoothCharacteristic: BluetoothCharacteristic,
+        bluetoothCharacteristicDescriptor: BluetoothCharacteristicDescriptor
+    ) {
+        bluetoothPeripheral.bluetoothDevice.discoverDescriptorsForCharacteristic(bluetoothCharacteristic.characteristic)
+    }
+
     actual fun changeMTU(bluetoothPeripheral: BluetoothPeripheral, mtuSize: Int) {
         println("Change MTU size called but not needed.")
         delegates.forEach {
@@ -169,6 +177,9 @@ actual class BlueFalcon actual constructor(
             delegates.forEach {
                 it.didDiscoverCharacteristics(device)
             }
+            BluetoothService(didDiscoverCharacteristicsForService).characteristics.forEach {
+                peripheral.discoverDescriptorsForCharacteristic(it.characteristic)
+            }
         }
 
         override fun peripheral(
@@ -188,6 +199,10 @@ actual class BlueFalcon actual constructor(
                     characteristic
                 )
             }
+        }
+
+        override fun peripheral(peripheral: CBPeripheral, didUpdateValueForDescriptor: CBDescriptor, error: NSError?) {
+            println("didUpdateValueForDescriptor ${didUpdateValueForDescriptor.value}")
         }
     }
 

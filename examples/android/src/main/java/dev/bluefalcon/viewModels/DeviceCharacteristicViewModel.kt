@@ -2,14 +2,13 @@ package dev.bluefalcon.viewModels
 
 import android.app.AlertDialog
 import android.bluetooth.BluetoothGattCharacteristic
-import dev.bluefalcon.BlueFalconApplication
-import dev.bluefalcon.BluetoothPeripheral
 import java.nio.charset.Charset
 import android.text.InputType
 import android.widget.EditText
-import dev.bluefalcon.BluetoothCharacteristic
+import dev.bluefalcon.*
 import dev.bluefalcon.activities.DeviceServiceActivity
 import dev.bluefalcon.services.BluetoothServiceCharacteristicDelegate
+import java.util.*
 
 
 class DeviceCharacteristicViewModel(
@@ -20,12 +19,25 @@ class DeviceCharacteristicViewModel(
 
     var notify = false
     val id = characteristic.characteristic.uuid
+    var descriptorValues: MutableMap<UUID, String> = mutableMapOf()
+    val descriptors = characteristic.descriptors
 
     init {
         BlueFalconApplication.instance.bluetoothService.characteristicDelegates[characteristic.characteristic.uuid] = this
     }
 
     fun value(): String? = characteristic.value
+
+    fun readDescriptorTapped() {
+        log("readDescriptorTapped number of descriptors: ${characteristic.descriptors.size}")
+        characteristic.descriptors.forEach { descriptor ->
+            BlueFalconApplication.instance.bluetoothService.readDescriptor(
+                device,
+                characteristic,
+                descriptor
+            )
+        }
+    }
 
     fun readCharacteristicTapped() {
         BlueFalconApplication.instance.bluetoothService.readCharacteristic(
@@ -64,6 +76,12 @@ class DeviceCharacteristicViewModel(
 
     override fun characteristcValueChanged(bluetoothCharacteristic: BluetoothCharacteristic) {
         characteristic = bluetoothCharacteristic
+        deviceServiceViewModel.notifyValueChanged()
+    }
+
+    override fun descriptorValueChanged(bluetoothCharacteristicDescriptor: BluetoothCharacteristicDescriptor) {
+
+        descriptorValues[bluetoothCharacteristicDescriptor.uuid] = String(bluetoothCharacteristicDescriptor.value)
         deviceServiceViewModel.notifyValueChanged()
     }
 
