@@ -5,10 +5,10 @@ node("master") {
     }
 
     stage("Build") {
-        sh "./gradlew library:build"
+        sh "gradle library:build"
     }
 
     stage("Publish") {
-        sh "./gradlew library:publish"
+        sh "gradle library:publish"
     }
 }
