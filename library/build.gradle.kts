@@ -71,6 +71,7 @@ kotlin {
 
     iosArm64()
     iosX64()
+    macosX64()
 
     sourceSets {
         val commonMain by getting {
