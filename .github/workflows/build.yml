@@ -27,5 +27,5 @@ jobs:
       run: ./gradlew library:build
 
     # Runs a set of commands using the runners shell
-    - name: Run publish
-      run: ./gradlew library:publish
+    #- name: Run publish
+    #  run: ./gradlew library:publish
