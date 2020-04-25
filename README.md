@@ -1,4 +1,4 @@
-# ![Blue Falcon](bluefalcon.png) Blue-Falcon [![Build Status](https://api.travis-ci.com/Reedyuk/blue-falcon.svg?branch=master)](https://api.travis-ci.com/Reedyuk/blue-falcon) [![Kotlin](https://img.shields.io/badge/kotlin-1.3.71-blue.svg)](http://kotlinlang.org) ![badge][badge-android] ![badge][badge-native] ![badge][badge-mac]
+# ![Blue Falcon](bluefalcon.png) Blue-Falcon ![CI](https://github.com/Reedyuk/blue-falcon/workflows/CI/badge.svg) [![Kotlin](https://img.shields.io/badge/kotlin-1.3.71-blue.svg)](http://kotlinlang.org) ![badge][badge-android] ![badge][badge-native] ![badge][badge-mac]
 
 A Bluetooth "Cross Platform" Kotlin Multiplatform library for iOS, Android and MacOS. 
 
