@@ -24,12 +24,8 @@ jobs:
 
     # Runs a single command using the runners shell
     - name: Run gradle build
-      uses: OrangeLabs-moe/gradle-actions@v5.0-openjdk-14
-      with: 
-        args: library:build
+      run: ./gradlew library:build
 
     # Runs a set of commands using the runners shell
     - name: Run publish
-      uses: OrangeLabs-moe/gradle-actions@v5.0-openjdk-14
-      with:
-        args: library:publish
+      run: ./gradlew library:publish
