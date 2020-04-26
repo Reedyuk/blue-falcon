@@ -103,11 +103,15 @@ actual class BlueFalcon actual constructor(
     actual fun writeCharacteristic(
         bluetoothPeripheral: BluetoothPeripheral,
         bluetoothCharacteristic: BluetoothCharacteristic,
-        value: String
+        value: String,
+        writeType: Int?
     ) {
         mGattClientCallback.gattForDevice(bluetoothPeripheral.bluetoothDevice)?.let { gatt ->
             fetchCharacteristic(bluetoothCharacteristic, gatt)
                 .forEach {
+                    writeType?.let { writeType ->
+                        it.characteristic.writeType = writeType
+                    }
                     it.characteristic.setValue(value)
                     gatt.writeCharacteristic(it.characteristic)
                 }

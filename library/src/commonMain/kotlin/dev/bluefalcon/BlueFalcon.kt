@@ -25,7 +25,8 @@ expect class BlueFalcon(context: ApplicationContext, serviceUUID: String?) {
     fun writeCharacteristic(
         bluetoothPeripheral: BluetoothPeripheral,
         bluetoothCharacteristic: BluetoothCharacteristic,
-        value: String
+        value: String,
+        writeType: Int?
     )
 
     fun readDescriptor(
