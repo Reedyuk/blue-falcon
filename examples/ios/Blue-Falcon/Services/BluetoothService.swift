@@ -63,7 +63,8 @@ class BluetoothService {
         blueFalcon.writeCharacteristic(
             bluetoothPeripheral: bluetoothPeripheral,
             bluetoothCharacteristic: BluetoothCharacteristic(characteristic: bluetoothCharacteristic),
-            value: value
+            value: value,
+            writeType: nil
         )
     }
     

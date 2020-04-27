@@ -1,5 +1,6 @@
 package dev.bluefalcon.services
 
+import android.bluetooth.BluetoothGattCharacteristic
 import dev.bluefalcon.*
 import java.util.*
 import android.os.Build
@@ -52,7 +53,7 @@ class BluetoothService: BlueFalconDelegate {
             bluetoothCharacteristic: BluetoothCharacteristic,
             value: String
     ) {
-        blueFalcon.writeCharacteristic(bluetoothPeripheral, bluetoothCharacteristic, value)
+        blueFalcon.writeCharacteristic(bluetoothPeripheral, bluetoothCharacteristic, value, BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT)
     }
 
     fun readDescriptor(
