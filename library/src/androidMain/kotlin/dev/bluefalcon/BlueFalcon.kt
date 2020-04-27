@@ -80,24 +80,73 @@ actual class BlueFalcon actual constructor(
         }
     }
 
+    private fun setCharacteristicNotification(
+        bluetoothPeripheral: BluetoothPeripheral,
+        bluetoothCharacteristic: BluetoothCharacteristic,
+        enable: Boolean,
+        descriptorValue: ByteArray
+    ) {
+        mGattClientCallback.gattForDevice(bluetoothPeripheral.bluetoothDevice)?.let { gatt ->
+            fetchCharacteristic(bluetoothCharacteristic, gatt)
+                .forEach {
+                    gatt.setCharacteristicNotification(it.characteristic, enable)
+                    it.characteristic.descriptors.forEach { descriptor ->
+                        descriptor.value = descriptorValue
+                        gatt.writeDescriptor(descriptor)
+                    }
+                }
+        }
+    }
+
     actual fun notifyCharacteristic(
         bluetoothPeripheral: BluetoothPeripheral,
         bluetoothCharacteristic: BluetoothCharacteristic,
         notify: Boolean
     ) {
-        mGattClientCallback.gattForDevice(bluetoothPeripheral.bluetoothDevice)?.let { gatt ->
-            fetchCharacteristic(bluetoothCharacteristic, gatt)
-                .forEach {
-                    gatt.setCharacteristicNotification(it.characteristic, notify)
-                    it.characteristic.descriptors.forEach {descriptor ->
-                        descriptor.value = if (notify) BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE else byteArrayOf(
-                            0x00,
-                            0x00
-                        )
-                        gatt.writeDescriptor(descriptor)
-                    }
-                }
-        }
+        setCharacteristicNotification(
+            bluetoothPeripheral,
+            bluetoothCharacteristic,
+            notify,
+            if (notify)
+                BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE
+            else
+                BluetoothGattDescriptor.DISABLE_NOTIFICATION_VALUE
+        )
+    }
+
+    actual fun indicateCharacteristic(
+        bluetoothPeripheral: BluetoothPeripheral,
+        bluetoothCharacteristic: BluetoothCharacteristic,
+        indicate: Boolean
+    ) {
+        setCharacteristicNotification(
+            bluetoothPeripheral,
+            bluetoothCharacteristic,
+            indicate,
+            if (indicate)
+                BluetoothGattDescriptor.ENABLE_INDICATION_VALUE
+            else
+                BluetoothGattDescriptor.DISABLE_NOTIFICATION_VALUE
+        )
+    }
+
+    actual fun notifyAndIndicateCharacteristic(
+        bluetoothPeripheral: BluetoothPeripheral,
+        bluetoothCharacteristic: BluetoothCharacteristic,
+        enable: Boolean
+    ) {
+        setCharacteristicNotification(
+            bluetoothPeripheral,
+            bluetoothCharacteristic,
+            enable,
+            if (enable)
+                byteArrayOf(
+                    0x03,
+                    0x00
+                )
+            else
+                BluetoothGattDescriptor.DISABLE_NOTIFICATION_VALUE
+        )
     }
 
     actual fun writeCharacteristic(

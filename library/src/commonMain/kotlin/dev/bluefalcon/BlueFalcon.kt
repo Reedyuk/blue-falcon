@@ -22,6 +22,18 @@ expect class BlueFalcon(context: ApplicationContext, serviceUUID: String?) {
         notify: Boolean
     )
 
+    fun indicateCharacteristic(
+        bluetoothPeripheral: BluetoothPeripheral,
+        bluetoothCharacteristic: BluetoothCharacteristic,
+        indicate: Boolean
+    )
+
+    fun notifyAndIndicateCharacteristic(
+        bluetoothPeripheral: BluetoothPeripheral,
+        bluetoothCharacteristic: BluetoothCharacteristic,
+        enable: Boolean
+    )
+
     fun writeCharacteristic(
         bluetoothPeripheral: BluetoothPeripheral,
         bluetoothCharacteristic: BluetoothCharacteristic,
