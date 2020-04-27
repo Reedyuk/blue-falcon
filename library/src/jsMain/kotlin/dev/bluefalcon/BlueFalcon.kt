@@ -45,6 +45,22 @@ actual class BlueFalcon actual constructor(context: ApplicationContext, serviceU
         TODO("not implemented")
     }
 
+    actual fun indicateCharacteristic(
+        bluetoothPeripheral: BluetoothPeripheral,
+        bluetoothCharacteristic: BluetoothCharacteristic,
+        indicate: Boolean
+    ) {
+        TODO("not implemented")
+    }
+
+    actual fun notifyAndIndicateCharacteristic(
+        bluetoothPeripheral: BluetoothPeripheral,
+        bluetoothCharacteristic: BluetoothCharacteristic,
+        enable: Boolean
+    ) {
+        TODO("not implemented")
+    }
+
     actual fun readDescriptor(
         bluetoothPeripheral: BluetoothPeripheral,
         bluetoothCharacteristic: BluetoothCharacteristic,
