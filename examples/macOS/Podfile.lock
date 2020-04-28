@@ -1,5 +1,5 @@
 PODS:
-  - library (0.6.0)
+  - library (0.6.6)
 
 DEPENDENCIES:
   - library (from `../../library`)
@@ -9,7 +9,7 @@ EXTERNAL SOURCES:
     :path: "../../library"
 
 SPEC CHECKSUMS:
-  library: 2d73fa9daeefcbc684728dbe764d3b396b433a3c
+  library: d26397f5d6730bd5b6dcbd6df26110df849a38a6
 
 PODFILE CHECKSUM: 2ccc63dfdfcd667b82d0a91dccf64f28b91bff7f
 

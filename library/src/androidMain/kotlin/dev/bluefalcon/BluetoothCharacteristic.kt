@@ -7,10 +7,8 @@ import java.nio.charset.Charset
 actual class BluetoothCharacteristic(val characteristic: BluetoothGattCharacteristic) {
     actual val name: String?
         get() = characteristic.uuid.toString()
-    actual val value: String?
-        get() = characteristic.value?.let { data ->
-            return String(data, Charset.defaultCharset())
-        }
+    actual val value: ByteArray?
+        get() = characteristic.value
     actual val descriptors: List<BluetoothCharacteristicDescriptor>
         get() = characteristic.descriptors
 }

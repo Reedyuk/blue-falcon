@@ -93,7 +93,10 @@ actual class BlueFalcon actual constructor(
             bluetoothPeripheral.bluetoothDevice.writeValue(
                 it,
                 bluetoothCharacteristic.characteristic,
-                CBCharacteristicWriteWithResponse
+                when (writeType) {
+                    1 -> CBCharacteristicWriteWithoutResponse
+                    else -> CBCharacteristicWriteWithResponse
+                }
             )
         }
     }
