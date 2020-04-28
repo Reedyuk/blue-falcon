@@ -1,7 +1,6 @@
 package dev.bluefalcon.viewModels
 
 import android.app.AlertDialog
-import android.bluetooth.BluetoothGattCharacteristic
 import java.nio.charset.Charset
 import android.text.InputType
 import android.widget.EditText
@@ -9,7 +8,6 @@ import dev.bluefalcon.*
 import dev.bluefalcon.activities.DeviceServiceActivity
 import dev.bluefalcon.services.BluetoothServiceCharacteristicDelegate
 import java.util.*
-
 
 class DeviceCharacteristicViewModel(
     private val deviceServiceActivity: DeviceServiceActivity,
@@ -26,7 +24,7 @@ class DeviceCharacteristicViewModel(
         BlueFalconApplication.instance.bluetoothService.characteristicDelegates[characteristic.characteristic.uuid] = this
     }
 
-    fun value(): String? = characteristic.value
+    fun value(): String? = characteristic.value?.toString(Charset.defaultCharset())
 
     fun readDescriptorTapped() {
         log("readDescriptorTapped number of descriptors: ${characteristic.descriptors.size}")

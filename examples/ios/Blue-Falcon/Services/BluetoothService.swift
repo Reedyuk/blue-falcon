@@ -64,7 +64,7 @@ class BluetoothService {
             bluetoothPeripheral: bluetoothPeripheral,
             bluetoothCharacteristic: BluetoothCharacteristic(characteristic: bluetoothCharacteristic),
             value: value,
-            writeType: nil
+            writeType: 1
         )
     }
     
