@@ -101,7 +101,7 @@ kotlin {
             dependencies {
                 implementation("org.jetbrains.kotlin:kotlin-stdlib")
                 compileOnly("org.robolectric:android-all:9-robolectric-4913185-2")
-                implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.3.5")
+                implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.3.5-native-mt")
             }
         }
 

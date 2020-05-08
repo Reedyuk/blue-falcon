@@ -1,5 +1,5 @@
 plugins {
-    id 'org.jetbrains.kotlin.multiplatform' version '1.3.71'
+    id 'org.jetbrains.kotlin.multiplatform' version '1.3.72'
 }
 repositories {
     mavenLocal()
@@ -13,7 +13,7 @@ apply plugin: 'kotlin-android-extensions'
 android {
     compileSdkVersion 27
     defaultConfig {
-        applicationId 'org.jetbrains.kotlin.mpp_app_android'
+        applicationId 'dev.bluefalcon.androidmp'
         minSdkVersion 18
         targetSdkVersion 27
         versionCode 1
@@ -59,7 +59,7 @@ kotlin {
         commonMain {
             dependencies {
                 implementation kotlin('stdlib-common')
-                implementation("dev.bluefalcon:library:$bluefalcon")
+                implementation ("dev.bluefalcon:library:$bluefalcon")
                 implementation ("org.jetbrains.kotlinx:kotlinx-coroutines-core-common:1.3.5-native-mt")
             }
         }
@@ -72,6 +72,8 @@ kotlin {
         androidMain {
             dependencies {
                 implementation kotlin('stdlib')
+                implementation ("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.3.5-native-mt")
+                implementation ("dev.bluefalcon:library-android:$bluefalcon")
             }
         }
         androidTest {
@@ -84,6 +86,7 @@ kotlin {
             dependencies {
                 implementation kotlin('stdlib')
                 implementation ("org.jetbrains.kotlinx:kotlinx-coroutines-core-native:1.3.5-native-mt")
+                implementation ("dev.bluefalcon:library-ios:$bluefalcon")
             }
         }
         iosTest {
