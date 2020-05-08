@@ -2,10 +2,12 @@ package dev.bluefalcon
 
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.channels.BroadcastChannel
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.asFlow
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 import platform.CoreBluetooth.*
 import platform.Foundation.*
@@ -18,8 +20,12 @@ actual class BlueFalcon actual constructor(
     actual val delegates: MutableSet<BlueFalconDelegate> = mutableSetOf()
 
     @ExperimentalCoroutinesApi
-    actual val deviceChannel = BroadcastChannel<BluetoothPeripheral>(Channel.BUFFERED)
-    actual val devices: Flow<BluetoothPeripheral> = deviceChannel.asFlow()
+    actual val discoveredDeviceChannel = BroadcastChannel<BluetoothPeripheral>(Channel.BUFFERED)
+    actual val discoveredDevice = discoveredDeviceChannel.asFlow()
+
+    @ExperimentalCoroutinesApi
+    actual val connectedDeviceChannel = BroadcastChannel<BluetoothPeripheral>(Channel.BUFFERED)
+    actual val connectedDevice = connectedDeviceChannel.asFlow()
 
     private val centralManager: CBCentralManager
     private val bluetoothPeripheralManager = BluetoothPeripheralManager()
@@ -28,6 +34,18 @@ actual class BlueFalcon actual constructor(
 
     init {
         centralManager = CBCentralManager(bluetoothPeripheralManager, null)
+        MainScope().launch {
+            discoveredDevice.collect { device ->
+                delegates.forEach {
+                    it.didDiscoverDevice(device)
+                }
+            }
+            connectedDevice.collect { device ->
+                delegates.forEach {
+                    it.didConnect(device)
+                }
+            }
+        }
     }
 
     actual fun connect(bluetoothPeripheral: BluetoothPeripheral) {
@@ -147,10 +165,7 @@ actual class BlueFalcon actual constructor(
                 log("Discovered device ${didDiscoverPeripheral.name}")
                 val device = BluetoothPeripheral(didDiscoverPeripheral, rssiValue = RSSI.floatValue)
                 GlobalScope.launch {
-                    deviceChannel.send(device)
-                }
-                delegates.forEach {
-                    it.didDiscoverDevice(device)
+                    discoveredDeviceChannel.send(device)
                 }
             }
         }
@@ -158,8 +173,8 @@ actual class BlueFalcon actual constructor(
         override fun centralManager(central: CBCentralManager, didConnectPeripheral: CBPeripheral) {
             log("DidConnectPeripheral ${didConnectPeripheral.name}")
             val device = BluetoothPeripheral(didConnectPeripheral, rssiValue = null)
-            delegates.forEach {
-                it.didConnect(device)
+            GlobalScope.launch {
+                connectedDeviceChannel.send(device)
             }
             didConnectPeripheral.delegate = peripheralDelegate
             didConnectPeripheral.discoverServices(null)

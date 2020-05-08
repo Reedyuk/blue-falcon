@@ -44,41 +44,37 @@ configurations.create("compileClasspath")
 
 kotlin {
 
-    targets {
-
-        //need to use jvm because android doesnt export type alias
-        //android()
-        jvm("android") {
-            compilations.all {
-                kotlinOptions {
-                    jvmTarget = "1.8"
-                }
+    //need to use jvm because android doesnt export type alias
+    //android()
+    jvm("android") {
+        compilations.all {
+            kotlinOptions {
+                jvmTarget = "1.8"
             }
         }
-
-        js {
-            val main by compilations.getting {
-                kotlinOptions {
-                    metaInfo = true
-                    sourceMap = true
-                    sourceMapEmbedSources = "always"
-                    moduleKind = "commonjs"
-                }
-            }
-        }
-
-        val sdkName: String? = System.getenv("SDK_NAME")
-
-        val isiOSDevice = sdkName.orEmpty().startsWith("iphoneos")
-        if (isiOSDevice) {
-            iosArm64("iosX64")
-        } else {
-            iosX64("ios")
-        }
-
-        macosX64("macos")
-
     }
+
+    js {
+        val main by compilations.getting {
+            kotlinOptions {
+                metaInfo = true
+                sourceMap = true
+                sourceMapEmbedSources = "always"
+                moduleKind = "commonjs"
+            }
+        }
+    }
+
+    val sdkName: String? = System.getenv("SDK_NAME")
+
+    val isiOSDevice = sdkName.orEmpty().startsWith("iphoneos")
+    if (isiOSDevice) {
+        iosArm64("ios")
+    } else {
+        iosX64("ios")
+    }
+
+    macosX64("macos")
 
     cocoapods {
         // Configure fields required by CocoaPods.
@@ -119,13 +115,13 @@ kotlin {
 
         val iosMain by getting {
             dependencies {
-                implementation ("org.jetbrains.kotlinx:kotlinx-coroutines-core-native:1.3.5")
+                implementation ("org.jetbrains.kotlinx:kotlinx-coroutines-core-native:1.3.5-native-mt")
             }
         }
 
         val macosMain by getting {
             dependencies {
-                implementation ("org.jetbrains.kotlinx:kotlinx-coroutines-core-macosx64:1.3.5")
+                implementation ("org.jetbrains.kotlinx:kotlinx-coroutines-core-macosx64:1.3.5-native-mt")
             }
         }
 

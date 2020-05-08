@@ -8,8 +8,6 @@
 
 /* Begin PBXBuildFile section */
 		493702C42452366900CAE3CF /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 493702C32452366900CAE3CF /* AppDelegate.swift */; };
-		49C9F9732464C9E100D9B4A2 /* Pods_Blue_Falcon.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 49C9F9722464C9E100D9B4A2 /* Pods_Blue_Falcon.framework */; };
-		49C9F9742464C9E100D9B4A2 /* Pods_Blue_Falcon.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 49C9F9722464C9E100D9B4A2 /* Pods_Blue_Falcon.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		49DEE382245239B00070FA09 /* Strings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 49DEE37A245239AF0070FA09 /* Strings.swift */; };
 		49DEE3C324523BAA0070FA09 /* BluetoothConnectionState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 49DEE3A924523BAA0070FA09 /* BluetoothConnectionState.swift */; };
 		49DEE3C424523BAA0070FA09 /* Descriptor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 49DEE3AA24523BAA0070FA09 /* Descriptor.swift */; };
@@ -32,26 +30,13 @@
 		49DEE3DD24535DF60070FA09 /* Main.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 49DEE3DB24535DF60070FA09 /* Main.storyboard */; };
 /* End PBXBuildFile section */
 
-/* Begin PBXCopyFilesBuildPhase section */
-		49C9F9712464C9D800D9B4A2 /* Embed Frameworks */ = {
-			isa = PBXCopyFilesBuildPhase;
-			buildActionMask = 2147483647;
-			dstPath = "";
-			dstSubfolderSpec = 10;
-			files = (
-				49C9F9742464C9E100D9B4A2 /* Pods_Blue_Falcon.framework in Embed Frameworks */,
-			);
-			name = "Embed Frameworks";
-			runOnlyForDeploymentPostprocessing = 0;
-		};
-/* End PBXCopyFilesBuildPhase section */
-
 /* Begin PBXFileReference section */
 		48647C8E9CB6F44A7C3208D5 /* Pods-Blue-Falcon.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Blue-Falcon.debug.xcconfig"; path = "Target Support Files/Pods-Blue-Falcon/Pods-Blue-Falcon.debug.xcconfig"; sourceTree = "<group>"; };
 		493702C02452366900CAE3CF /* Blue-Falcon.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Blue-Falcon.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		493702C32452366900CAE3CF /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
 		493702CF2452366A00CAE3CF /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		493702D02452366A00CAE3CF /* Blue_Falcon.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Blue_Falcon.entitlements; sourceTree = "<group>"; };
+		497C4A152465A7BA00E7E0AE /* Pods_Blue_Falcon.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; path = Pods_Blue_Falcon.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		49C9F9722464C9E100D9B4A2 /* Pods_Blue_Falcon.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; path = Pods_Blue_Falcon.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		49DEE37A245239AF0070FA09 /* Strings.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = Strings.swift; sourceTree = "<group>"; };
 		49DEE3A924523BAA0070FA09 /* BluetoothConnectionState.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = BluetoothConnectionState.swift; sourceTree = "<group>"; };
@@ -81,7 +66,6 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				49C9F9732464C9E100D9B4A2 /* Pods_Blue_Falcon.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -100,7 +84,7 @@
 		382A400FB3F941F4A7D908A2 /* Frameworks */ = {
 			isa = PBXGroup;
 			children = (
-				49C9F9722464C9E100D9B4A2 /* Pods_Blue_Falcon.framework */,
+				497C4A152465A7BA00E7E0AE /* Pods_Blue_Falcon.framework */,
 			);
 			name = Frameworks;
 			sourceTree = "<group>";
@@ -112,6 +96,7 @@
 				493702C12452366900CAE3CF /* Products */,
 				02718DCDF7E44F3FEE1214C1 /* Pods */,
 				382A400FB3F941F4A7D908A2 /* Frameworks */,
+				49C9F97824654F3700D9B4A2 /* Recovered References */,
 			);
 			sourceTree = "<group>";
 		};
@@ -140,6 +125,14 @@
 				493702D02452366A00CAE3CF /* Blue_Falcon.entitlements */,
 			);
 			path = "Blue-Falcon";
+			sourceTree = "<group>";
+		};
+		49C9F97824654F3700D9B4A2 /* Recovered References */ = {
+			isa = PBXGroup;
+			children = (
+				49C9F9722464C9E100D9B4A2 /* Pods_Blue_Falcon.framework */,
+			);
+			name = "Recovered References";
 			sourceTree = "<group>";
 		};
 		49DEE3A824523BAA0070FA09 /* Models */ = {
@@ -220,7 +213,6 @@
 				493702BC2452366900CAE3CF /* Sources */,
 				493702BD2452366900CAE3CF /* Frameworks */,
 				493702BE2452366900CAE3CF /* Resources */,
-				49C9F9712464C9D800D9B4A2 /* Embed Frameworks */,
 			);
 			buildRules = (
 			);
@@ -474,7 +466,7 @@
 				INFOPLIST_FILE = "Blue-Falcon/Info.plist";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
-					"@executable_path/../Frameworks",
+					"@executable_path/Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 10.15;
 				PRODUCT_BUNDLE_IDENTIFIER = "dev.bluefalcon.Blue-Falcon";
@@ -502,7 +494,7 @@
 				INFOPLIST_FILE = "Blue-Falcon/Info.plist";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
-					"@executable_path/../Frameworks",
+					"@executable_path/Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 10.15;
 				PRODUCT_BUNDLE_IDENTIFIER = "dev.bluefalcon.Blue-Falcon";

@@ -10,8 +10,12 @@ expect class BlueFalcon(context: ApplicationContext, serviceUUID: String?) {
     var isScanning: Boolean
 
     @ExperimentalCoroutinesApi
-    val deviceChannel: BroadcastChannel<BluetoothPeripheral>
-    val devices: Flow<BluetoothPeripheral>
+    val discoveredDeviceChannel: BroadcastChannel<BluetoothPeripheral>
+    val discoveredDevice: Flow<BluetoothPeripheral>
+
+    @ExperimentalCoroutinesApi
+    val connectedDeviceChannel: BroadcastChannel<BluetoothPeripheral>
+    val connectedDevice: Flow<BluetoothPeripheral>
 
     fun connect(bluetoothPeripheral: BluetoothPeripheral)
     fun disconnect(bluetoothPeripheral: BluetoothPeripheral)

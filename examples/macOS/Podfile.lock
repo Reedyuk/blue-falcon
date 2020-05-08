@@ -2,15 +2,15 @@ PODS:
   - library (0.7.0)
 
 DEPENDENCIES:
-  - library (from `/Users/andrewreed/Documents/workspace/blue-falcon/library`)
+  - library (from `../../library`)
 
 EXTERNAL SOURCES:
   library:
-    :path: "/Users/andrewreed/Documents/workspace/blue-falcon/library"
+    :path: "../../library"
 
 SPEC CHECKSUMS:
   library: 1c2e72d0249a1308d9aa1d73a657e1e13e782fc0
 
-PODFILE CHECKSUM: 395f5f9b30135ad9fec4ddbd07432803c89ea997
+PODFILE CHECKSUM: 2ccc63dfdfcd667b82d0a91dccf64f28b91bff7f
 
 COCOAPODS: 1.9.1

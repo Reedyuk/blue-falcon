@@ -10,9 +10,15 @@ actual class BlueFalcon actual constructor(context: ApplicationContext, serviceU
     actual var isScanning: Boolean = false
 
     @ExperimentalCoroutinesApi
-    actual val deviceChannel: BroadcastChannel<BluetoothPeripheral>
+    actual val discoveredDeviceChannel: BroadcastChannel<BluetoothPeripheral>
         get() = TODO("Not yet implemented")
-    actual val devices: Flow<BluetoothPeripheral>
+    actual val discoveredDevice: Flow<BluetoothPeripheral>
+        get() = TODO("Not yet implemented")
+
+    @ExperimentalCoroutinesApi
+    actual val connectedDeviceChannel: BroadcastChannel<BluetoothPeripheral>
+        get() = TODO("Not yet implemented")
+    actual val connectedDevice: Flow<BluetoothPeripheral>
         get() = TODO("Not yet implemented")
 
     actual fun connect(bluetoothPeripheral: BluetoothPeripheral) {

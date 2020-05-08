@@ -11,10 +11,12 @@ import android.content.pm.PackageManager
 import android.os.ParcelUuid
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.channels.BroadcastChannel
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.asFlow
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 import java.util.*
 
@@ -30,8 +32,27 @@ actual class BlueFalcon actual constructor(
     actual var isScanning: Boolean = false
 
     @ExperimentalCoroutinesApi
-    actual val deviceChannel = BroadcastChannel<BluetoothPeripheral>(Channel.BUFFERED)
-    actual val devices: Flow<BluetoothPeripheral> = deviceChannel.asFlow()
+    actual val discoveredDeviceChannel = BroadcastChannel<BluetoothPeripheral>(Channel.BUFFERED)
+    actual val discoveredDevice = discoveredDeviceChannel.asFlow()
+
+    @ExperimentalCoroutinesApi
+    actual val connectedDeviceChannel = BroadcastChannel<BluetoothPeripheral>(Channel.BUFFERED)
+    actual val connectedDevice = connectedDeviceChannel.asFlow()
+
+    init {
+        MainScope().launch {
+            discoveredDevice.collect { device ->
+                delegates.forEach {
+                    it.didDiscoverDevice(device)
+                }
+            }
+            connectedDevice.collect { device ->
+                delegates.forEach {
+                    it.didConnect(device)
+                }
+            }
+        }
+    }
 
     actual fun connect(bluetoothPeripheral: BluetoothPeripheral) {
         log("connect")
@@ -209,10 +230,7 @@ actual class BlueFalcon actual constructor(
             result?.let { scanResult ->
                 scanResult.device?.let { device ->
                     GlobalScope.launch {
-                        deviceChannel.send(BluetoothPeripheral(device))
-                    }
-                    delegates.forEach {
-                        it.didDiscoverDevice(BluetoothPeripheral(device))
+                        discoveredDeviceChannel.send(BluetoothPeripheral(device))
                     }
                 }
             }
@@ -241,8 +259,8 @@ actual class BlueFalcon actual constructor(
                     addGatt(bluetoothGatt)
                     bluetoothGatt.readRemoteRssi()
                     bluetoothGatt.discoverServices()
-                    delegates.forEach {
-                        it.didConnect(BluetoothPeripheral(bluetoothGatt.device))
+                    GlobalScope.launch {
+                        connectedDeviceChannel.send(BluetoothPeripheral(bluetoothGatt.device))
                     }
                 }
             }
