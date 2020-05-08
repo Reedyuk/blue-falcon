@@ -1,5 +1,12 @@
 package dev.bluefalcon
 
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.channels.BroadcastChannel
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.asFlow
+import kotlinx.coroutines.launch
 import platform.CoreBluetooth.*
 import platform.Foundation.*
 import platform.darwin.NSObject
@@ -9,6 +16,10 @@ actual class BlueFalcon actual constructor(
     private val serviceUUID: String?
 ) {
     actual val delegates: MutableSet<BlueFalconDelegate> = mutableSetOf()
+
+    @ExperimentalCoroutinesApi
+    actual val deviceChannel = BroadcastChannel<BluetoothPeripheral>(Channel.BUFFERED)
+    actual val devices: Flow<BluetoothPeripheral> = deviceChannel.asFlow()
 
     private val centralManager: CBCentralManager
     private val bluetoothPeripheralManager = BluetoothPeripheralManager()
@@ -135,6 +146,9 @@ actual class BlueFalcon actual constructor(
             if (isScanning) {
                 log("Discovered device ${didDiscoverPeripheral.name}")
                 val device = BluetoothPeripheral(didDiscoverPeripheral, rssiValue = RSSI.floatValue)
+                GlobalScope.launch {
+                    deviceChannel.send(device)
+                }
                 delegates.forEach {
                     it.didDiscoverDevice(device)
                 }

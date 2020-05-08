@@ -9,6 +9,13 @@ import android.bluetooth.le.ScanSettings
 import android.content.Context
 import android.content.pm.PackageManager
 import android.os.ParcelUuid
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.channels.BroadcastChannel
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.asFlow
+import kotlinx.coroutines.launch
 import java.util.*
 
 actual class BlueFalcon actual constructor(
@@ -21,6 +28,10 @@ actual class BlueFalcon actual constructor(
     private val mGattClientCallback = GattClientCallback()
     var transportMethod: Int = BluetoothDevice.TRANSPORT_AUTO
     actual var isScanning: Boolean = false
+
+    @ExperimentalCoroutinesApi
+    actual val deviceChannel = BroadcastChannel<BluetoothPeripheral>(Channel.BUFFERED)
+    actual val devices: Flow<BluetoothPeripheral> = deviceChannel.asFlow()
 
     actual fun connect(bluetoothPeripheral: BluetoothPeripheral) {
         log("connect")
@@ -197,6 +208,9 @@ actual class BlueFalcon actual constructor(
         private fun addScanResult(result: ScanResult?) {
             result?.let { scanResult ->
                 scanResult.device?.let { device ->
+                    GlobalScope.launch {
+                        deviceChannel.send(BluetoothPeripheral(device))
+                    }
                     delegates.forEach {
                         it.didDiscoverDevice(BluetoothPeripheral(device))
                     }

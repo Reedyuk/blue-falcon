@@ -23,8 +23,9 @@ pluginManagement {
 }
 rootProject.name = "bluefalcon"
 
+enableFeaturePreview("GRADLE_METADATA")
+
 include("library")
 include("examples:android")
 include("examples")
 
-enableFeaturePreview("GRADLE_METADATA")

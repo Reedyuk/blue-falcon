@@ -43,40 +43,54 @@ repositories {
 configurations.create("compileClasspath")
 
 kotlin {
+
+    targets {
+
+        //need to use jvm because android doesnt export type alias
+        //android()
+        jvm("android") {
+            compilations.all {
+                kotlinOptions {
+                    jvmTarget = "1.8"
+                }
+            }
+        }
+
+        js {
+            val main by compilations.getting {
+                kotlinOptions {
+                    metaInfo = true
+                    sourceMap = true
+                    sourceMapEmbedSources = "always"
+                    moduleKind = "commonjs"
+                }
+            }
+        }
+
+        val sdkName: String? = System.getenv("SDK_NAME")
+
+        val isiOSDevice = sdkName.orEmpty().startsWith("iphoneos")
+        if (isiOSDevice) {
+            iosArm64("iosX64")
+        } else {
+            iosX64("ios")
+        }
+
+        macosX64("macos")
+
+    }
+
     cocoapods {
         // Configure fields required by CocoaPods.
         summary = "Blue-Falcon a multiplatform bluetooth library"
         homepage = "http://www.bluefalcon.dev"
     }
 
-    //need to use jvm because android doesnt export type alias
-    jvm("android") {
-        compilations.all {
-            kotlinOptions {
-                jvmTarget = "1.8"
-            }
-        }
-    }
-
-    js {
-        val main by compilations.getting {
-            kotlinOptions {
-                metaInfo = true
-                sourceMap = true
-                sourceMapEmbedSources = "always"
-                moduleKind = "commonjs"
-            }
-        }
-    }
-
-    iosArm64()
-    iosX64()
-    macosX64()
-
     sourceSets {
         val commonMain by getting {
             dependencies {
                 implementation("org.jetbrains.kotlin:kotlin-stdlib-common")
+                implementation ("org.jetbrains.kotlinx:kotlinx-coroutines-core-common:1.3.5")
             }
         }
 
@@ -91,6 +105,7 @@ kotlin {
             dependencies {
                 implementation("org.jetbrains.kotlin:kotlin-stdlib")
                 compileOnly("org.robolectric:android-all:9-robolectric-4913185-2")
+                implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.3.5")
             }
         }
 
@@ -102,10 +117,23 @@ kotlin {
             }
         }
 
+        val iosMain by getting {
+            dependencies {
+                implementation ("org.jetbrains.kotlinx:kotlinx-coroutines-core-native:1.3.5")
+            }
+        }
+
+        val macosMain by getting {
+            dependencies {
+                implementation ("org.jetbrains.kotlinx:kotlinx-coroutines-core-macosx64:1.3.5")
+            }
+        }
+
         val jsMain by getting {
             dependencies {
                 implementation("org.jetbrains.kotlin:kotlin-stdlib-js")
                 implementation("org.jetbrains.kotlin:kotlin-stdlib")
+                implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core-js:1.3.5")
             }
         }
 

@@ -1,9 +1,19 @@
 package dev.bluefalcon
 
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.channels.BroadcastChannel
+import kotlinx.coroutines.flow.Flow
+
 actual class BlueFalcon actual constructor(context: ApplicationContext, serviceUUID: String?) {
 
     actual val delegates: MutableSet<BlueFalconDelegate> = mutableSetOf()
     actual var isScanning: Boolean = false
+
+    @ExperimentalCoroutinesApi
+    actual val deviceChannel: BroadcastChannel<BluetoothPeripheral>
+        get() = TODO("Not yet implemented")
+    actual val devices: Flow<BluetoothPeripheral>
+        get() = TODO("Not yet implemented")
 
     actual fun connect(bluetoothPeripheral: BluetoothPeripheral) {
         TODO("not implemented") //To change body of created functions use File | Settings | File Templates.
