@@ -45,6 +45,8 @@ actual class BlueFalcon actual constructor(
                     it.didDiscoverDevice(device)
                 }
             }
+        }
+        MainScope().launch {
             connectedDevice.collect { device ->
                 delegates.forEach {
                     it.didConnect(device)

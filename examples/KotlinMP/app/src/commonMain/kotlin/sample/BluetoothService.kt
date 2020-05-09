@@ -1,6 +1,15 @@
 package sample
 
+import MainCompat
 import dev.bluefalcon.*
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.MainScope
+import kotlinx.coroutines.channels.consumeEach
+import kotlinx.coroutines.flow.asFlow
+import kotlinx.coroutines.flow.broadcastIn
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.collect
 
 expect fun BluetoothService.scan()
 
@@ -10,6 +19,17 @@ class BluetoothService(private val blueFalcon: BlueFalcon) {
 
     init {
         blueFalcon.delegates.add(bluetoothDelegate)
+        //need to collect from the flow
+        GlobalScope.launch(Dispatchers.MainCompat) {
+            blueFalcon.discoveredDevice.collect { device ->
+                  bluetoothDelegate.deviceDelegate?.didDiscoverDevice(device)
+            }
+        }
+        GlobalScope.launch(Dispatchers.MainCompat) {
+            blueFalcon.connectedDevice.collect { device ->
+                bluetoothDelegate.deviceConnectDelegate?.didDeviceConnect(device)
+            }
+        }
     }
 
     fun addDevicesDelegate(devicesDelegate: DevicesDelegate) {
@@ -75,15 +95,15 @@ class BluetoothService(private val blueFalcon: BlueFalcon) {
 
         override fun didDiscoverDevice(bluetoothPeripheral: BluetoothPeripheral) {
             println("didDiscoverDevice")
-            if (devices.firstOrNull { device -> device.uuid == bluetoothPeripheral.uuid } == null) {
-                devices.add(bluetoothPeripheral)
-                deviceDelegate?.didDiscoverDevice(bluetoothPeripheral)
-            }
+//            if (devices.firstOrNull { device -> device.uuid == bluetoothPeripheral.uuid } == null) {
+//                devices.add(bluetoothPeripheral)
+//                deviceDelegate?.didDiscoverDevice(bluetoothPeripheral)
+//            }
         }
 
         override fun didConnect(bluetoothPeripheral: BluetoothPeripheral) {
             println("didConnect")
-            deviceConnectDelegate?.didDeviceConnect(bluetoothPeripheral)
+//            deviceConnectDelegate?.didDeviceConnect(bluetoothPeripheral)
         }
 
         override fun didDiscoverServices(bluetoothPeripheral: BluetoothPeripheral) {

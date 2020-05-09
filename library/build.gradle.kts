@@ -65,14 +65,8 @@ kotlin {
         }
     }
 
-    val sdkName: String? = System.getenv("SDK_NAME")
-
-    val isiOSDevice = sdkName.orEmpty().startsWith("iphoneos")
-    if (isiOSDevice) {
-        iosArm64("ios")
-    } else {
-        iosX64("ios")
-    }
+    iosArm64()
+    iosX64()
 
     macosX64("macos")
 
@@ -113,7 +107,13 @@ kotlin {
             }
         }
 
-        val iosMain by getting {
+        val iosArm64 by creating {
+            dependencies {
+                implementation ("org.jetbrains.kotlinx:kotlinx-coroutines-core-native:1.3.5-native-mt")
+            }
+        }
+
+        val iosX64 by creating {
             dependencies {
                 implementation ("org.jetbrains.kotlinx:kotlinx-coroutines-core-native:1.3.5-native-mt")
             }
