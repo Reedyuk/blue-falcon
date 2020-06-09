@@ -88,12 +88,42 @@ actual class BlueFalcon actual constructor(
         value: String,
         writeType: Int?
     ) {
-        val formattedString = NSString.create(string = value)
-        formattedString.dataUsingEncoding(NSUTF8StringEncoding)?.let {
+        sharedWriteCharacteristic(
+            bluetoothPeripheral,
+            bluetoothCharacteristic,
+            NSString.create(string = value),
+            writeType
+        )
+    }
+
+    actual fun writeCharacteristic(
+        bluetoothPeripheral: BluetoothPeripheral,
+        bluetoothCharacteristic: BluetoothCharacteristic,
+        value: ByteArray,
+        writeType: Int?
+    ){
+        sharedWriteCharacteristic(
+            bluetoothPeripheral,
+            bluetoothCharacteristic,
+            NSString.create(string = value.decodeToString()),
+            writeType
+        )
+    }
+
+    private fun sharedWriteCharacteristic(
+        bluetoothPeripheral: BluetoothPeripheral,
+        bluetoothCharacteristic: BluetoothCharacteristic,
+        value: NSString,
+        writeType: Int?
+    ) {
+        value.dataUsingEncoding(NSUTF8StringEncoding)?.let {
             bluetoothPeripheral.bluetoothDevice.writeValue(
                 it,
                 bluetoothCharacteristic.characteristic,
-                CBCharacteristicWriteWithResponse
+                when (writeType) {
+                    1 -> CBCharacteristicWriteWithoutResponse
+                    else -> CBCharacteristicWriteWithResponse
+                }
             )
         }
     }

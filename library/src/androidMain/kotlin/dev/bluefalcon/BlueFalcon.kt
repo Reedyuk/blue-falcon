@@ -167,6 +167,24 @@ actual class BlueFalcon actual constructor(
         }
     }
 
+    actual fun writeCharacteristic(
+        bluetoothPeripheral: BluetoothPeripheral,
+        bluetoothCharacteristic: BluetoothCharacteristic,
+        value: ByteArray,
+        writeType: Int?
+    ) {
+        mGattClientCallback.gattForDevice(bluetoothPeripheral.bluetoothDevice)?.let { gatt ->
+            fetchCharacteristic(bluetoothCharacteristic, gatt)
+                .forEach {
+                    writeType?.let { writeType ->
+                        it.characteristic.writeType = writeType
+                    }
+                    it.characteristic.setValue(value)
+                    gatt.writeCharacteristic(it.characteristic)
+                }
+        }
+    }
+
     actual fun readDescriptor(
         bluetoothPeripheral: BluetoothPeripheral,
         bluetoothCharacteristic: BluetoothCharacteristic,

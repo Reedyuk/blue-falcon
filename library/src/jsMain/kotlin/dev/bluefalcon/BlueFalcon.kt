@@ -37,6 +37,15 @@ actual class BlueFalcon actual constructor(context: ApplicationContext, serviceU
         TODO("not implemented")
     }
 
+    actual fun writeCharacteristic(
+        bluetoothPeripheral: BluetoothPeripheral,
+        bluetoothCharacteristic: BluetoothCharacteristic,
+        value: ByteArray,
+        writeType: Int?
+    ){
+        TODO("not implemented")
+    }
+
     actual fun notifyCharacteristic(
         bluetoothPeripheral: BluetoothPeripheral,
         bluetoothCharacteristic: BluetoothCharacteristic,
