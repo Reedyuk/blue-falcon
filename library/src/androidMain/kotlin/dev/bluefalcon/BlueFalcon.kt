@@ -2,6 +2,8 @@ package dev.bluefalcon
 
 import android.Manifest
 import android.bluetooth.*
+import android.bluetooth.BluetoothAdapter.STATE_CONNECTED
+import android.bluetooth.BluetoothAdapter.STATE_DISCONNECTED
 import android.bluetooth.le.ScanCallback
 import android.bluetooth.le.ScanFilter
 import android.bluetooth.le.ScanResult
@@ -234,6 +236,10 @@ actual class BlueFalcon actual constructor(
             }
         }
 
+        private fun removeGatt(gatt: BluetoothGatt) {
+            gatts.remove(gatt)
+        }
+
         fun gattForDevice(bluetoothDevice: BluetoothDevice): BluetoothGatt? =
             gatts.firstOrNull { it.device == bluetoothDevice }
 
@@ -242,11 +248,19 @@ actual class BlueFalcon actual constructor(
             log("onConnectionStateChange")
             gatt?.let { bluetoothGatt ->
                 bluetoothGatt.device.let {
-                    addGatt(bluetoothGatt)
-                    bluetoothGatt.readRemoteRssi()
-                    bluetoothGatt.discoverServices()
-                    delegates.forEach {
-                        it.didConnect(BluetoothPeripheral(bluetoothGatt.device))
+                    //BluetoothProfile#STATE_DISCONNECTED} or {@link BluetoothProfile#STATE_CONNECTED}
+                    if (newState == STATE_CONNECTED) {
+                        addGatt(bluetoothGatt)
+                        bluetoothGatt.readRemoteRssi()
+                        bluetoothGatt.discoverServices()
+                        delegates.forEach {
+                            it.didConnect(BluetoothPeripheral(bluetoothGatt.device))
+                        }
+                    } else if (newState == STATE_DISCONNECTED) {
+                        removeGatt(bluetoothGatt)
+                        delegates.forEach {
+                            it.didDisconnect(BluetoothPeripheral(bluetoothGatt.device))
+                        }
                     }
                 }
             }
