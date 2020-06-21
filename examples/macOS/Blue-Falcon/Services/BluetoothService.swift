@@ -30,7 +30,7 @@ class BluetoothService {
     }
 
     func connect(bluetoothPeripheral: BluetoothPeripheral) {
-        blueFalcon.connect(bluetoothPeripheral: bluetoothPeripheral)
+        blueFalcon.connect(bluetoothPeripheral: bluetoothPeripheral, autoConnect: false)
     }
 
     func notifyCharacteristic(
@@ -64,7 +64,7 @@ class BluetoothService {
             bluetoothPeripheral: bluetoothPeripheral,
             bluetoothCharacteristic: BluetoothCharacteristic(characteristic: bluetoothCharacteristic),
             value: value,
-            writeType: nil
+            writeType_: nil
         )
     }
     

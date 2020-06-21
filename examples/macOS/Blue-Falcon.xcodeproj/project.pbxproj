@@ -28,16 +28,15 @@
 		49DEE3D524523BAA0070FA09 /* DeviceViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 49DEE3C224523BAA0070FA09 /* DeviceViewModel.swift */; };
 		49DEE3DA245241440070FA09 /* Preview Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 49DEE3D9245241440070FA09 /* Preview Assets.xcassets */; };
 		49DEE3DD24535DF60070FA09 /* Main.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 49DEE3DB24535DF60070FA09 /* Main.storyboard */; };
-		6C7E01C2F62343FA39A1FA51 /* Pods_Blue_Falcon.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 35C3E03E3C2E84AB6D47622C /* Pods_Blue_Falcon.framework */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
-		35C3E03E3C2E84AB6D47622C /* Pods_Blue_Falcon.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_Blue_Falcon.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		48647C8E9CB6F44A7C3208D5 /* Pods-Blue-Falcon.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Blue-Falcon.debug.xcconfig"; path = "Target Support Files/Pods-Blue-Falcon/Pods-Blue-Falcon.debug.xcconfig"; sourceTree = "<group>"; };
 		493702C02452366900CAE3CF /* Blue-Falcon.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Blue-Falcon.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		493702C32452366900CAE3CF /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
 		493702CF2452366A00CAE3CF /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		493702D02452366A00CAE3CF /* Blue_Falcon.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Blue_Falcon.entitlements; sourceTree = "<group>"; };
+		49B4AF2F249F810C00D9BD4D /* Pods_Blue_Falcon.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; path = Pods_Blue_Falcon.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		49DEE37A245239AF0070FA09 /* Strings.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = Strings.swift; sourceTree = "<group>"; };
 		49DEE3A924523BAA0070FA09 /* BluetoothConnectionState.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = BluetoothConnectionState.swift; sourceTree = "<group>"; };
 		49DEE3AA24523BAA0070FA09 /* Descriptor.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = Descriptor.swift; sourceTree = "<group>"; };
@@ -66,7 +65,6 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				6C7E01C2F62343FA39A1FA51 /* Pods_Blue_Falcon.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -85,7 +83,7 @@
 		382A400FB3F941F4A7D908A2 /* Frameworks */ = {
 			isa = PBXGroup;
 			children = (
-				35C3E03E3C2E84AB6D47622C /* Pods_Blue_Falcon.framework */,
+				49B4AF2F249F810C00D9BD4D /* Pods_Blue_Falcon.framework */,
 			);
 			name = Frameworks;
 			sourceTree = "<group>";
