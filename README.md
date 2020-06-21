@@ -28,7 +28,7 @@ blueFalcon.scan()
 #### Install
 
 ```kotlin
-implementation 'dev.bluefalcon:library-android:0.6.3'
+implementation 'dev.bluefalcon:library-android:0.6.9'
 ```
 
 The Android sdk requires an Application context, we do this by passing in on the BlueFalcon constructor, in this example we are calling the code from an activity(this).
@@ -49,7 +49,7 @@ try {
 The basic functionality of the api is listed below, this should be a simplistic as possible and is the same in any platform.
 
 ```kotlin
-    fun connect(bluetoothPeripheral: BluetoothPeripheral)
+    fun connect(bluetoothPeripheral: BluetoothPeripheral, autoConnect: Boolean)
     fun disconnect(bluetoothPeripheral: BluetoothPeripheral)
     fun scan()
     fun stopScanning()
