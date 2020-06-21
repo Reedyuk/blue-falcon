@@ -22,9 +22,9 @@ actual class BlueFalcon actual constructor(
     var transportMethod: Int = BluetoothDevice.TRANSPORT_AUTO
     actual var isScanning: Boolean = false
 
-    actual fun connect(bluetoothPeripheral: BluetoothPeripheral) {
+    actual fun connect(bluetoothPeripheral: BluetoothPeripheral, autoConnect: Boolean) {
         log("connect")
-        bluetoothPeripheral.bluetoothDevice.connectGatt(context, false, mGattClientCallback, transportMethod)
+        bluetoothPeripheral.bluetoothDevice.connectGatt(context, autoConnect, mGattClientCallback, transportMethod)
     }
 
     actual fun disconnect(bluetoothPeripheral: BluetoothPeripheral) {

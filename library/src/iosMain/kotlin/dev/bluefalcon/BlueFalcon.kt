@@ -19,7 +19,8 @@ actual class BlueFalcon actual constructor(
         centralManager = CBCentralManager(bluetoothPeripheralManager, null)
     }
 
-    actual fun connect(bluetoothPeripheral: BluetoothPeripheral) {
+    actual fun connect(bluetoothPeripheral: BluetoothPeripheral, autoConnect: Boolean) {
+        //auto connect is ignored due to not needing it in iOS
         centralManager.connectPeripheral(bluetoothPeripheral.bluetoothDevice, null)
     }
 

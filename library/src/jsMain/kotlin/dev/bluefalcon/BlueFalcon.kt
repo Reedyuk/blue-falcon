@@ -5,7 +5,7 @@ actual class BlueFalcon actual constructor(context: ApplicationContext, serviceU
     actual val delegates: MutableSet<BlueFalconDelegate> = mutableSetOf()
     actual var isScanning: Boolean = false
 
-    actual fun connect(bluetoothPeripheral: BluetoothPeripheral) {
+    actual fun connect(bluetoothPeripheral: BluetoothPeripheral, autoConnect: Boolean) {
         TODO("not implemented") //To change body of created functions use File | Settings | File Templates.
     }
 
