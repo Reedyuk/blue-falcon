@@ -5,7 +5,7 @@ expect class BlueFalcon(context: ApplicationContext, serviceUUID: String?) {
     val delegates: MutableSet<BlueFalconDelegate>
     var isScanning: Boolean
 
-    fun connect(bluetoothPeripheral: BluetoothPeripheral)
+    fun connect(bluetoothPeripheral: BluetoothPeripheral, autoConnect: Boolean = false)
     fun disconnect(bluetoothPeripheral: BluetoothPeripheral)
 
     fun scan()

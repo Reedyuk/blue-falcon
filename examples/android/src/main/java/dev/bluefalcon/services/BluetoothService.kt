@@ -25,7 +25,7 @@ class BluetoothService: BlueFalconDelegate {
     }
 
     fun connect(bluetoothPeripheral: BluetoothPeripheral) {
-        blueFalcon.connect(bluetoothPeripheral)
+        blueFalcon.connect(bluetoothPeripheral, true)
     }
 
     fun disconnect(bluetoothPeripheral: BluetoothPeripheral) {
