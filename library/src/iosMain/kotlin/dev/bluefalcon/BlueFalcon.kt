@@ -230,6 +230,7 @@ actual class BlueFalcon actual constructor(
             }
         }
 
+        @Suppress("CONFLICTING_OVERLOADS")
         override fun peripheral(
             peripheral: CBPeripheral,
             didUpdateValueForCharacteristic: CBCharacteristic,
@@ -251,6 +252,11 @@ actual class BlueFalcon actual constructor(
 
         override fun peripheral(peripheral: CBPeripheral, didUpdateValueForDescriptor: CBDescriptor, error: NSError?) {
             println("didUpdateValueForDescriptor ${didUpdateValueForDescriptor.value}")
+        }
+
+        @Suppress("CONFLICTING_OVERLOADS")
+        override fun peripheral(peripheral: CBPeripheral, didDiscoverDescriptorsForCharacteristic: CBCharacteristic, error: NSError?) {
+            println("didDiscoverDescriptorsForCharacteristic")
         }
     }
 
