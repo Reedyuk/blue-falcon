@@ -1,0 +1,16 @@
+name: Pull-Requests
+
+on:
+  pull_request:
+    branches: [ master ]
+
+jobs:
+  build:
+    runs-on: macos-latest
+    steps:
+    - uses: actions/checkout@v2
+    - name: Run gradle build
+      run: ./gradlew library:build
+
+    #- name: Run Tests
+    #  run: ./gradlew library:test
