@@ -14,5 +14,7 @@ jobs:
     - name: Run publish
       run: ./gradlew library:publish
       env:
+        sonatypeUsernameEnv: ${{ secrets.SONATYPEUSERNAME }}
+        sonatypePasswordEnv: ${{ secrets.SONATYPEPASSWORD }}
         ORG_GRADLE_PROJECT_signingKey: ${{ secrets.GPG_KEY }}
         ORG_GRADLE_PROJECT_signingPassword: ${{ secrets.GPG_KEY_PASS }}

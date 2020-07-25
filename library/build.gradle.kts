@@ -136,8 +136,8 @@ if (localProperties.exists()) {
     localProperties.inputStream().use { local.load(it) }
 }
 
-val sonatypePasswordEnv = local.getProperty("sonatypePasswordEnv")
-val sonatypeUsernameEnv = local.getProperty("sonatypeUsernameEnv")
+val sonatypePasswordEnv = System.getenv("sonatypePasswordEnv")
+val sonatypeUsernameEnv = System.getenv("sonatypeUsernameEnv")
 
 val projectGithubUrl: String by project
 val projectGithubSCM: String by project
