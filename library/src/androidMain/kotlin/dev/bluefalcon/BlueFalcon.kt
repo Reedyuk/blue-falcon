@@ -31,10 +31,11 @@ actual class BlueFalcon actual constructor(
 
     actual fun disconnect(bluetoothPeripheral: BluetoothPeripheral) {
         log("disconnect")
-        mGattClientCallback.gattForDevice(bluetoothPeripheral.bluetoothDevice)?.disconnect()
-        delegates.forEach {
-            it.didDisconnect(bluetoothPeripheral)
+        mGattClientCallback.gattForDevice(bluetoothPeripheral.bluetoothDevice)?.apply {
+            disconnect()
+            close()
         }
+        delegates.forEach { it.didDisconnect(bluetoothPeripheral) }
     }
 
     actual fun stopScanning() {
