@@ -63,7 +63,7 @@ class BluetoothService(private val blueFalcon: BlueFalcon) {
         bluetoothCharacteristic: BluetoothCharacteristic,
         value: String
     ) {
-        blueFalcon.writeCharacteristic(bluetoothPeripheral, bluetoothCharacteristic, value)
+        blueFalcon.writeCharacteristic(bluetoothPeripheral, bluetoothCharacteristic, value, null)
     }
 
     internal class BluetoothDelegate: BlueFalconDelegate {
@@ -104,7 +104,7 @@ class BluetoothService(private val blueFalcon: BlueFalcon) {
         ) {
             println("didCharacteristcValueChanged ${bluetoothCharacteristic.value}")
             bluetoothCharacteristic.value?.let {
-                deviceCharacteristicDelegate?.didCharacteristcValueChanged(it)
+                deviceCharacteristicDelegate?.didCharacteristcValueChanged(it.toString())
             }
         }
 

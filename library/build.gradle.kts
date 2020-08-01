@@ -58,16 +58,9 @@ kotlin {
         }
     }
 
-    js {
-        val main by compilations.getting {
-            kotlinOptions {
-                metaInfo = true
-                sourceMap = true
-                sourceMapEmbedSources = "always"
-                moduleKind = "commonjs"
-            }
-        }
-    }
+//    js {
+//        browser()
+//    }
 
     iosArm64()
     iosX64()
@@ -102,19 +95,19 @@ kotlin {
             }
         }
 
-        val jsMain by getting {
-            dependencies {
-                implementation("org.jetbrains.kotlin:kotlin-stdlib-js")
-                implementation("org.jetbrains.kotlin:kotlin-stdlib")
-            }
-        }
-
-        //JS tests currently not working, need to wait for jetbrains to release support
-        val jsTest by getting {
-            dependencies {
-                implementation("org.jetbrains.kotlin:kotlin-test-js")
-            }
-        }
+//        val jsMain by getting {
+//            dependencies {
+//                implementation("org.jetbrains.kotlin:kotlin-stdlib-js")
+//                implementation("org.jetbrains.kotlin:kotlin-stdlib")
+//            }
+//        }
+//
+//        //JS tests currently not working, need to wait for jetbrains to release support
+//        val jsTest by getting {
+//            dependencies {
+//                implementation("org.jetbrains.kotlin:kotlin-test-js")
+//            }
+//        }
     }
 }
 
