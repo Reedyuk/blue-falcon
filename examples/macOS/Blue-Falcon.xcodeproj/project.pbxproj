@@ -28,6 +28,7 @@
 		49DEE3D524523BAA0070FA09 /* DeviceViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 49DEE3C224523BAA0070FA09 /* DeviceViewModel.swift */; };
 		49DEE3DA245241440070FA09 /* Preview Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 49DEE3D9245241440070FA09 /* Preview Assets.xcassets */; };
 		49DEE3DD24535DF60070FA09 /* Main.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 49DEE3DB24535DF60070FA09 /* Main.storyboard */; };
+		6075C3345E673B2F6E993604 /* Pods_Blue_Falcon.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 49B4AF2F249F810C00D9BD4D /* Pods_Blue_Falcon.framework */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -65,6 +66,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				6075C3345E673B2F6E993604 /* Pods_Blue_Falcon.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
