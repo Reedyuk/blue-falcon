@@ -2,8 +2,8 @@ package presentation.activities
 
 import android.Manifest
 import android.os.Bundle
-import android.support.v4.app.ActivityCompat
-import android.support.v7.app.AppCompatActivity
+import androidx.core.app.ActivityCompat
+import androidx.appcompat.app.AppCompatActivity
 import org.jetbrains.anko.setContentView
 import presentation.AppApplication
 import presentation.viewmodels.devices.DevicesViewModel
