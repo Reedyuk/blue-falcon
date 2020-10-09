@@ -2,7 +2,8 @@ package presentation.activities
 
 import android.bluetooth.BluetoothDevice
 import android.os.Bundle
-import android.support.v7.app.AppCompatActivity
+import androidx.appcompat.app.AppCompatActivity
+import android.util.Log
 import dev.bluefalcon.BluetoothPeripheral
 import org.jetbrains.anko.setContentView
 import presentation.AppApplication
@@ -17,10 +18,17 @@ class DeviceActivity : AppCompatActivity(), DeviceViewModelOutput {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        val device = BluetoothPeripheral(intent.getParcelableExtra("device") as BluetoothDevice)
-        viewModel = DeviceViewModel(this, device, AppApplication.instance.bluetoothService)
-        deviceUI = DeviceActivityUI(this, viewModel)
-        deviceUI.setContentView(this)
+
+        val bluetoothDevice = intent.getParcelableExtra("device") as BluetoothDevice?
+
+        if(bluetoothDevice != null) {
+            val device = BluetoothPeripheral(bluetoothDevice)
+            viewModel = DeviceViewModel(this, device, AppApplication.instance.bluetoothService)
+            deviceUI = DeviceActivityUI(this, viewModel)
+            deviceUI.setContentView(this)
+        } else {
+            Log.e("DeviceActivity", "bluetoothDevice is null")
+        }
     }
 
     override fun refresh() {
