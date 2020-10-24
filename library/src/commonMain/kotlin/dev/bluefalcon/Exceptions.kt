@@ -9,4 +9,3 @@ class BluetoothUnsupportedException(message: String = "Bluetooth is not supporte
 class BluetoothResettingException(message: String = "Bluetooth service is currently resetting"): Exception(message)
 
 class BluetoothUnknownException(message: String = "Unknown error happened"): Exception(message)
-

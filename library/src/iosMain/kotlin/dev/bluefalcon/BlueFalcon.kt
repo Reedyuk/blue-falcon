@@ -28,10 +28,10 @@ actual class BlueFalcon actual constructor(
         centralManager.cancelPeripheralConnection(bluetoothPeripheral.bluetoothDevice)
     }
 
-//    @Throws
+    @Throws(BluetoothUnknownException::class)
     actual fun scan() {
         isScanning = true
-        when(centralManager.state) {
+        when (centralManager.state) {
             CBManagerStateUnknown -> throw BluetoothUnknownException()
             CBManagerStateResetting -> throw BluetoothResettingException()
             CBManagerStateUnsupported -> throw BluetoothUnsupportedException()
