@@ -10,7 +10,7 @@ jobs:
     steps:
     - uses: actions/checkout@v2
     - name: Run gradle build
-      run: ./gradlew library:build
+      run: ./Library/gradlew -p ./Library build
 
     #- name: Run Tests
     #  run: ./gradlew library:test
