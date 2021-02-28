@@ -1,4 +1,4 @@
-# ![Blue Falcon](bluefalcon.png) Blue-Falcon ![CI](https://github.com/Reedyuk/blue-falcon/workflows/CI/badge.svg) [![Kotlin](https://img.shields.io/badge/kotlin-1.3.72-blue.svg)](http://kotlinlang.org) ![badge][badge-android] ![badge][badge-native] ![badge][badge-mac]
+# ![Blue Falcon](bluefalcon.png) Blue-Falcon ![CI](https://github.com/Reedyuk/blue-falcon/workflows/CI/badge.svg) [![Kotlin](https://img.shields.io/badge/kotlin-1.4.31-blue.svg)](http://kotlinlang.org) ![badge][badge-android] ![badge][badge-native] ![badge][badge-mac]
 
 A Bluetooth "Cross Platform" Kotlin Multiplatform library for iOS, Android and MacOS. 
 
@@ -28,7 +28,7 @@ blueFalcon.scan()
 #### Install
 
 ```kotlin
-implementation 'dev.bluefalcon:library-android:0.7.0'
+implementation 'dev.bluefalcon:blue-falcon-android:0.9.1'
 ```
 
 The Android sdk requires an Application context, we do this by passing in on the BlueFalcon constructor, in this example we are calling the code from an activity(this).
@@ -43,6 +43,17 @@ try {
     //request the ACCESS_COARSE_LOCATION permission
 }
 ```
+
+### Kotlin Multiplatform
+
+### Install
+
+```kotlin
+implementation 'dev.bluefalcon:blue-falcon:0.9.1'
+```
+
+Please look at the Kotlin Multiplatform example in the Examples folder.
+
 
 ### BlueFalcon API
 
@@ -85,11 +96,7 @@ Open the kotlin MP example directory in InteliJ and then run the install targets
 
 ### iOS & MacOS
 
-To run the iOS example, simply perform a pod install and run from xcode.
-
-```bash
-pod install
-```
+To run the MacOS & iOS example, you need to reference the relevant framework by including it in your poroject. Ensure your project has the Framework search paths referencing the framework directory.
 
 ### Android
 
