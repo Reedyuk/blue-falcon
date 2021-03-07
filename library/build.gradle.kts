@@ -2,12 +2,15 @@ import java.util.*
 
 plugins {
     kotlin("multiplatform") version "1.4.31"
+    id("com.android.library")
     id("maven-publish")
     id("signing")
 }
 
 repositories {
     mavenCentral()
+    google()
+    jcenter()
 }
 
 //expose properties
@@ -33,17 +36,27 @@ val developerName: String by project
 val developerEmail: String by project
 val group: String by project
 
+android {
+    compileSdkVersion(29)
+    sourceSets["main"].manifest.srcFile("src/androidMain/AndroidManifest.xml")
+    defaultConfig {
+        minSdkVersion(24)
+        targetSdkVersion(29)
+    }
+}
 
 kotlin {
-
-    jvm("android") {
-        compilations.all {
-            kotlinOptions.jvmTarget = "1.8"
-        }
-        testRuns["test"].executionTask.configure {
-            useJUnit()
-        }
+    android {
+        publishLibraryVariants("debug", "release")
     }
+//    jvm("android") {
+//        compilations.all {
+//            kotlinOptions.jvmTarget = "1.8"
+//        }
+//        testRuns["test"].executionTask.configure {
+//            useJUnit()
+//        }
+//    }
     js(LEGACY) {
         browser {
             testTask {
@@ -76,9 +89,7 @@ kotlin {
     }
 
     sourceSets {
-        val commonMain by getting {
-
-        }
+        val commonMain by getting {}
         val commonTest by getting {
             dependencies {
                 implementation(kotlin("test-common"))
@@ -87,7 +98,6 @@ kotlin {
         }
         val androidMain by getting {
             dependencies {
-                compileOnly("org.robolectric:android-all:9-robolectric-4913185-2")
             }
         }
         val jsMain by getting
@@ -166,4 +176,3 @@ signing {
     useInMemoryPgpKeys(signingKey, signingPassword)
     sign(publishing.publications)
 }
-
