@@ -49,14 +49,11 @@ kotlin {
     android {
         publishLibraryVariants("debug", "release")
     }
-//    jvm("android") {
-//        compilations.all {
-//            kotlinOptions.jvmTarget = "1.8"
-//        }
-//        testRuns["test"].executionTask.configure {
-//            useJUnit()
-//        }
-//    }
+    jvm {
+        compilations.all {
+            kotlinOptions.jvmTarget = "1.8"
+        }
+    }
     js(LEGACY) {
         browser {
             testTask {
@@ -99,6 +96,9 @@ kotlin {
         val androidMain by getting {
             dependencies {
             }
+        }
+        val jvmMain by getting {
+
         }
         val jsMain by getting
         val iosX64Main by getting
