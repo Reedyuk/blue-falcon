@@ -1,11 +1,15 @@
 package dev.bluefalcon
 
+import com.welie.blessed.BluetoothCentralManager
+import com.welie.blessed.BluetoothCentralManagerCallback
+import java.lang.Exception
+//import javax.bluetooth.*
+
 actual class BlueFalcon actual constructor(context: ApplicationContext, serviceUUID: String?) {
-    actual val delegates: MutableSet<BlueFalconDelegate>
-        get() = TODO("Not yet implemented")
-    actual var isScanning: Boolean
-        get() = TODO("Not yet implemented")
-        set(value) {}
+    actual val delegates: MutableSet<BlueFalconDelegate> = mutableSetOf()
+    actual var isScanning: Boolean = false
+
+    private val bluetoothManager = BluetoothCentralManager(BluetoothCentralManagerCallback())
 
     actual fun connect(bluetoothPeripheral: BluetoothPeripheral, autoConnect: Boolean) {
     }
@@ -21,6 +25,14 @@ actual class BlueFalcon actual constructor(context: ApplicationContext, serviceU
         BluetoothNotEnabledException::class
     )
     actual fun scan() {
+        bluetoothManager.scanForPeripherals()
+//        try {
+//            val localDevice = LocalDevice.getLocalDevice()
+//            val agent = localDevice.discoveryAgent
+//            agent.startInquiry(DiscoveryAgent.GIAC, BluetoothDiscoveryListener())
+//        } catch (e: Exception) {
+//            e.printStackTrace()
+//        }
     }
 
     actual fun stopScanning() {
@@ -78,5 +90,25 @@ actual class BlueFalcon actual constructor(context: ApplicationContext, serviceU
 
     actual fun changeMTU(bluetoothPeripheral: BluetoothPeripheral, mtuSize: Int) {
     }
+
+    class BluetoothCentralManagerCallback: com.welie.blessed.BluetoothCentralManagerCallback() {
+
+    }
+
+//    class BluetoothDiscoveryListener: DiscoveryListener {
+//        override fun deviceDiscovered(btDevice: RemoteDevice?, cod: DeviceClass?) {
+//            log(btDevice?.getFriendlyName(false) ?: "deviceDiscovered")
+//        }
+//
+//        override fun servicesDiscovered(transID: Int, servRecord: Array<out ServiceRecord>?) {
+//        }
+//
+//        override fun serviceSearchCompleted(transID: Int, respCode: Int) {
+//        }
+//
+//        override fun inquiryCompleted(discType: Int) {
+//        }
+//
+//    }
 
 }

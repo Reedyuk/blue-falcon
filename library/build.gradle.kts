@@ -11,6 +11,7 @@ repositories {
     mavenCentral()
     google()
     jcenter()
+    maven("https://jitpack.io")
 }
 
 //expose properties
@@ -98,7 +99,9 @@ kotlin {
             }
         }
         val jvmMain by getting {
-
+            dependencies {
+                implementation("com.github.weliem.blessed-bluez:blessed:0.38")
+            }
         }
         val jsMain by getting
         val iosX64Main by getting
