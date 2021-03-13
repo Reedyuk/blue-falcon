@@ -30,7 +30,7 @@ class DevicesActivity : AppCompatActivity(), DevicesViewModelOutput {
     }
 
     private fun requestLocationPermission() {
-        val permission = arrayOf(Manifest.permission.ACCESS_COARSE_LOCATION)
+        val permission = arrayOf(Manifest.permission.ACCESS_FINE_LOCATION)
         ActivityCompat.requestPermissions(this, permission, 0)
     }
 
@@ -38,5 +38,5 @@ class DevicesActivity : AppCompatActivity(), DevicesViewModelOutput {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
         viewModel.scan()
     }
-    
+
 }
