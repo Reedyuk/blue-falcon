@@ -18,41 +18,41 @@ class MainController: Controller(), BlueFalconDelegate {
         bluetoothPeripheral: BluetoothPeripheral,
         bluetoothCharacteristic: BluetoothCharacteristic
     ) {
-        TODO("Not yet implemented")
+        println("didCharacteristcValueChanged")
     }
 
     override fun didConnect(bluetoothPeripheral: BluetoothPeripheral) {
-        TODO("Not yet implemented")
+        println("didConnect ${bluetoothPeripheral.name}")
     }
 
     override fun didDisconnect(bluetoothPeripheral: BluetoothPeripheral) {
-        TODO("Not yet implemented")
+        println("didDisconnect ${bluetoothPeripheral.name}")
     }
 
     override fun didDiscoverCharacteristics(bluetoothPeripheral: BluetoothPeripheral) {
-        TODO("Not yet implemented")
+        println("didDiscoverCharacteristics ${bluetoothPeripheral.name}")
     }
 
     override fun didDiscoverDevice(bluetoothPeripheral: BluetoothPeripheral) {
-        TODO("Not yet implemented")
+        println("didDiscoverDevice ${bluetoothPeripheral.name}")
     }
 
     override fun didDiscoverServices(bluetoothPeripheral: BluetoothPeripheral) {
-        TODO("Not yet implemented")
+        println("didDiscoverServices ${bluetoothPeripheral.name}")
     }
 
     override fun didReadDescriptor(
         bluetoothPeripheral: BluetoothPeripheral,
         bluetoothCharacteristicDescriptor: BluetoothCharacteristicDescriptor
     ) {
-        TODO("Not yet implemented")
+        println("didReadDescriptor ${bluetoothPeripheral.name}")
     }
 
     override fun didRssiUpdate(bluetoothPeripheral: BluetoothPeripheral) {
-        TODO("Not yet implemented")
+        println("didRssiUpdate ${bluetoothPeripheral.name}")
     }
 
     override fun didUpdateMTU(bluetoothPeripheral: BluetoothPeripheral) {
-        TODO("Not yet implemented")
+        println("didUpdateMTU ${bluetoothPeripheral.name}")
     }
 }

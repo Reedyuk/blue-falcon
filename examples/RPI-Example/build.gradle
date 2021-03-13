@@ -48,7 +48,7 @@ dependencies {
     compile("com.github.bkenn:kfoenix:0.1.2-SNAPSHOT")
     compile "org.jetbrains.kotlin:kotlin-stdlib-jdk8:$kotlin_version"
     compile("org.jetbrains.kotlin:kotlin-reflect")
-    compile("dev.bluefalcon:blue-falcon-jvm:0.9.3")
+    compile("dev.bluefalcon:blue-falcon-rpi:0.9.3")
 }
 
 mainClassName = 'dev.bluefalcon.app.Application'

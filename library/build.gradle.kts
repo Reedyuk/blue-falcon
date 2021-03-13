@@ -12,6 +12,7 @@ repositories {
     google()
     jcenter()
     maven("https://jitpack.io")
+    mavenLocal()
 }
 
 //expose properties
@@ -50,7 +51,7 @@ kotlin {
     android {
         publishLibraryVariants("debug", "release")
     }
-    jvm {
+    jvm("rpi") {
         compilations.all {
             kotlinOptions.jvmTarget = "1.8"
         }
@@ -98,9 +99,9 @@ kotlin {
             dependencies {
             }
         }
-        val jvmMain by getting {
+        val rpiMain by getting {
             dependencies {
-                implementation("com.github.weliem.blessed-bluez:blessed:0.38")
+                implementation("com.github.weliem:blessed-bluez:0.38")
             }
         }
         val jsMain by getting
