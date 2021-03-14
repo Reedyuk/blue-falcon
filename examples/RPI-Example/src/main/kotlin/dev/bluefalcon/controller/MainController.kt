@@ -1,6 +1,8 @@
 package dev.bluefalcon.controller
 
 import dev.bluefalcon.*
+import javafx.collections.FXCollections
+import javafx.collections.ObservableList
 import tornadofx.*
 
 class MainController: Controller(), BlueFalconDelegate {
@@ -8,8 +10,11 @@ class MainController: Controller(), BlueFalconDelegate {
     val minWidth=600.px
     val minHeight=480.px
 
+    val devices: ObservableList<BluetoothPeripheral> = FXCollections.observableArrayList()
+
+    private val blueFalcon = BlueFalcon(ApplicationContext(), null)
+
     init {
-        val blueFalcon = BlueFalcon(ApplicationContext(), null)
         blueFalcon.delegates.add(this)
         blueFalcon.scan()
     }
@@ -27,18 +32,26 @@ class MainController: Controller(), BlueFalconDelegate {
 
     override fun didDisconnect(bluetoothPeripheral: BluetoothPeripheral) {
         println("didDisconnect ${bluetoothPeripheral.name}")
+        devices.remove(bluetoothPeripheral)
     }
 
     override fun didDiscoverCharacteristics(bluetoothPeripheral: BluetoothPeripheral) {
         println("didDiscoverCharacteristics ${bluetoothPeripheral.name}")
+        bluetoothPeripheral.deviceServices.forEach { service ->
+            service.characteristics.forEach {
+                blueFalcon.readCharacteristic(bluetoothPeripheral, it)
+            }
+        }
     }
 
     override fun didDiscoverDevice(bluetoothPeripheral: BluetoothPeripheral) {
         println("didDiscoverDevice ${bluetoothPeripheral.name}")
+        devices.add(bluetoothPeripheral)
+        blueFalcon.connect(bluetoothPeripheral)
     }
 
     override fun didDiscoverServices(bluetoothPeripheral: BluetoothPeripheral) {
-        println("didDiscoverServices ${bluetoothPeripheral.name}")
+        println("didDiscoverServices ${bluetoothPeripheral.name}:${bluetoothPeripheral.deviceServices.size}}")
     }
 
     override fun didReadDescriptor(

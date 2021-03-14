@@ -1,19 +1,23 @@
 package dev.bluefalcon.view
 
+import dev.bluefalcon.BluetoothPeripheral
 import dev.bluefalcon.controller.MainController
+import javafx.scene.control.ListView
 import tornadofx.*
 
 class MainView : View() {
-    val ctrl: MainController by inject()
+    private val controller: MainController by inject()
 
     init {
-        this.title = ctrl.title
+        this.title = controller.title
     }
+
+    var listview: ListView<BluetoothPeripheral>? = null
 
     override val root = borderpane {
         style {
-            minWidth = ctrl.minWidth
-            minHeight = ctrl.minHeight
+            minWidth = controller.minWidth
+            minHeight = controller.minHeight
         }
         top {
             hbox {
@@ -24,9 +28,11 @@ class MainView : View() {
             }
         }
         center {
-
-
-
+            listview = listview(controller.devices) {
+                onUserSelect(1) {
+                    println("selected ${selectedItem?.name}")
+                }
+            }
         }
     }
 }
