@@ -1,6 +1,6 @@
-# ![Blue Falcon](bluefalcon.png) Blue-Falcon ![CI](https://github.com/Reedyuk/blue-falcon/workflows/CI/badge.svg) [![Kotlin](https://img.shields.io/badge/kotlin-1.4.31-blue.svg)](http://kotlinlang.org) ![badge][badge-android] ![badge][badge-native] ![badge][badge-mac]
+# ![Blue Falcon](bluefalcon.png) Blue-Falcon ![CI](https://github.com/Reedyuk/blue-falcon/workflows/CI/badge.svg) [![Kotlin](https://img.shields.io/badge/kotlin-1.4.31-blue.svg)](http://kotlinlang.org) ![badge][badge-android] ![badge][badge-native] ![badge][badge-mac] ![badge][badge-rpi]
 
-A Bluetooth "Cross Platform" Kotlin Multiplatform library for iOS, Android and MacOS. 
+A Bluetooth "Cross Platform" Kotlin Multiplatform library for iOS, Android, MacOS and Raspberry Pi. 
 
 Bluetooth in general has the same functionality for all platforms, e.g. connect to device, fetch services, fetch characteristics.
 
@@ -28,13 +28,13 @@ blueFalcon.scan()
 #### Install
 
 ```kotlin
-implementation 'dev.bluefalcon:blue-falcon-android:0.9.2'
+implementation 'dev.bluefalcon:blue-falcon-android:0.9.3'
 ```
 
 And if you are using the debug variant:
 
 ```kotlin
-implementation 'dev.bluefalcon:blue-falcon-android-debug:0.9.2'
+implementation 'dev.bluefalcon:blue-falcon-android-debug:0.9.3'
 ```
 
 The Android sdk requires an Application context, we do this by passing in on the BlueFalcon constructor, in this example we are calling the code from an activity(this).
@@ -50,12 +50,22 @@ try {
 }
 ```
 
+### Raspberry Pi
+
+#### Install
+
+The Raspberry Pi library is using Java.
+
+```kotlin
+implementation 'dev.bluefalcon:blue-falcon-rpi:0.9.3'
+```
+
 ### Kotlin Multiplatform
 
 ### Install
 
 ```kotlin
-implementation 'dev.bluefalcon:blue-falcon:0.9.1'
+implementation 'dev.bluefalcon:blue-falcon:0.9.3'
 ```
 
 Please look at the Kotlin Multiplatform example in the Examples folder.
@@ -108,6 +118,10 @@ To run the MacOS & iOS example, you need to reference the relevant framework by 
 
 Open the root directory of the project in Android Studio and run the Android app target from the ide.
 
+### Raspberry Pi
+
+This example can only be ran on a Raspberry pi, it will crash otherwise.
+
 ## Support
 
 For a **bug, feature request, or cool idea**, please [file a Github issue](https://github.com/Reedyuk/blue-falcon/issues/new).
@@ -121,3 +135,4 @@ Keep in mind that Blue-Falcon is maintained by volunteers. Please be patient if 
 [badge-native]: http://img.shields.io/badge/platform-native-lightgrey.svg?style=flat
 [badge-js]: http://img.shields.io/badge/platform-js-yellow.svg?style=flat
 [badge-mac]: http://img.shields.io/badge/platform-macos-lightgrey.svg?style=flat
+[badge-rpi]: http://img.shields.io/badge/platform-rpi-lightgrey.svg?style=flat

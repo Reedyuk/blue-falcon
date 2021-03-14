@@ -11,6 +11,8 @@ repositories {
     mavenCentral()
     google()
     jcenter()
+    maven("https://jitpack.io")
+    mavenLocal()
 }
 
 //expose properties
@@ -49,14 +51,11 @@ kotlin {
     android {
         publishLibraryVariants("debug", "release")
     }
-//    jvm("android") {
-//        compilations.all {
-//            kotlinOptions.jvmTarget = "1.8"
-//        }
-//        testRuns["test"].executionTask.configure {
-//            useJUnit()
-//        }
-//    }
+    jvm("rpi") {
+        compilations.all {
+            kotlinOptions.jvmTarget = "1.8"
+        }
+    }
     js(LEGACY) {
         browser {
             testTask {
@@ -98,6 +97,11 @@ kotlin {
         }
         val androidMain by getting {
             dependencies {
+            }
+        }
+        val rpiMain by getting {
+            dependencies {
+                implementation("com.github.weliem:blessed-bluez:0.38")
             }
         }
         val jsMain by getting
