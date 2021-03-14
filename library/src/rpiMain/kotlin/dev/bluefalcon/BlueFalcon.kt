@@ -10,7 +10,7 @@ actual class BlueFalcon actual constructor(context: ApplicationContext, private 
     private val bluetoothManagerCallback = object: BluetoothCentralManagerCallback() {
         override fun onDiscoveredPeripheral(peripheral: com.welie.blessed.BluetoothPeripheral, scanResult: ScanResult) {
             val device = BluetoothPeripheral(peripheral)
-            delegates.forEach { it.didConnect(device) }
+            delegates.forEach { it.didDiscoverDevice(device) }
         }
     }
     private val bluetoothPeripheralCallback = object: BluetoothPeripheralCallback() {
