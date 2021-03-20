@@ -1,6 +1,6 @@
-# ![Blue Falcon](bluefalcon.png) Blue-Falcon ![CI](https://github.com/Reedyuk/blue-falcon/workflows/CI/badge.svg) [![Kotlin](https://img.shields.io/badge/kotlin-1.4.31-blue.svg)](http://kotlinlang.org) ![badge][badge-android] ![badge][badge-native] ![badge][badge-mac] ![badge][badge-rpi]
+# ![Blue Falcon](bluefalcon.png) Blue-Falcon ![CI](https://github.com/Reedyuk/blue-falcon/workflows/CI/badge.svg) [![Kotlin](https://img.shields.io/badge/kotlin-1.4.31-blue.svg)](http://kotlinlang.org) ![badge][badge-android] ![badge][badge-native] ![badge][badge-mac] ![badge][badge-rpi] ![badge][badge-js]
 
-A Bluetooth "Cross Platform" Kotlin Multiplatform library for iOS, Android, MacOS and Raspberry Pi. 
+A Bluetooth "Cross Platform" Kotlin Multiplatform library for iOS, Android, MacOS, Raspberry Pi and Javascript.
 
 Bluetooth in general has the same functionality for all platforms, e.g. connect to device, fetch services, fetch characteristics.
 
@@ -8,7 +8,7 @@ This library is the glue that brings those together so that mobile developers ca
 
 The idea is to have a common api for using bluetooth as the principle of bluetooth is the same but each platform ios and android has different apis which means you have to duplicate the logic for each platform.
 
-What this library isn't? It is not a cross platform library, this is a multiplatform library. The difference? each platform is compiled down to the native code, so when you use the library in iOS, you are consuming an obj-c library and same principle for Android.
+What this library isn't? It is not a cross platform library, this is a multiplatform library. The difference? each platform is compiled down to the native code, so when you use the library in iOS, you are consuming an obj-c library and same principle for Android and so on.
 
 ## Basic Usage
 
@@ -28,13 +28,13 @@ blueFalcon.scan()
 #### Install
 
 ```kotlin
-implementation 'dev.bluefalcon:blue-falcon-android:0.9.3'
+implementation 'dev.bluefalcon:blue-falcon-android:0.9.4'
 ```
 
 And if you are using the debug variant:
 
 ```kotlin
-implementation 'dev.bluefalcon:blue-falcon-android-debug:0.9.3'
+implementation 'dev.bluefalcon:blue-falcon-android-debug:0.9.4'
 ```
 
 The Android sdk requires an Application context, we do this by passing in on the BlueFalcon constructor, in this example we are calling the code from an activity(this).
@@ -57,15 +57,23 @@ try {
 The Raspberry Pi library is using Java.
 
 ```kotlin
-implementation 'dev.bluefalcon:blue-falcon-rpi:0.9.3'
+implementation 'dev.bluefalcon:blue-falcon-rpi:0.9.4'
 ```
+
+### Javascript 
+
+#### Install
+
+Simply copy the compiled javascript file (blue-falcon.js) to your web directory.
+
+See the JS-Example for details on how to use.
 
 ### Kotlin Multiplatform
 
 ### Install
 
 ```kotlin
-implementation 'dev.bluefalcon:blue-falcon:0.9.3'
+implementation 'dev.bluefalcon:blue-falcon:0.9.4'
 ```
 
 Please look at the Kotlin Multiplatform example in the Examples folder.
@@ -122,6 +130,10 @@ Open the root directory of the project in Android Studio and run the Android app
 
 This example can only be ran on a Raspberry pi, it will crash otherwise.
 
+### Javascript
+
+Open the index.html file in a web browser.
+
 ## Support
 
 For a **bug, feature request, or cool idea**, please [file a Github issue](https://github.com/Reedyuk/blue-falcon/issues/new).
@@ -129,6 +141,8 @@ For a **bug, feature request, or cool idea**, please [file a Github issue](https
 ### Two big little things
 
 Keep in mind that Blue-Falcon is maintained by volunteers. Please be patient if you don’t immediately get an answer to your question; we all have jobs, families, obligations, and lives beyond this project.
+
+Many thanks to everyone so far who has contributed to the project, it really means alot.
 
 
 [badge-android]: http://img.shields.io/badge/platform-android-brightgreen.svg?style=flat

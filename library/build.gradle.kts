@@ -56,13 +56,12 @@ kotlin {
             kotlinOptions.jvmTarget = "1.8"
         }
     }
-    js(LEGACY) {
+    js {
         browser {
-            testTask {
-                useKarma {
-                    useChromeHeadless()
-                }
+            webpackTask {
+                output.libraryTarget = "umd"
             }
+            binaries.executable()
         }
     }
     iosX64 {
