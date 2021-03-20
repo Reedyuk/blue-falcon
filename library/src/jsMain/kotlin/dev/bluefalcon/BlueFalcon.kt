@@ -1,5 +1,7 @@
 package dev.bluefalcon
 
+import dev.bluefalcon.external.Bluetooth
+import dev.bluefalcon.external.BluetoothOptions
 import kotlinx.browser.window
 import org.w3c.dom.Navigator
 
@@ -12,6 +14,7 @@ actual class BlueFalcon actual constructor(context: ApplicationContext, serviceU
     actual var isScanning: Boolean = false
 
     private inline val Navigator.bluetooth: Bluetooth get() = asDynamic().bluetooth as Bluetooth
+    private var optionalServices: Array<String> = emptyArray()
 
     @JsName("addDelegate")
     fun addDelegate(blueFalconDelegate: BlueFalconDelegate) { delegates.add(blueFalconDelegate) }
@@ -24,8 +27,6 @@ actual class BlueFalcon actual constructor(context: ApplicationContext, serviceU
         log("connect -> ${bluetoothPeripheral.device}:${bluetoothPeripheral.device.gatt} gatt connected? ${bluetoothPeripheral.device.gatt?.connected}")
         if(bluetoothPeripheral.device.gatt?.connected == true) {
             delegates.forEach { it.didConnect(bluetoothPeripheral) }
-            //need to check via https
-            bluetoothPeripheral.device.gatt.getPrimaryServices(null)
         } else {
             bluetoothPeripheral.device.gatt?.connect()?.then { gatt ->
                 connect(bluetoothPeripheral, autoConnect)
@@ -41,8 +42,14 @@ actual class BlueFalcon actual constructor(context: ApplicationContext, serviceU
     actual fun stopScanning() {}
 
     @JsName("scan")
+    fun scan(optionalServices: Array<String>) {
+        this.optionalServices = optionalServices
+        scan()
+    }
+
+    @JsName("rescan")
     actual fun scan() {
-        window.navigator.bluetooth.requestDevice(BluetoothOptions(true))
+        window.navigator.bluetooth.requestDevice(BluetoothOptions(false, arrayOf(BluetoothOptions.Filter.Services(optionalServices)), optionalServices))
             .then { bluetoothDevice ->
                 val device = BluetoothPeripheral(bluetoothDevice)
                 delegates.forEach {
@@ -51,43 +58,55 @@ actual class BlueFalcon actual constructor(context: ApplicationContext, serviceU
             }
     }
 
-    /*@JsName("readService")
+    @JsName("readService")
     fun readService(
         bluetoothPeripheral: BluetoothPeripheral,
         serviceUUID: String?
     ) {
         bluetoothPeripheral.device.gatt?.getPrimaryServices(serviceUUID)?.then { services ->
-            services.forEach {
-                log("Service: ${it.uuid}")
+            bluetoothPeripheral.deviceServices.addAll(services.map { BluetoothService(it) })
+            delegates.forEach {
+                it.didDiscoverServices(bluetoothPeripheral)
+            }
+            bluetoothPeripheral.deviceServices.forEach { service ->
+                service.service.getCharacteristics(undefined).then { characteristics ->
+                    service.deviceCharacteristics = characteristics.map { BluetoothCharacteristic(it) }.toMutableSet()
+                    delegates.forEach {
+                        it.didDiscoverCharacteristics(bluetoothPeripheral)
+                    }
+                }
             }
         }
-    }*/
+    }
 
     @JsName("readCharacteristic")
     actual fun readCharacteristic(
         bluetoothPeripheral: BluetoothPeripheral,
         bluetoothCharacteristic: BluetoothCharacteristic
     ) {
-        TODO("not implemented")
+        bluetoothCharacteristic.characteristic.readValue().then { _ ->
+            delegates.forEach {
+                it.didCharacteristcValueChanged(bluetoothPeripheral, bluetoothCharacteristic)
+            }
+        }
     }
 
-    @JsName("writeCharacteristic")
+
     actual fun writeCharacteristic(
         bluetoothPeripheral: BluetoothPeripheral,
         bluetoothCharacteristic: BluetoothCharacteristic,
         value: String,
         writeType: Int?
-    ) {
-        TODO("not implemented")
-    }
+    ) {}
 
+    @JsName("writeCharacteristic")
     actual fun writeCharacteristic(
         bluetoothPeripheral: BluetoothPeripheral,
         bluetoothCharacteristic: BluetoothCharacteristic,
         value: ByteArray,
         writeType: Int?
     ){
-        TODO("not implemented")
+        bluetoothCharacteristic.characteristic.writeValue(value)
     }
 
     @JsName("notifyCharacteristic")

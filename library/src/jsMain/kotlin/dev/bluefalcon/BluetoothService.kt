@@ -1,8 +1,14 @@
 package dev.bluefalcon
 
-actual class BluetoothService {
+import dev.bluefalcon.external.BluetoothRemoteGATTService
+
+actual class BluetoothService(val service: BluetoothRemoteGATTService) {
     actual val name: String?
-        get() = TODO("not implemented") //To change initializer of created properties use File | Settings | File Templates.
+        get() = service.uuid
     actual val characteristics: List<BluetoothCharacteristic>
-        get() = TODO("not implemented") //To change initializer of created properties use File | Settings | File Templates.
+        get() = deviceCharacteristics.toList()
+
+    internal var deviceCharacteristics: MutableSet<BluetoothCharacteristic> = mutableSetOf()
+
+    val characteristicArray: Array<BluetoothCharacteristic> get() = characteristics.toTypedArray()
 }
