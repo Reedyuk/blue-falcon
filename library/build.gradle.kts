@@ -1,7 +1,7 @@
 import java.util.*
 
 plugins {
-    kotlin("multiplatform") version "1.4.31"
+    kotlin("multiplatform") version "1.5.0"
     id("com.android.library")
     id("maven-publish")
     id("signing")
