@@ -7,7 +7,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     static let instance = (UIApplication.shared.delegate as? AppDelegate)!
 
     lazy var bluetoothService = BluetoothService(
-        blueFalcon: LibraryBlueFalcon(context: window!.rootViewController!.view, serviceUUID: nil)
+        blueFalcon: Blue_falconBlueFalcon(context: window!.rootViewController!.view, serviceUUID: nil)
     )
     var window: UIWindow?
 
