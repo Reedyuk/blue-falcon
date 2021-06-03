@@ -12,7 +12,7 @@ class DeviceViewController: UITableViewController {
 
     var viewModel: DeviceViewModel!
     private var deviceViewModels: [DeviceServiceViewModel] = []
-    var bluetoothDevice: LibraryBluetoothPeripheral!
+    var bluetoothDevice: Blue_falconBluetoothPeripheral!
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -57,7 +57,7 @@ class DeviceViewController: UITableViewController {
 
     override func prepare(for segue: UIStoryboardSegue, sender: Any?) {
         if let deviceViewController = segue.destination as? DeviceServiceViewController,
-            let service = sender as? LibraryBluetoothService {
+            let service = sender as? Blue_falconBluetoothService {
             deviceViewController.service = service
             let viewModel = DeviceCharacteristicsViewModel(
                 bluetoothService: AppDelegate.instance.bluetoothService,

@@ -12,8 +12,8 @@ class DeviceServiceViewController: UITableViewController {
 
     var viewModel: DeviceCharacteristicsViewModel!
     private lazy var deviceViewModels: [DeviceCharacteristicViewModel] = viewModel.deviceCharacteristicViewModels(output: nil)
-    var bluetoothDevice: LibraryBluetoothPeripheral!
-    var service: LibraryBluetoothService!
+    var bluetoothDevice: Blue_falconBluetoothPeripheral!
+    var service: Blue_falconBluetoothService!
 
     override func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
         return deviceViewModels.count

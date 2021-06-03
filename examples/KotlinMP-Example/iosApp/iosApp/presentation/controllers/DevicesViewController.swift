@@ -42,7 +42,7 @@ class DevicesViewController: UITableViewController {
 
     override func prepare(for segue: UIStoryboardSegue, sender: Any?) {
         if let deviceViewController = segue.destination as? DeviceViewController,
-            let device = sender as? LibraryBluetoothPeripheral {
+            let device = sender as? Blue_falconBluetoothPeripheral {
             deviceViewController.bluetoothDevice = device
             let viewModel = DeviceViewModel(
                 output: deviceViewController,
