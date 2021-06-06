@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html>
+
+   <head>
+      <title>Javascript External Script</title>
+      <!-- Latest compiled and minified JavaScript -->
+      <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/3.4.1/css/bootstrap.min.css" integrity="sha384-HSMxcRTRxnN+Bdg0JdbxYKrThecOKuH5zCYotlSAcp1+c8xmyTe9GYg1l9a69psu" crossorigin="anonymous">
+      <script src = "blue-falcon.js" type = "text/javascript"/></script>
+   </head>
+
+   <body style="padding: 5%;">
+       <script>
+      var device = undefined;
+      var characteristics = new Array();
+       const blueFalcon = new this['blue-falcon'].dev.bluefalcon.BlueFalcon();
+       var Delegate = {
+         didDiscoverDevice: function(bluetoothPeripheral) {
+            console.log(`didDiscover ${bluetoothPeripheral.name}`);
+            blueFalcon.connect(bluetoothPeripheral);
+         },
+         didConnect: function(bluetoothPeripheral) {
+            console.log(`didConnect ${bluetoothPeripheral.name}`);
+            device = bluetoothPeripheral;
+            document.getElementById('connectedDevice').style.display = "block";
+            document.getElementById('device').innerHTML = bluetoothPeripheral.name;
+            blueFalcon.readService(bluetoothPeripheral, document.getElementById('serviceId').value);
+         },
+         didDiscoverServices: function(bluetoothPeripheral) {
+            console.log(`didDiscoverServices ${bluetoothPeripheral.serviceArray}`);
+            var serviceHtml = ""
+            bluetoothPeripheral.serviceArray.forEach(service => {
+               serviceHtml += `<p>${service.name}</p>`;
+            });
+            document.getElementById('services').innerHTML = serviceHtml
+         },
+         didDiscoverCharacteristics: function(bluetoothPeripheral) {
+            console.log(`didDiscoverCharacteristics`);
+            var characteristicHtml = ""
+            characteristics = new Array();
+            bluetoothPeripheral.serviceArray.forEach(service => {
+               service.characteristicArray.forEach(characteristic => {
+                  characteristics.push(characteristic);
+                  characteristicHtml += `<p>${characteristic.name} <button type="button" class="btn btn-default" onclick="blueFalcon.readCharacteristic(device, characteristics[${characteristics.length-1}])" >Read</button>
+                     <button type="button" class="btn btn-default" onclick="blueFalcon.writeCharacteristic(device, characteristics[${characteristics.length-1}], new TextEncoder().encode(document.getElementById('writeValue').value), undefined)" >Write</button>
+                     <input type="text" class="form-control" id="writeValue" placeholder="Value to write" aria-describedby="basic-addon1">
+                 </p>`;
+               })
+            });
+            document.getElementById('characteristics').innerHTML = characteristicHtml
+         },
+         didCharacteristcValueChanged: function(bluetoothPeripheral, bluetoothCharacteristic) {
+            console.log(`didCharacteristcValueChanged ${bluetoothCharacteristic.stringValue}`);
+            document.getElementById('characteristicValue').innerHTML = bluetoothCharacteristic.stringValue;
+         }
+      };
+       blueFalcon.addDelegate(Object.create(Delegate));
+      </script>
+
+   <h1>Blue Falcon JS Example</h1>
+
+   <p>Enter a bluetooth service uuid and press the scan button, for example: 000000ee-0000-1000-8000-00805f9b34fb</p>
+   <div class="input-group">
+      <input type="text" class="form-control" id="serviceId" placeholder="Service UUID" aria-describedby="basic-addon1">
+      <button type="button" class="btn btn-default" onclick="blueFalcon.scan([document.getElementById('serviceId').value])" >Scan</button>
+   </div>
+
+   <div id="connectedDevice" class="input-group" style="display: none;">
+      <h2>Connected Device</h2>
+      <p><b>Device:</b> <span id="device"></span></p>
+      <p><b>Services:</b> <span id="services"></span></p>
+      <p><b>Characteristics:</b> <span id="characteristics"></span></p>
+      <p><b>Last Characteristic Value:</b> <span id="characteristicValue"></span></p>
+   </div>
+   </body>
+
+</html>

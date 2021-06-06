@@ -10,9 +10,9 @@ jobs:
     steps:
     - uses: actions/checkout@v2
     - name: Run gradle build
-      run: ./gradlew library:build
+      run: ./Library/gradlew -p ./Library build
     - name: Run publish
-      run: ./gradlew library:publish
+      run: ./Library/gradlew -p ./Library publish
       env:
         sonatypeUsernameEnv: ${{ secrets.SONATYPEUSERNAME }}
         sonatypePasswordEnv: ${{ secrets.SONATYPEPASSWORD }}

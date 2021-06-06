@@ -4,6 +4,9 @@ import platform.CoreBluetooth.*
 import platform.Foundation.*
 import platform.darwin.NSObject
 
+expect class BluetoothPeripheralManager(blueFalcon: BlueFalcon): CBCentralManagerDelegateProtocol, NSObject
+expect class PeripheralDelegate(blueFalcon: BlueFalcon)
+
 actual class BlueFalcon actual constructor(
     private val context: ApplicationContext,
     private val serviceUUID: String?
@@ -11,8 +14,7 @@ actual class BlueFalcon actual constructor(
     actual val delegates: MutableSet<BlueFalconDelegate> = mutableSetOf()
 
     private val centralManager: CBCentralManager
-    private val bluetoothPeripheralManager = BluetoothPeripheralManager()
-    private val peripheralDelegate = PeripheralDelegate()
+    private val bluetoothPeripheralManager = BluetoothPeripheralManager(this)
     actual var isScanning: Boolean = false
 
     init {
@@ -28,10 +30,16 @@ actual class BlueFalcon actual constructor(
         centralManager.cancelPeripheralConnection(bluetoothPeripheral.bluetoothDevice)
     }
 
-//    @Throws
+    @Throws(
+        BluetoothUnknownException::class,
+        BluetoothResettingException::class,
+        BluetoothUnsupportedException::class,
+        BluetoothPermissionException::class,
+        BluetoothNotEnabledException::class
+    )
     actual fun scan() {
         isScanning = true
-        when(centralManager.state) {
+        when (centralManager.state) {
             CBManagerStateUnknown -> throw BluetoothUnknownException()
             CBManagerStateResetting -> throw BluetoothResettingException()
             CBManagerStateUnsupported -> throw BluetoothUnsupportedException()
@@ -141,122 +149,6 @@ actual class BlueFalcon actual constructor(
         println("Change MTU size called but not needed.")
         delegates.forEach {
             it.didUpdateMTU(bluetoothPeripheral)
-        }
-    }
-
-    inner class BluetoothPeripheralManager: NSObject(), CBCentralManagerDelegateProtocol {
-        override fun centralManagerDidUpdateState(central: CBCentralManager) {
-            when (central.state) {
-                CBManagerStateUnknown -> log("State 0 is .unknown")
-                CBManagerStateResetting -> log("State 1 is .resetting")
-                CBManagerStateUnsupported -> log("State 2 is .unsupported")
-                CBManagerStateUnauthorized -> log("State 3 is .unauthorised")
-                CBManagerStatePoweredOff -> log("State 4 is .poweredOff")
-                CBManagerStatePoweredOn -> log("State 5 is .poweredOn")
-                else -> log("State ${central.state.toInt()}")
-            }
-        }
-
-        override fun centralManager(
-            central: CBCentralManager,
-            didDiscoverPeripheral: CBPeripheral,
-            advertisementData: Map<Any?, *>,
-            RSSI: NSNumber
-        ) {
-            if (isScanning) {
-                log("Discovered device ${didDiscoverPeripheral.name}")
-                val device = BluetoothPeripheral(didDiscoverPeripheral, rssiValue = RSSI.floatValue)
-                delegates.forEach {
-                    it.didDiscoverDevice(device)
-                }
-            }
-        }
-
-        override fun centralManager(central: CBCentralManager, didConnectPeripheral: CBPeripheral) {
-            log("DidConnectPeripheral ${didConnectPeripheral.name}")
-            val device = BluetoothPeripheral(didConnectPeripheral, rssiValue = null)
-            delegates.forEach {
-                it.didConnect(device)
-            }
-            didConnectPeripheral.delegate = peripheralDelegate
-            didConnectPeripheral.discoverServices(null)
-        }
-
-        override fun centralManager(central: CBCentralManager, didDisconnectPeripheral: CBPeripheral, error: NSError?) {
-            log("DidDisconnectPeripheral ${didDisconnectPeripheral.name}")
-            val device = BluetoothPeripheral(didDisconnectPeripheral, rssiValue = null)
-            delegates.forEach {
-                it.didDisconnect(device)
-            }
-        }
-
-    }
-
-    inner class PeripheralDelegate: NSObject(), CBPeripheralDelegateProtocol {
-
-        override fun peripheral(
-            peripheral: CBPeripheral,
-            didDiscoverServices: NSError?
-        ) {
-            if (didDiscoverServices != null) {
-                println("Error with service discovery ${didDiscoverServices}")
-            } else {
-                val device = BluetoothPeripheral(peripheral, rssiValue = null)
-                delegates.forEach {
-                    it.didDiscoverServices(device)
-                }
-                peripheral.services
-                    ?.mapNotNull { it as? CBService }
-                    ?.forEach {
-                        peripheral.discoverCharacteristics(null, it)
-                    }
-            }
-        }
-
-        override fun peripheral(
-            peripheral: CBPeripheral,
-            didDiscoverCharacteristicsForService: CBService,
-            error: NSError?
-        ) {
-            if (error != null) {
-                println("Error with characteristic discovery ${didDiscoverCharacteristicsForService}")
-            }
-            val device = BluetoothPeripheral(peripheral, rssiValue = null)
-            delegates.forEach {
-                it.didDiscoverCharacteristics(device)
-            }
-            BluetoothService(didDiscoverCharacteristicsForService).characteristics.forEach {
-                peripheral.discoverDescriptorsForCharacteristic(it.characteristic)
-            }
-        }
-
-        @Suppress("CONFLICTING_OVERLOADS")
-        override fun peripheral(
-            peripheral: CBPeripheral,
-            didUpdateValueForCharacteristic: CBCharacteristic,
-            error: NSError?
-        ) {
-            if (error != null) {
-                println("Error with characteristic update ${error}")
-            }
-            println("didUpdateValueForCharacteristic")
-            val device = BluetoothPeripheral(peripheral, rssiValue = null)
-            val characteristic = BluetoothCharacteristic(didUpdateValueForCharacteristic)
-            delegates.forEach {
-                it.didCharacteristcValueChanged(
-                    device,
-                    characteristic
-                )
-            }
-        }
-
-        override fun peripheral(peripheral: CBPeripheral, didUpdateValueForDescriptor: CBDescriptor, error: NSError?) {
-            println("didUpdateValueForDescriptor ${didUpdateValueForDescriptor.value}")
-        }
-
-        @Suppress("CONFLICTING_OVERLOADS")
-        override fun peripheral(peripheral: CBPeripheral, didDiscoverDescriptorsForCharacteristic: CBCharacteristic, error: NSError?) {
-            println("didDiscoverDescriptorsForCharacteristic")
         }
     }
 
