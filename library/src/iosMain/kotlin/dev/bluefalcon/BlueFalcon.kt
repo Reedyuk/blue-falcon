@@ -47,7 +47,8 @@ actual class BlueFalcon actual constructor(
             CBManagerStatePoweredOff -> throw BluetoothNotEnabledException()
             CBManagerStatePoweredOn -> {
                 if (serviceUUID != null) {
-                    centralManager.scanForPeripheralsWithServices(listOf(serviceUUID), null)
+                    val serviceCBUUID = CBUUID.UUIDWithString(serviceUUID)
+                    centralManager.scanForPeripheralsWithServices(listOf(serviceCBUUID), null)
                 } else {
                     centralManager.scanForPeripheralsWithServices(null, null)
                 }
