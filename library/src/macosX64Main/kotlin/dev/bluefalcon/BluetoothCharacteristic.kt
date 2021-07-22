@@ -10,7 +10,6 @@ actual class BluetoothCharacteristic(val characteristic: CBCharacteristic) {
     actual val name: String?
         get() = characteristic.UUID.description
     actual val value: ByteArray?
-        @ExperimentalUnsignedTypes
         get() = characteristic.value?.let { data ->
             ByteArray(data.length.toInt()).apply {
                 usePinned {
