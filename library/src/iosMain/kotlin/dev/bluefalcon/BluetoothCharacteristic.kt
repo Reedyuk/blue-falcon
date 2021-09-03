@@ -8,7 +8,7 @@ import platform.posix.memcpy
 
 actual class BluetoothCharacteristic(val characteristic: CBCharacteristic) {
     actual val name: String?
-        get() = characteristic.UUID.description()
+        get() = characteristic.UUID.UUIDString
     actual val value: ByteArray?
         get() = characteristic.value?.let { data ->
             ByteArray(data.length.toInt()).apply {
