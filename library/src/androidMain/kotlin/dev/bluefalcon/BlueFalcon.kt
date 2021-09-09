@@ -170,6 +170,15 @@ actual class BlueFalcon actual constructor(
         }
     }
 
+    actual fun writeCharacteristicWithoutEncoding(
+        bluetoothPeripheral: BluetoothPeripheral,
+        bluetoothCharacteristic: BluetoothCharacteristic,
+        value: ByteArray,
+        writeType: Int?
+    ) {
+        writeCharacteristic(bluetoothPeripheral, bluetoothCharacteristic, value, writeType)
+    }
+
     actual fun writeCharacteristic(
         bluetoothPeripheral: BluetoothPeripheral,
         bluetoothCharacteristic: BluetoothCharacteristic,

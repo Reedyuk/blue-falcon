@@ -111,11 +111,25 @@ actual class BlueFalcon actual constructor(
         bluetoothCharacteristic: BluetoothCharacteristic,
         value: ByteArray,
         writeType: Int?
-    ){
+    ) {
         sharedWriteCharacteristic(
             bluetoothPeripheral,
             bluetoothCharacteristic,
             NSString.create(string = value.decodeToString()),
+            writeType
+        )
+    }
+
+    actual fun writeCharacteristicWithoutEncoding(
+        bluetoothPeripheral: BluetoothPeripheral,
+        bluetoothCharacteristic: BluetoothCharacteristic,
+        value: ByteArray,
+        writeType: Int?
+    ) {
+        sharedWriteCharacteristic(
+            bluetoothPeripheral,
+            bluetoothCharacteristic,
+            value.toData(),
             writeType
         )
     }
@@ -127,15 +141,29 @@ actual class BlueFalcon actual constructor(
         writeType: Int?
     ) {
         value.dataUsingEncoding(NSUTF8StringEncoding)?.let {
-            bluetoothPeripheral.bluetoothDevice.writeValue(
+            sharedWriteCharacteristic(
+                bluetoothPeripheral,
+                bluetoothCharacteristic,
                 it,
-                bluetoothCharacteristic.characteristic,
-                when (writeType) {
-                    1 -> CBCharacteristicWriteWithoutResponse
-                    else -> CBCharacteristicWriteWithResponse
-                }
+                writeType
             )
         }
+    }
+
+    private fun sharedWriteCharacteristic(
+        bluetoothPeripheral: BluetoothPeripheral,
+        bluetoothCharacteristic: BluetoothCharacteristic,
+        value: NSData,
+        writeType: Int?
+    ) {
+        bluetoothPeripheral.bluetoothDevice.writeValue(
+            value,
+            bluetoothCharacteristic.characteristic,
+            when (writeType) {
+                1 -> CBCharacteristicWriteWithoutResponse
+                else -> CBCharacteristicWriteWithResponse
+            }
+        )
     }
 
     actual fun readDescriptor(
