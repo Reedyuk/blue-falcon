@@ -131,6 +131,15 @@ actual class BlueFalcon actual constructor(context: ApplicationContext, private 
         bluetoothPeripheral.bluetoothDevice.writeCharacteristic(bluetoothCharacteristic.characteristic, value, writeType.writeType)
     }
 
+    actual fun writeCharacteristicWithoutEncoding(
+        bluetoothPeripheral: BluetoothPeripheral,
+        bluetoothCharacteristic: BluetoothCharacteristic,
+        value: ByteArray,
+        writeType: Int?
+    ){
+        bluetoothPeripheral.bluetoothDevice.writeCharacteristic(bluetoothCharacteristic.characteristic, value, writeType.writeType)
+    }
+
     private val Int?.writeType: BluetoothGattCharacteristic.WriteType
         get() = when(this) {
             0 -> BluetoothGattCharacteristic.WriteType.WITH_RESPONSE

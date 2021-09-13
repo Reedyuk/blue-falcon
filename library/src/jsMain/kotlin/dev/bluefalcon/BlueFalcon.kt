@@ -109,6 +109,15 @@ actual class BlueFalcon actual constructor(context: ApplicationContext, serviceU
         bluetoothCharacteristic.characteristic.writeValue(value)
     }
 
+    actual fun writeCharacteristicWithoutEncoding(
+        bluetoothPeripheral: BluetoothPeripheral,
+        bluetoothCharacteristic: BluetoothCharacteristic,
+        value: ByteArray,
+        writeType: Int?
+    ){
+        bluetoothCharacteristic.characteristic.writeValue(value)
+    }
+
     @JsName("notifyCharacteristic")
     actual fun notifyCharacteristic(
         bluetoothPeripheral: BluetoothPeripheral,
