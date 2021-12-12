@@ -3,7 +3,7 @@
 	archiveVersion = 1;
 	classes = {
 	};
-	objectVersion = 50;
+	objectVersion = 52;
 	objects = {
 
 /* Begin PBXBuildFile section */
@@ -32,23 +32,8 @@
 		493EC0BA25EA453A009E1801 /* BluetoothConnectionState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 493EC0A625EA453A009E1801 /* BluetoothConnectionState.swift */; };
 		493EC0BB25EA453A009E1801 /* Descriptor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 493EC0A725EA453A009E1801 /* Descriptor.swift */; };
 		493EC0BC25EA453A009E1801 /* BluetoothScanningState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 493EC0A825EA453A009E1801 /* BluetoothScanningState.swift */; };
-		493EC0C725EA4915009E1801 /* BlueFalcon.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 493EC0C625EA4904009E1801 /* BlueFalcon.framework */; };
-		493EC0C825EA4915009E1801 /* BlueFalcon.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 493EC0C625EA4904009E1801 /* BlueFalcon.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+		49B247B52765FFAE00A3BDCC /* BlueFalcon.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 49B247B42765FFAE00A3BDCC /* BlueFalcon.xcframework */; };
 /* End PBXBuildFile section */
-
-/* Begin PBXCopyFilesBuildPhase section */
-		493EC0C325EA47CC009E1801 /* Embed Frameworks */ = {
-			isa = PBXCopyFilesBuildPhase;
-			buildActionMask = 2147483647;
-			dstPath = "";
-			dstSubfolderSpec = 10;
-			files = (
-				493EC0C825EA4915009E1801 /* BlueFalcon.framework in Embed Frameworks */,
-			);
-			name = "Embed Frameworks";
-			runOnlyForDeploymentPostprocessing = 0;
-		};
-/* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
 		493EC07525EA3F03009E1801 /* iOS-Example.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "iOS-Example.app"; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -78,8 +63,7 @@
 		493EC0A625EA453A009E1801 /* BluetoothConnectionState.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = BluetoothConnectionState.swift; sourceTree = "<group>"; };
 		493EC0A725EA453A009E1801 /* Descriptor.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = Descriptor.swift; sourceTree = "<group>"; };
 		493EC0A825EA453A009E1801 /* BluetoothScanningState.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = BluetoothScanningState.swift; sourceTree = "<group>"; };
-		493EC0C525EA4904009E1801 /* BlueFalcon.framework.dSYM */ = {isa = PBXFileReference; lastKnownFileType = wrapper.dsym; path = BlueFalcon.framework.dSYM; sourceTree = "<group>"; };
-		493EC0C625EA4904009E1801 /* BlueFalcon.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; path = BlueFalcon.framework; sourceTree = "<group>"; };
+		49B247B42765FFAE00A3BDCC /* BlueFalcon.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = BlueFalcon.xcframework; path = ../../library/build/universal/BlueFalcon.xcframework; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -87,7 +71,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				493EC0C725EA4915009E1801 /* BlueFalcon.framework in Frameworks */,
+				49B247B52765FFAE00A3BDCC /* BlueFalcon.xcframework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -211,19 +195,9 @@
 		493EC0BF25EA47CC009E1801 /* Frameworks */ = {
 			isa = PBXGroup;
 			children = (
-				493EC0C425EA4904009E1801 /* releaseFramework */,
+				49B247B42765FFAE00A3BDCC /* BlueFalcon.xcframework */,
 			);
 			name = Frameworks;
-			sourceTree = "<group>";
-		};
-		493EC0C425EA4904009E1801 /* releaseFramework */ = {
-			isa = PBXGroup;
-			children = (
-				493EC0C525EA4904009E1801 /* BlueFalcon.framework.dSYM */,
-				493EC0C625EA4904009E1801 /* BlueFalcon.framework */,
-			);
-			name = releaseFramework;
-			path = ../../Library/build/bin/iosArm64/releaseFramework;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -236,7 +210,6 @@
 				493EC07125EA3F03009E1801 /* Sources */,
 				493EC07225EA3F03009E1801 /* Frameworks */,
 				493EC07325EA3F03009E1801 /* Resources */,
-				493EC0C325EA47CC009E1801 /* Embed Frameworks */,
 			);
 			buildRules = (
 			);
@@ -469,7 +442,6 @@
 				DEVELOPMENT_ASSET_PATHS = "\"iOS-Example/Preview Content\"";
 				DEVELOPMENT_TEAM = 269C5Q4423;
 				ENABLE_PREVIEWS = YES;
-				FRAMEWORK_SEARCH_PATHS = "../../Library/build/bin/iosArm64/releaseFramework/**";
 				INFOPLIST_FILE = "iOS-Example/Info.plist";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -491,7 +463,6 @@
 				DEVELOPMENT_ASSET_PATHS = "\"iOS-Example/Preview Content\"";
 				DEVELOPMENT_TEAM = 269C5Q4423;
 				ENABLE_PREVIEWS = YES;
-				FRAMEWORK_SEARCH_PATHS = "../../Library/build/bin/iosArm64/releaseFramework/**";
 				INFOPLIST_FILE = "iOS-Example/Info.plist";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",

@@ -1,16 +1,16 @@
 import java.util.*
 
 plugins {
-    kotlin("multiplatform") version "1.5.30-M1"
+    kotlin("multiplatform") version "1.6.0"
     id("com.android.library")
     id("maven-publish")
     id("signing")
 }
 
 repositories {
+    google()
     mavenCentral()
     google()
-    jcenter()
     maven("https://jitpack.io")
     mavenLocal()
 }
@@ -39,11 +39,11 @@ val developerEmail: String by project
 val group: String by project
 
 android {
-    compileSdkVersion(29)
+    compileSdk = 29
     sourceSets["main"].manifest.srcFile("src/androidMain/AndroidManifest.xml")
     defaultConfig {
-        minSdkVersion(24)
-        targetSdkVersion(29)
+        minSdk = 24
+        targetSdk = 29
     }
 }
 
@@ -64,26 +64,14 @@ kotlin {
             binaries.executable()
         }
     }
-    iosX64 {
-        binaries {
-            framework {
-                baseName = "BlueFalcon"
-            }
-        }
+    iosSimulatorArm64 {
+        binaries.framework("BlueFalcon")
     }
-    iosArm64 {
-        binaries {
-            framework {
-                baseName = "BlueFalcon"
-            }
-        }
+    iosArm64("ios") {
+        binaries.framework("BlueFalcon")
     }
     macosX64 {
-        binaries {
-            framework {
-                baseName = "BlueFalcon"
-            }
-        }
+        binaries.framework("BlueFalcon")
     }
 
     sourceSets {
@@ -104,13 +92,9 @@ kotlin {
             }
         }
         val jsMain by getting
-        val iosX64Main by getting
-        val iosArm64Main by getting
-        val iosMain by sourceSets.creating {
-            dependsOn(commonMain)
-            iosX64Main.dependsOn(this)
-            iosArm64Main.dependsOn(this)
-        }
+        val iosMain by getting
+        val iosSimulatorArm64Main by getting
+        iosSimulatorArm64Main.dependsOn(iosMain)
         val macosX64Main by getting
     }
 }
@@ -178,4 +162,36 @@ signing {
     val signingPassword: String? by project
     useInMemoryPgpKeys(signingKey, signingPassword)
     sign(publishing.publications)
+}
+
+kotlin {
+    tasks {
+        register("copyIosFrameworkIntoUniversalFramework", Copy::class) {
+            from(file("$buildDir/bin/ios/BlueFalconReleaseFramework/BlueFalcon.framework"))
+            into(file("$buildDir/universal/BlueFalcon.xcframework/ios-arm64/BlueFalcon.framework"))
+        }
+        register("copySimulatorFrameworkIntoUniversalFramework", Copy::class) {
+            from(file("$buildDir/bin/iosSimulatorArm64/BlueFalconReleaseFramework/BlueFalcon.framework"))
+            into(file("$buildDir/universal/BlueFalcon.xcframework/ios-arm64_x86_64-simulator/BlueFalcon.framework"))
+        }
+        register("copyMacosFrameworkIntoUniversalFramework", Copy::class) {
+            from(file("$buildDir/bin/macosX64/BlueFalconReleaseFramework/BlueFalcon.framework"))
+            into(file("$buildDir/universal/BlueFalcon.xcframework/macos-arm64_x86_64/BlueFalcon.framework"))
+        }
+        register("copyPlistIntoUniversalFramework", Copy::class) {
+            from(file("${project.projectDir}/Info.plist"))
+            into(file("$buildDir/universal/BlueFalcon.xcframework"))
+        }
+        register("copyFrameworksIntoUniversalFramework") {
+            mustRunAfter("linkBlueFalconIos", "linkBlueFalconIosSimulatorArm64", "copyMacosFrameworkIntoUniversalFramework")
+            mustRunAfter("linkBlueFalconIos")
+            dependsOn("copyIosFrameworkIntoUniversalFramework", "copySimulatorFrameworkIntoUniversalFramework", "copyPlistIntoUniversalFramework", "copyMacosFrameworkIntoUniversalFramework")
+        }
+        register("makeUniversalFramework") {
+            dependsOn("linkBlueFalconIos")
+            dependsOn("linkBlueFalconIosSimulatorArm64")
+            dependsOn("linkBlueFalconMacosX64")
+            dependsOn("copyFrameworksIntoUniversalFramework")
+        }
+    }
 }

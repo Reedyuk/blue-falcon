@@ -1,4 +1,4 @@
-# ![Blue Falcon](bluefalcon.png) Blue-Falcon ![CI](https://github.com/Reedyuk/blue-falcon/workflows/CI/badge.svg) [![Kotlin](https://img.shields.io/badge/kotlin-1.5.30-blue.svg)](http://kotlinlang.org) ![badge][badge-android] ![badge][badge-native] ![badge][badge-mac] ![badge][badge-rpi] ![badge][badge-js]
+# ![Blue Falcon](bluefalcon.png) Blue-Falcon ![CI](https://github.com/Reedyuk/blue-falcon/workflows/CI/badge.svg) [![Kotlin](https://img.shields.io/badge/kotlin-1.6.0-blue.svg)](http://kotlinlang.org) ![badge][badge-android] ![badge][badge-native] ![badge][badge-mac] ![badge][badge-rpi] ![badge][badge-js]
 
 A Bluetooth "Cross Platform" Kotlin Multiplatform library for iOS, Android, MacOS, Raspberry Pi and Javascript.
 
@@ -28,13 +28,13 @@ blueFalcon.scan()
 #### Install
 
 ```kotlin
-implementation 'dev.bluefalcon:blue-falcon-android:0.9.8'
+implementation 'dev.bluefalcon:blue-falcon-android:0.10.0'
 ```
 
 And if you are using the debug variant:
 
 ```kotlin
-implementation 'dev.bluefalcon:blue-falcon-android-debug:0.9.8'
+implementation 'dev.bluefalcon:blue-falcon-android-debug:0.10.0'
 ```
 
 The Android sdk requires an Application context, we do this by passing in on the BlueFalcon constructor, in this example we are calling the code from an activity(this).
@@ -57,7 +57,7 @@ try {
 The Raspberry Pi library is using Java.
 
 ```kotlin
-implementation 'dev.bluefalcon:blue-falcon-rpi:0.9.8'
+implementation 'dev.bluefalcon:blue-falcon-rpi:0.10.0'
 ```
 
 ### Javascript 
@@ -73,7 +73,7 @@ See the JS-Example for details on how to use.
 ### Install
 
 ```kotlin
-implementation 'dev.bluefalcon:blue-falcon:0.9.8'
+implementation 'dev.bluefalcon:blue-falcon:0.10.0'
 ```
 
 Please look at the Kotlin Multiplatform example in the Examples folder.
