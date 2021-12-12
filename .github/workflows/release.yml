@@ -3,6 +3,8 @@ name: Release
 on:
   release:
     types: [released]
+env:
+  DEVELOPER_DIR: /Applications/Xcode_13.app/Contents/Developer
 
 jobs:
   build:
