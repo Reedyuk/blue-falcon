@@ -1,7 +1,8 @@
 import java.util.*
+import org.jetbrains.kotlin.gradle.plugin.mpp.apple.XCFramework
 
 plugins {
-    kotlin("multiplatform") version "1.6.0"
+    kotlin("multiplatform") version "1.6.20"
     id("com.android.library")
     id("maven-publish")
     id("signing")
@@ -47,6 +48,8 @@ android {
     }
 }
 
+val frameworkName = "BlueFalcon"
+
 kotlin {
     android {
         publishLibraryVariants("debug", "release")
@@ -64,14 +67,24 @@ kotlin {
             binaries.executable()
         }
     }
+    val xcf = XCFramework(frameworkName)
     iosSimulatorArm64 {
-        binaries.framework("BlueFalcon")
+        binaries.framework {
+            baseName = frameworkName
+            xcf.add(this)
+        }
     }
     iosArm64("ios") {
-        binaries.framework("BlueFalcon")
+        binaries.framework {
+            baseName = frameworkName
+            xcf.add(this)
+        }
     }
     macosX64 {
-        binaries.framework("BlueFalcon")
+        binaries.framework {
+            baseName = frameworkName
+            xcf.add(this)
+        }
     }
 
     sourceSets {
@@ -162,36 +175,4 @@ signing {
     val signingPassword: String? by project
     useInMemoryPgpKeys(signingKey, signingPassword)
     sign(publishing.publications)
-}
-
-kotlin {
-    tasks {
-        register("copyIosFrameworkIntoUniversalFramework", Copy::class) {
-            from(file("$buildDir/bin/ios/BlueFalconReleaseFramework/BlueFalcon.framework"))
-            into(file("$buildDir/universal/BlueFalcon.xcframework/ios-arm64/BlueFalcon.framework"))
-        }
-        register("copySimulatorFrameworkIntoUniversalFramework", Copy::class) {
-            from(file("$buildDir/bin/iosSimulatorArm64/BlueFalconReleaseFramework/BlueFalcon.framework"))
-            into(file("$buildDir/universal/BlueFalcon.xcframework/ios-arm64_x86_64-simulator/BlueFalcon.framework"))
-        }
-        register("copyMacosFrameworkIntoUniversalFramework", Copy::class) {
-            from(file("$buildDir/bin/macosX64/BlueFalconReleaseFramework/BlueFalcon.framework"))
-            into(file("$buildDir/universal/BlueFalcon.xcframework/macos-arm64_x86_64/BlueFalcon.framework"))
-        }
-        register("copyPlistIntoUniversalFramework", Copy::class) {
-            from(file("${project.projectDir}/Info.plist"))
-            into(file("$buildDir/universal/BlueFalcon.xcframework"))
-        }
-        register("copyFrameworksIntoUniversalFramework") {
-            mustRunAfter("linkBlueFalconIos", "linkBlueFalconIosSimulatorArm64", "copyMacosFrameworkIntoUniversalFramework")
-            mustRunAfter("linkBlueFalconIos")
-            dependsOn("copyIosFrameworkIntoUniversalFramework", "copySimulatorFrameworkIntoUniversalFramework", "copyPlistIntoUniversalFramework", "copyMacosFrameworkIntoUniversalFramework")
-        }
-        register("makeUniversalFramework") {
-            dependsOn("linkBlueFalconIos")
-            dependsOn("linkBlueFalconIosSimulatorArm64")
-            dependsOn("linkBlueFalconMacosX64")
-            dependsOn("copyFrameworksIntoUniversalFramework")
-        }
-    }
 }

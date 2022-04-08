@@ -7,7 +7,8 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		49B247BB2765FFE400A3BDCC /* BlueFalcon.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 49B247B72765FFD400A3BDCC /* BlueFalcon.xcframework */; };
+		4980A9AA28009D9B0049F236 /* BlueFalcon.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 4980A9A928009D9B0049F236 /* BlueFalcon.xcframework */; };
+		4980A9AB28009D9B0049F236 /* BlueFalcon.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 4980A9A928009D9B0049F236 /* BlueFalcon.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		49C7690825E45E0E004B8D3C /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 49C7690725E45E0E004B8D3C /* AppDelegate.swift */; };
 		49C7690F25E45E0F004B8D3C /* Preview Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 49C7690E25E45E0F004B8D3C /* Preview Assets.xcassets */; };
 		49C7691225E45E0F004B8D3C /* Main.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 49C7691025E45E0F004B8D3C /* Main.storyboard */; };
@@ -31,7 +32,22 @@
 		49C7694925E45E7E004B8D3C /* BluetoothService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 49C7693225E45E7E004B8D3C /* BluetoothService.swift */; };
 /* End PBXBuildFile section */
 
+/* Begin PBXCopyFilesBuildPhase section */
+		4980A9AC28009D9B0049F236 /* Embed Frameworks */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 10;
+			files = (
+				4980A9AB28009D9B0049F236 /* BlueFalcon.xcframework in Embed Frameworks */,
+			);
+			name = "Embed Frameworks";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
 /* Begin PBXFileReference section */
+		4980A9A928009D9B0049F236 /* BlueFalcon.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = BlueFalcon.xcframework; path = ../../library/build/XCFrameworks/release/BlueFalcon.xcframework; sourceTree = "<group>"; };
 		49B247B72765FFD400A3BDCC /* BlueFalcon.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = BlueFalcon.xcframework; path = ../../library/build/universal/BlueFalcon.xcframework; sourceTree = "<group>"; };
 		49C7690425E45E0E004B8D3C /* MacOS-Example.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "MacOS-Example.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		49C7690725E45E0E004B8D3C /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
@@ -65,7 +81,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				49B247BB2765FFE400A3BDCC /* BlueFalcon.xcframework in Frameworks */,
+				4980A9AA28009D9B0049F236 /* BlueFalcon.xcframework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -179,6 +195,7 @@
 		49C7695025E45ED4004B8D3C /* Frameworks */ = {
 			isa = PBXGroup;
 			children = (
+				4980A9A928009D9B0049F236 /* BlueFalcon.xcframework */,
 				49B247B72765FFD400A3BDCC /* BlueFalcon.xcframework */,
 			);
 			name = Frameworks;
@@ -194,6 +211,7 @@
 				49C7690025E45E0E004B8D3C /* Sources */,
 				49C7690125E45E0E004B8D3C /* Frameworks */,
 				49C7690225E45E0E004B8D3C /* Resources */,
+				4980A9AC28009D9B0049F236 /* Embed Frameworks */,
 			);
 			buildRules = (
 			);
