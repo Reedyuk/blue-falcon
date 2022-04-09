@@ -109,7 +109,7 @@ class BluetoothService {
 extension BluetoothService: BlueFalconDelegate {
 
     func didReadDescriptor(bluetoothPeripheral: BluetoothPeripheral, bluetoothCharacteristicDescriptor: CBDescriptor) {
-        print("BT Service didReadDescriptor -> \(bluetoothCharacteristicDescriptor.value)")
+        print("BT Service didReadDescriptor -> \(bluetoothCharacteristicDescriptor.value ?? "")")
     }
     
     func didRssiUpdate(bluetoothPeripheral: BluetoothPeripheral) {
@@ -173,15 +173,15 @@ extension BluetoothService: BlueFalconDelegate {
 }
 
 
-protocol BluetoothServiceDetectedDeviceDelegate: class {
+protocol BluetoothServiceDetectedDeviceDelegate: AnyObject {
     func discoveredDevice(devices: [BluetoothPeripheral])
 }
 
-protocol BluetoothServiceConnectedDeviceDelegate: class {
+protocol BluetoothServiceConnectedDeviceDelegate: AnyObject {
     func connectedDevice()
     func discoveredServices()
 }
 
-protocol BluetoothServiceCharacteristicDelegate: class {
+protocol BluetoothServiceCharacteristicDelegate: AnyObject {
     func characteristcValueChanged()
 }
