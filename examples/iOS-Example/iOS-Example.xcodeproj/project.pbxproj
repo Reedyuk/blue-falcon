@@ -22,7 +22,6 @@
 		493EC0B025EA453A009E1801 /* DevicesViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 493EC09925EA453A009E1801 /* DevicesViewModel.swift */; };
 		493EC0B125EA453A009E1801 /* DevicesCellViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 493EC09A25EA453A009E1801 /* DevicesCellViewModel.swift */; };
 		493EC0B225EA453A009E1801 /* DeviceViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 493EC09B25EA453A009E1801 /* DeviceViewModel.swift */; };
-		493EC0B325EA453A009E1801 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 493EC09C25EA453A009E1801 /* Assets.xcassets */; };
 		493EC0B425EA453A009E1801 /* DeviceCharacteristicCell.swift in Sources */ = {isa = PBXBuildFile; fileRef = 493EC09E25EA453A009E1801 /* DeviceCharacteristicCell.swift */; };
 		493EC0B525EA453A009E1801 /* DevicesViewCell.swift in Sources */ = {isa = PBXBuildFile; fileRef = 493EC0A025EA453A009E1801 /* DevicesViewCell.swift */; };
 		493EC0B625EA453A009E1801 /* ActivityIndicator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 493EC0A125EA453A009E1801 /* ActivityIndicator.swift */; };
@@ -79,6 +78,7 @@
 		493EC0A725EA453A009E1801 /* Descriptor.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = Descriptor.swift; sourceTree = "<group>"; };
 		493EC0A825EA453A009E1801 /* BluetoothScanningState.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = BluetoothScanningState.swift; sourceTree = "<group>"; };
 		4980A9A528009D6F0049F236 /* BlueFalcon.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = BlueFalcon.xcframework; path = ../../library/build/XCFrameworks/release/BlueFalcon.xcframework; sourceTree = "<group>"; };
+		C4E3D6BD2801599E00D048C1 /* BlueFalcon.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = BlueFalcon.xcframework; path = ../../library/build/XCFrameworks/release/BlueFalcon.xcframework; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -96,6 +96,7 @@
 		493EC06C25EA3F03009E1801 = {
 			isa = PBXGroup;
 			children = (
+				C4E3D6BD2801599E00D048C1 /* BlueFalcon.xcframework */,
 				493EC07725EA3F03009E1801 /* iOS-Example */,
 				493EC07625EA3F03009E1801 /* Products */,
 				493EC0BF25EA47CC009E1801 /* Frameworks */,
@@ -243,7 +244,7 @@
 			isa = PBXProject;
 			attributes = {
 				LastSwiftUpdateCheck = 1240;
-				LastUpgradeCheck = 1240;
+				LastUpgradeCheck = 1330;
 				TargetAttributes = {
 					493EC07425EA3F03009E1801 = {
 						CreatedOnToolsVersion = 12.4;
@@ -277,7 +278,6 @@
 				493EC0AC25EA453A009E1801 /* LaunchScreen.storyboard in Resources */,
 				493EC08225EA3F04009E1801 /* Preview Assets.xcassets in Resources */,
 				493EC07F25EA3F04009E1801 /* Assets.xcassets in Resources */,
-				493EC0B325EA453A009E1801 /* Assets.xcassets in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
