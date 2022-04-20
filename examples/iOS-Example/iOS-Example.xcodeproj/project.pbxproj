@@ -32,7 +32,7 @@
 		493EC0BB25EA453A009E1801 /* Descriptor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 493EC0A725EA453A009E1801 /* Descriptor.swift */; };
 		493EC0BC25EA453A009E1801 /* BluetoothScanningState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 493EC0A825EA453A009E1801 /* BluetoothScanningState.swift */; };
 		4980A9A628009D6F0049F236 /* BlueFalcon.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 4980A9A528009D6F0049F236 /* BlueFalcon.xcframework */; };
-		4980A9A728009D6F0049F236 /* BlueFalcon.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 4980A9A528009D6F0049F236 /* BlueFalcon.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+		C433643F28102A7700601205 /* BlueFalcon.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = C4E3D6BD2801599E00D048C1 /* BlueFalcon.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 /* End PBXBuildFile section */
 
 /* Begin PBXCopyFilesBuildPhase section */
@@ -42,7 +42,7 @@
 			dstPath = "";
 			dstSubfolderSpec = 10;
 			files = (
-				4980A9A728009D6F0049F236 /* BlueFalcon.xcframework in Embed Frameworks */,
+				C433643F28102A7700601205 /* BlueFalcon.xcframework in Embed Frameworks */,
 			);
 			name = "Embed Frameworks";
 			runOnlyForDeploymentPostprocessing = 0;

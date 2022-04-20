@@ -29,4 +29,10 @@ interface BlueFalconDelegate {
         bluetoothPeripheral: BluetoothPeripheral,
         bluetoothCharacteristicDescriptor: BluetoothCharacteristicDescriptor
     )
+    @JsName("didWriteCharacteristic")
+    fun didWriteCharacteristic(
+        bluetoothPeripheral: BluetoothPeripheral,
+        bluetoothCharacteristic: BluetoothCharacteristic,
+        success: Boolean
+    )
 }

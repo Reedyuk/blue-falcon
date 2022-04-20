@@ -343,6 +343,21 @@ actual class BlueFalcon actual constructor(
             }
         }
 
+        override fun onCharacteristicWrite(
+            gatt: BluetoothGatt?,
+            characteristic: BluetoothGattCharacteristic?,
+            status: Int
+        ) {
+            characteristic?.let { forcedCharacteristic ->
+                val characteristic = BluetoothCharacteristic(forcedCharacteristic)
+                gatt?.device?.let { bluetoothDevice ->
+                    delegates.forEach {
+                        it.didWriteCharacteristic(BluetoothPeripheral(bluetoothDevice), characteristic, status == BluetoothGatt.GATT_SUCCESS)
+                    }
+                }
+            }
+        }
+
         private fun handleCharacteristicValueChange(gatt: BluetoothGatt?, characteristic: BluetoothGattCharacteristic?) {
             characteristic?.let { forcedCharacteristic ->
                 val characteristic = BluetoothCharacteristic(forcedCharacteristic)

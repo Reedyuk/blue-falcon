@@ -158,6 +158,10 @@ extension BluetoothService: BlueFalconDelegate {
 
     func didUpdateMTU(bluetoothPeripheral: BluetoothPeripheral) {}
 
+    func didWriteCharacteristic(bluetoothPeripheral: BluetoothPeripheral, bluetoothCharacteristic: BluetoothCharacteristic, success: Bool) {
+        print("BT Service didWriteCharacteristic -> success: \(success)")
+    }
+    
     private func bluetoothServiceConnectedDeviceDelegates(bluetoothPeripheralId: UUID) -> [BluetoothServiceConnectedDeviceDelegate] {
         return connectedDeviceDelegates.compactMap { connectedDeviceDelegateTuple -> BluetoothServiceConnectedDeviceDelegate? in
             connectedDeviceDelegateTuple.0 == bluetoothPeripheralId ? connectedDeviceDelegateTuple.1 : nil

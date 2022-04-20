@@ -105,6 +105,13 @@ class BluetoothService: BlueFalconDelegate {
     override fun didDiscoverCharacteristics(bluetoothPeripheral: BluetoothPeripheral) {}
 
     override fun didUpdateMTU(bluetoothPeripheral: BluetoothPeripheral) {}
+    override fun didWriteCharacteristic(
+        bluetoothPeripheral: BluetoothPeripheral,
+        bluetoothCharacteristic: BluetoothCharacteristic,
+        success: Boolean
+    ) {
+        print("didWriteCharacteristic $bluetoothCharacteristic --> success: $success")
+    }
 
 }
 
