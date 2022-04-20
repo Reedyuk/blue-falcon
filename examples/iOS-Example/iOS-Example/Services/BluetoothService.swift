@@ -107,7 +107,6 @@ class BluetoothService {
 }
 
 extension BluetoothService: BlueFalconDelegate {
-
     func didReadDescriptor(bluetoothPeripheral: BluetoothPeripheral, bluetoothCharacteristicDescriptor: CBDescriptor) {
         print("BT Service didReadDescriptor -> \(bluetoothCharacteristicDescriptor.value ?? "")")
     }
@@ -169,7 +168,10 @@ extension BluetoothService: BlueFalconDelegate {
             characteristicDelegateTuple.0 == bluetoothCharacteristicId ? characteristicDelegateTuple.1 : nil
         }
     }
-
+    
+    func didWriteCharacteristic(bluetoothPeripheral: BluetoothPeripheral, bluetoothCharacteristic: BluetoothCharacteristic, success: Bool) {
+        print("BT Service didWriteCharacteristic -> success: \(success)")
+    }
 }
 
 

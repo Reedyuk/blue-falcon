@@ -293,6 +293,23 @@ actual class BlueFalcon actual constructor(
             println("didDiscoverDescriptorsForCharacteristic")
         }
 
+        @Suppress("CONFLICTING_OVERLOADS")
+        override fun peripheral(peripheral: CBPeripheral, didWriteValueForCharacteristic: CBCharacteristic, error: NSError?) {
+            if (error != null) {
+                println("Error during characteristic write $error")
+            }
+            println("didWriteValueForCharacteristic")
+
+            val device = BluetoothPeripheral(peripheral, rssiValue = null)
+            val characteristic = BluetoothCharacteristic(didWriteValueForCharacteristic)
+            delegates.forEach {
+                it.didWriteCharacteristic(
+                    device,
+                    characteristic,
+                    error == null
+                )
+            }
+        }
     }
 
 }
