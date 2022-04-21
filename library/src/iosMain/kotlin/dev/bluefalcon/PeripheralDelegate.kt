@@ -79,14 +79,14 @@ actual class PeripheralDelegate actual constructor(
             println("Error during characteristic write $error")
         }
 
-        println("didUpdateValueForCharacteristic")
+        println("didWriteValueForCharacteristic")
         val device = BluetoothPeripheral(peripheral, rssiValue = null)
         val characteristic = BluetoothCharacteristic(didWriteValueForCharacteristic)
         blueFalcon.delegates.forEach {
             it.didWriteCharacteristic(
                 device,
                 characteristic,
-                error != null
+                error == null
             )
         }
     }
