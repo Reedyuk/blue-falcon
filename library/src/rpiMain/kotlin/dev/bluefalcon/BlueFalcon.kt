@@ -1,9 +1,7 @@
 package dev.bluefalcon
 
 import AdvertisementDataRetrievalKeys
-import android.bluetooth.le.ScanRecord
 import com.welie.blessed.*
-import java.nio.ByteBuffer
 import java.util.*
 
 actual class BlueFalcon actual constructor(context: ApplicationContext, private val serviceUUID: String?) {
