@@ -40,11 +40,11 @@ val developerEmail: String by project
 val group: String by project
 
 android {
-    compileSdk = 32
+    compileSdk = 26
     sourceSets["main"].manifest.srcFile("src/androidMain/AndroidManifest.xml")
     defaultConfig {
         minSdk = 24
-        targetSdk = 32
+        targetSdk = 26
     }
 }
 
