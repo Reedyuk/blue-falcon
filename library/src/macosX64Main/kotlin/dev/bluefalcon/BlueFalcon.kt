@@ -1,8 +1,11 @@
 package dev.bluefalcon
 
+import AdvertisementDataRetrievalKeys
 import platform.CoreBluetooth.*
 import platform.Foundation.*
 import platform.darwin.NSObject
+import kotlin.collections.set
+
 
 actual class BlueFalcon actual constructor(
     private val context: ApplicationContext,
@@ -37,7 +40,7 @@ actual class BlueFalcon actual constructor(
     )
     actual fun scan() {
         isScanning = true
-        when(centralManager.state) {
+        when (centralManager.state) {
             CBManagerStateUnknown -> throw BluetoothUnknownException()
             CBManagerStateResetting -> throw BluetoothResettingException()
             CBManagerStateUnsupported -> throw BluetoothUnsupportedException()
@@ -70,7 +73,10 @@ actual class BlueFalcon actual constructor(
         bluetoothCharacteristic: BluetoothCharacteristic,
         notify: Boolean
     ) {
-        bluetoothPeripheral.bluetoothDevice.setNotifyValue(notify, bluetoothCharacteristic.characteristic)
+        bluetoothPeripheral.bluetoothDevice.setNotifyValue(
+            notify,
+            bluetoothCharacteristic.characteristic
+        )
     }
 
     actual fun indicateCharacteristic(
@@ -168,7 +174,9 @@ actual class BlueFalcon actual constructor(
         bluetoothCharacteristic: BluetoothCharacteristic,
         bluetoothCharacteristicDescriptor: BluetoothCharacteristicDescriptor
     ) {
-        bluetoothPeripheral.bluetoothDevice.discoverDescriptorsForCharacteristic(bluetoothCharacteristic.characteristic)
+        bluetoothPeripheral.bluetoothDevice.discoverDescriptorsForCharacteristic(
+            bluetoothCharacteristic.characteristic
+        )
     }
 
     actual fun changeMTU(bluetoothPeripheral: BluetoothPeripheral, mtuSize: Int) {
@@ -178,7 +186,7 @@ actual class BlueFalcon actual constructor(
         }
     }
 
-    inner class BluetoothPeripheralManager: NSObject(), CBCentralManagerDelegateProtocol {
+    inner class BluetoothPeripheralManager : NSObject(), CBCentralManagerDelegateProtocol {
         override fun centralManagerDidUpdateState(central: CBCentralManager) {
             when (central.state) {
                 CBManagerStateUnknown -> log("State 0 is .unknown")
@@ -200,8 +208,12 @@ actual class BlueFalcon actual constructor(
             if (isScanning) {
                 log("Discovered device ${didDiscoverPeripheral.name}")
                 val device = BluetoothPeripheral(didDiscoverPeripheral, rssiValue = RSSI.floatValue)
+                val sharedAdvertisementData = mapNativeAdvertisementDataToShared(advertisementData)
                 delegates.forEach {
-                    it.didDiscoverDevice(device)
+                    it.didDiscoverDevice(
+                        bluetoothPeripheral = device,
+                        advertisementData = sharedAdvertisementData
+                    )
                 }
             }
         }
@@ -216,7 +228,11 @@ actual class BlueFalcon actual constructor(
             didConnectPeripheral.discoverServices(null)
         }
 
-        override fun centralManager(central: CBCentralManager, didDisconnectPeripheral: CBPeripheral, error: NSError?) {
+        override fun centralManager(
+            central: CBCentralManager,
+            didDisconnectPeripheral: CBPeripheral,
+            error: NSError?
+        ) {
             log("DidDisconnectPeripheral ${didDisconnectPeripheral.name}")
             val device = BluetoothPeripheral(didDisconnectPeripheral, rssiValue = null)
             delegates.forEach {
@@ -226,7 +242,7 @@ actual class BlueFalcon actual constructor(
 
     }
 
-    inner class PeripheralDelegate: NSObject(), CBPeripheralDelegateProtocol {
+    inner class PeripheralDelegate : NSObject(), CBPeripheralDelegateProtocol {
 
         override fun peripheral(
             peripheral: CBPeripheral,
@@ -284,17 +300,29 @@ actual class BlueFalcon actual constructor(
             }
         }
 
-        override fun peripheral(peripheral: CBPeripheral, didUpdateValueForDescriptor: CBDescriptor, error: NSError?) {
+        override fun peripheral(
+            peripheral: CBPeripheral,
+            didUpdateValueForDescriptor: CBDescriptor,
+            error: NSError?
+        ) {
             println("didUpdateValueForDescriptor ${didUpdateValueForDescriptor.value}")
         }
 
         @Suppress("CONFLICTING_OVERLOADS")
-        override fun peripheral(peripheral: CBPeripheral, didDiscoverDescriptorsForCharacteristic: CBCharacteristic, error: NSError?) {
+        override fun peripheral(
+            peripheral: CBPeripheral,
+            didDiscoverDescriptorsForCharacteristic: CBCharacteristic,
+            error: NSError?
+        ) {
             println("didDiscoverDescriptorsForCharacteristic")
         }
 
         @Suppress("CONFLICTING_OVERLOADS")
-        override fun peripheral(peripheral: CBPeripheral, didWriteValueForCharacteristic: CBCharacteristic, error: NSError?) {
+        override fun peripheral(
+            peripheral: CBPeripheral,
+            didWriteValueForCharacteristic: CBCharacteristic,
+            error: NSError?
+        ) {
             if (error != null) {
                 println("Error during characteristic write $error")
             }
@@ -312,4 +340,42 @@ actual class BlueFalcon actual constructor(
         }
     }
 
+    //Helper
+    fun mapNativeAdvertisementDataToShared(advertisementData: Map<Any?, *>): Map<AdvertisementDataRetrievalKeys, Any> {
+        val sharedAdvertisementData = mutableMapOf<AdvertisementDataRetrievalKeys, Any>()
+
+        for (entry in advertisementData.entries) {
+            if (entry.key !is String) {
+                //Must be string regarding to documentation:
+                //https://developer.apple.com/documentation/corebluetooth/cbcentralmanagerdelegate/1518937-centralmanager
+
+                continue
+            }
+            val key = entry.key as String
+            val value = entry.value ?: continue
+
+            val mappedKey = when (key) {
+                "kCBAdvDataIsConnectable" -> AdvertisementDataRetrievalKeys.IsConnectable
+                "kCBAdvDataLocalName" -> AdvertisementDataRetrievalKeys.LocalName
+                "kCBAdvDataManufacturerData" -> AdvertisementDataRetrievalKeys.ManufacturerData
+                "kCBAdvDataServiceUUIDs" -> AdvertisementDataRetrievalKeys.ServiceUUIDsKey
+                else -> continue
+            }
+
+            if (mappedKey == AdvertisementDataRetrievalKeys.ServiceUUIDsKey) {
+                val serviceUUIDs = value as Array<CBUUID>
+                val kotlinUUIDStrings = mutableListOf<String>()
+                for (serviceUUID in serviceUUIDs) {
+                    val kotlinUUIDString = serviceUUID.UUIDString
+
+                    kotlinUUIDStrings.add(kotlinUUIDString)
+                }
+                sharedAdvertisementData[mappedKey] = kotlinUUIDStrings
+            } else {
+                sharedAdvertisementData[mappedKey] = value
+            }
+        }
+
+        return sharedAdvertisementData
+    }
 }

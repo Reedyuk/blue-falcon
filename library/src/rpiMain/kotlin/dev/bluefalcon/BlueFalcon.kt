@@ -1,6 +1,9 @@
 package dev.bluefalcon
 
+import AdvertisementDataRetrievalKeys
+import android.bluetooth.le.ScanRecord
 import com.welie.blessed.*
+import java.nio.ByteBuffer
 import java.util.*
 
 actual class BlueFalcon actual constructor(context: ApplicationContext, private val serviceUUID: String?) {
@@ -10,7 +13,9 @@ actual class BlueFalcon actual constructor(context: ApplicationContext, private 
     private val bluetoothManagerCallback = object: BluetoothCentralManagerCallback() {
         override fun onDiscoveredPeripheral(peripheral: com.welie.blessed.BluetoothPeripheral, scanResult: ScanResult) {
             val device = BluetoothPeripheral(peripheral)
-            delegates.forEach { it.didDiscoverDevice(device) }
+
+            val sharedAdvertisementData = mapNativeAdvertisementDataToShared(scanResult = scanResult, isConnectable = true)
+            delegates.forEach { it.didDiscoverDevice(device, sharedAdvertisementData) }
         }
     }
     private val bluetoothPeripheralCallback = object: BluetoothPeripheralCallback() {
@@ -159,4 +164,27 @@ actual class BlueFalcon actual constructor(context: ApplicationContext, private 
         TODO()
     }
 
+    //Helper
+    fun mapNativeAdvertisementDataToShared(
+        scanResult: ScanResult,
+        isConnectable: Boolean
+    ): Map<AdvertisementDataRetrievalKeys, Any> {
+        val sharedAdvertisementData = mutableMapOf<AdvertisementDataRetrievalKeys, Any>()
+
+        sharedAdvertisementData[AdvertisementDataRetrievalKeys.IsConnectable] =
+            if (isConnectable) 1 else 0
+
+        sharedAdvertisementData[AdvertisementDataRetrievalKeys.LocalName] = scanResult.name ?: ""
+        sharedAdvertisementData[AdvertisementDataRetrievalKeys.ManufacturerData] = scanResult.manufacturerData
+
+        val kotlinUUIDStrings = mutableListOf<String>()
+        for (serviceUUID in scanResult.uuids) {
+            val kotlinUUIDString = serviceUUID.toString()
+
+            kotlinUUIDStrings.add(kotlinUUIDString)
+        }
+        sharedAdvertisementData[AdvertisementDataRetrievalKeys.ServiceUUIDsKey] = kotlinUUIDStrings
+
+        return sharedAdvertisementData
+    }
 }

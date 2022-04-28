@@ -44,7 +44,7 @@ class MainController: Controller(), BlueFalconDelegate {
         }
     }
 
-    override fun didDiscoverDevice(bluetoothPeripheral: BluetoothPeripheral) {
+    override fun didDiscoverDevice(bluetoothPeripheral: BluetoothPeripheral, advertisementData: [AdvertisementDataRetrievalKeys : Any]) {
         println("didDiscoverDevice ${bluetoothPeripheral.name}")
         devices.add(bluetoothPeripheral)
         blueFalcon.connect(bluetoothPeripheral)

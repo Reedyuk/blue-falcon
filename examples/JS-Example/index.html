@@ -14,8 +14,8 @@
       var characteristics = new Array();
        const blueFalcon = new this['blue-falcon'].dev.bluefalcon.BlueFalcon();
        var Delegate = {
-         didDiscoverDevice: function(bluetoothPeripheral) {
-            console.log(`didDiscover ${bluetoothPeripheral.name}`);
+         didDiscoverDevice: function(bluetoothPeripheral, advertisementData) {
+            console.log(`didDiscover ${bluetoothPeripheral.name} with data: ${advertisementData}`);
             blueFalcon.connect(bluetoothPeripheral);
          },
          didConnect: function(bluetoothPeripheral) {

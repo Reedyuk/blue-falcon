@@ -1,6 +1,6 @@
 Pod::Spec.new do |spec|
     spec.name                     = 'Blue_Falcon'
-    spec.version                  = '0.9.1'
+    spec.version                  = '0.10.5'
     spec.homepage                 = 'http://www.bluefalcon.dev'
     spec.source                   = { :git => "Not Published", :tag => "Cocoapods/#{spec.name}/#{spec.version}" }
     spec.authors                  = ''
