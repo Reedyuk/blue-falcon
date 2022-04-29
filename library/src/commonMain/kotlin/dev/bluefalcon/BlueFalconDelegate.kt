@@ -1,12 +1,13 @@
 package dev.bluefalcon
 
+import AdvertisementDataRetrievalKeys
 import kotlin.js.JsName
 
 @JsName("BlueFalconDelegate")
 interface BlueFalconDelegate {
 
     @JsName("didDiscoverDevice")
-    fun didDiscoverDevice(bluetoothPeripheral: BluetoothPeripheral)
+    fun didDiscoverDevice(bluetoothPeripheral: BluetoothPeripheral, advertisementData: Map<AdvertisementDataRetrievalKeys, Any>)
     @JsName("didConnect")
     fun didConnect(bluetoothPeripheral: BluetoothPeripheral)
     @JsName("didDisconnect")

@@ -115,10 +115,12 @@ extension BluetoothService: BlueFalconDelegate {
     func didRssiUpdate(bluetoothPeripheral: BluetoothPeripheral) {
     }
 
-    func didDiscoverDevice(bluetoothPeripheral: BluetoothPeripheral) {
+    func didDiscoverDevice(bluetoothPeripheral: BluetoothPeripheral, advertisementData: [AdvertisementDataRetrievalKeys : Any]) {
         guard (devices.first {
             $0.bluetoothDevice.identifier == bluetoothPeripheral.bluetoothDevice.identifier
         } == nil) else { return }
+        print("Device advertised data: \(advertisementData)")
+        
         devices.append(bluetoothPeripheral)
         detectedDeviceDelegates.forEach { delegate in
             delegate.discoveredDevice(devices: devices)

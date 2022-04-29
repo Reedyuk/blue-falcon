@@ -1,5 +1,6 @@
 package dev.bluefalcon.services
 
+import AdvertisementDataRetrievalKeys
 import android.bluetooth.BluetoothGattCharacteristic
 import dev.bluefalcon.*
 import java.util.*
@@ -65,10 +66,15 @@ class BluetoothService: BlueFalconDelegate {
         blueFalcon.readDescriptor(bluetoothPeripheral, bluetoothCharacteristic, bluetoothCharacteristicDescriptor)
     }
 
-    override fun didDiscoverDevice(bluetoothPeripheral: BluetoothPeripheral) {
+    override fun didDiscoverDevice(
+        bluetoothPeripheral: BluetoothPeripheral,
+        advertisementData: Map<AdvertisementDataRetrievalKeys, Any>
+    ) {
         if (devices.firstOrNull {
             it.bluetoothDevice.address == bluetoothPeripheral.bluetoothDevice.address
         } == null) {
+            println("Device advertised data: $advertisementData")
+
             devices.add(bluetoothPeripheral)
             detectedDeviceDelegates.forEach { delegate ->
                 delegate.discoveredDevice(devices)

@@ -48,9 +48,9 @@ actual class BlueFalcon actual constructor(
             CBManagerStatePoweredOn -> {
                 if (serviceUUID != null) {
                     val serviceCBUUID = CBUUID.UUIDWithString(serviceUUID)
-                    centralManager.scanForPeripheralsWithServices(listOf(serviceCBUUID), null)
+                    centralManager.scanForPeripheralsWithServices(listOf(serviceCBUUID), mapOf(CBCentralManagerScanOptionAllowDuplicatesKey to true) )
                 } else {
-                    centralManager.scanForPeripheralsWithServices(null, null)
+                    centralManager.scanForPeripheralsWithServices(null, mapOf(CBCentralManagerScanOptionAllowDuplicatesKey to true) )
                 }
             }
         }

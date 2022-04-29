@@ -2,7 +2,7 @@ import java.util.*
 import org.jetbrains.kotlin.gradle.plugin.mpp.apple.XCFramework
 
 plugins {
-    kotlin("multiplatform") version "1.6.20"
+    kotlin("multiplatform") version "1.6.21"
     id("com.android.library")
     id("maven-publish")
     id("signing")
@@ -40,11 +40,11 @@ val developerEmail: String by project
 val group: String by project
 
 android {
-    compileSdk = 29
+    compileSdk = 26
     sourceSets["main"].manifest.srcFile("src/androidMain/AndroidManifest.xml")
     defaultConfig {
         minSdk = 24
-        targetSdk = 29
+        targetSdk = 26
     }
 }
 

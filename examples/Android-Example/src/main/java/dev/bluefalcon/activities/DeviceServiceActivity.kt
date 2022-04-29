@@ -17,9 +17,9 @@ class DeviceServiceActivity : AppCompatActivity() {
         deviceServiceViewModel = DeviceServiceViewModel(
             this,
             BluetoothPeripheral(
-                intent.getParcelableExtra("device") as BluetoothDevice
+                intent.getParcelableExtra("device")!!
             ),
-            intent.getParcelableExtra("service") as BluetoothGattService
+            intent.getParcelableExtra("service")!!
         )
         deviceServiceViewModel.deviceServiceActivityUI.setContentView(this)
     }

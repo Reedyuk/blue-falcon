@@ -31,7 +31,7 @@ class DevicesViewModel(private val devicesActivity: DevicesActivity): BluetoothS
     }
 
     private fun requestLocationPermission() {
-        val permission = arrayOf(Manifest.permission.ACCESS_COARSE_LOCATION)
+        val permission = arrayOf(Manifest.permission.ACCESS_FINE_LOCATION)
         ActivityCompat.requestPermissions(devicesActivity, permission, 0)
     }
 
