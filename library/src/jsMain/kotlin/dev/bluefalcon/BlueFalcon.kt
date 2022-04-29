@@ -1,5 +1,6 @@
 package dev.bluefalcon
 
+import AdvertisementDataRetrievalKeys
 import dev.bluefalcon.external.Bluetooth
 import dev.bluefalcon.external.BluetoothOptions
 import kotlinx.browser.window
@@ -17,15 +18,19 @@ actual class BlueFalcon actual constructor(context: ApplicationContext, serviceU
     private var optionalServices: Array<String> = emptyArray()
 
     @JsName("addDelegate")
-    fun addDelegate(blueFalconDelegate: BlueFalconDelegate) { delegates.add(blueFalconDelegate) }
+    fun addDelegate(blueFalconDelegate: BlueFalconDelegate) {
+        delegates.add(blueFalconDelegate)
+    }
 
     @JsName("removeDelegate")
-    fun removeDelegate(blueFalconDelegate: BlueFalconDelegate) { delegates.remove(blueFalconDelegate) }
+    fun removeDelegate(blueFalconDelegate: BlueFalconDelegate) {
+        delegates.remove(blueFalconDelegate)
+    }
 
     @JsName("connect")
     actual fun connect(bluetoothPeripheral: BluetoothPeripheral, autoConnect: Boolean) {
         log("connect -> ${bluetoothPeripheral.device}:${bluetoothPeripheral.device.gatt} gatt connected? ${bluetoothPeripheral.device.gatt?.connected}")
-        if(bluetoothPeripheral.device.gatt?.connected == true) {
+        if (bluetoothPeripheral.device.gatt?.connected == true) {
             delegates.forEach { it.didConnect(bluetoothPeripheral) }
         } else {
             bluetoothPeripheral.device.gatt?.connect()?.then { gatt ->
@@ -49,11 +54,24 @@ actual class BlueFalcon actual constructor(context: ApplicationContext, serviceU
 
     @JsName("rescan")
     actual fun scan() {
-        window.navigator.bluetooth.requestDevice(BluetoothOptions(false, arrayOf(BluetoothOptions.Filter.Services(optionalServices)), optionalServices))
+        window.navigator.bluetooth.requestDevice(
+            BluetoothOptions(
+                false,
+                arrayOf(BluetoothOptions.Filter.Services(optionalServices)),
+                optionalServices
+            )
+        )
             .then { bluetoothDevice ->
                 val device = BluetoothPeripheral(bluetoothDevice)
+
+                val sharedAdvertisementData = mapOf(
+                    AdvertisementDataRetrievalKeys.IsConnectable to 1,
+                    AdvertisementDataRetrievalKeys.LocalName to "TODO",
+                    AdvertisementDataRetrievalKeys.ServiceUUIDsKey to listOf<String>()
+                ) //TODO Get real data
+
                 delegates.forEach {
-                    it.didDiscoverDevice(device, mapOf()) //TODO
+                    it.didDiscoverDevice(device, sharedAdvertisementData)
                 }
             }
     }
@@ -70,7 +88,8 @@ actual class BlueFalcon actual constructor(context: ApplicationContext, serviceU
             }
             bluetoothPeripheral.deviceServices.forEach { service ->
                 service.service.getCharacteristics(undefined).then { characteristics ->
-                    service.deviceCharacteristics = characteristics.map { BluetoothCharacteristic(it) }.toMutableSet()
+                    service.deviceCharacteristics =
+                        characteristics.map { BluetoothCharacteristic(it) }.toMutableSet()
                     delegates.forEach {
                         it.didDiscoverCharacteristics(bluetoothPeripheral)
                     }
@@ -97,7 +116,8 @@ actual class BlueFalcon actual constructor(context: ApplicationContext, serviceU
         bluetoothCharacteristic: BluetoothCharacteristic,
         value: String,
         writeType: Int?
-    ) {}
+    ) {
+    }
 
     @JsName("writeCharacteristic")
     actual fun writeCharacteristic(
@@ -105,7 +125,7 @@ actual class BlueFalcon actual constructor(context: ApplicationContext, serviceU
         bluetoothCharacteristic: BluetoothCharacteristic,
         value: ByteArray,
         writeType: Int?
-    ){
+    ) {
         bluetoothCharacteristic.characteristic.writeValue(value)
     }
 
@@ -114,7 +134,7 @@ actual class BlueFalcon actual constructor(context: ApplicationContext, serviceU
         bluetoothCharacteristic: BluetoothCharacteristic,
         value: ByteArray,
         writeType: Int?
-    ){
+    ) {
         bluetoothCharacteristic.characteristic.writeValue(value)
     }
 
