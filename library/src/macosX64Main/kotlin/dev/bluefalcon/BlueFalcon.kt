@@ -371,6 +371,10 @@ actual class BlueFalcon actual constructor(
                     kotlinUUIDStrings.add(kotlinUUIDString)
                 }
                 sharedAdvertisementData[mappedKey] = kotlinUUIDStrings
+            } else if (mappedKey == AdvertisementDataRetrievalKeys.ManufacturerData) {
+                val data = value as NSData
+
+                sharedAdvertisementData[mappedKey] = data.toByteArray()
             } else {
                 sharedAdvertisementData[mappedKey] = value
             }
