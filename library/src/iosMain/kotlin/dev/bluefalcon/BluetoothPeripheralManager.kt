@@ -2,8 +2,8 @@ package dev.bluefalcon
 
 import AdvertisementDataRetrievalKeys
 import platform.CoreBluetooth.*
+import platform.Foundation.NSData
 import platform.Foundation.NSError
-import platform.Foundation.NSMutableArray
 import platform.Foundation.NSNumber
 import platform.darwin.NSObject
 
@@ -96,6 +96,10 @@ actual class BluetoothPeripheralManager actual constructor(
                     kotlinUUIDStrings.add(kotlinUUIDString)
                 }
                 sharedAdvertisementData[mappedKey] = kotlinUUIDStrings
+            } else if (mappedKey == AdvertisementDataRetrievalKeys.ManufacturerData) {
+                val data = value as NSData
+
+                sharedAdvertisementData[mappedKey] = data.toByteArray()
             } else {
                 sharedAdvertisementData[mappedKey] = value
             }
