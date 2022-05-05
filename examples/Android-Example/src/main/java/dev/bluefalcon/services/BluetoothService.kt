@@ -66,6 +66,15 @@ class BluetoothService: BlueFalconDelegate {
         blueFalcon.readDescriptor(bluetoothPeripheral, bluetoothCharacteristic, bluetoothCharacteristicDescriptor)
     }
 
+//    fun writeDescriptor(
+//        bluetoothPeripheral: BluetoothPeripheral,
+//        bluetoothCharacteristic: BluetoothCharacteristic,
+//        bluetoothCharacteristicDescriptor: BluetoothCharacteristicDescriptor
+//    ) {
+//        log("btservice writeDescriptor")
+//        blueFalcon.writeDescriptor(bluetoothPeripheral, bluetoothCharacteristic, bluetoothCharacteristicDescriptor)
+//    }
+
     override fun didDiscoverDevice(
         bluetoothPeripheral: BluetoothPeripheral,
         advertisementData: Map<AdvertisementDataRetrievalKeys, Any>
