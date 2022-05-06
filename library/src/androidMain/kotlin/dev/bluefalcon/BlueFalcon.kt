@@ -378,6 +378,25 @@ actual class BlueFalcon actual constructor(
             }
         }
 
+        override fun onDescriptorWrite(
+            gatt: BluetoothGatt?,
+            descriptor: BluetoothGattDescriptor?,
+            status: Int
+        ) {
+            log("onDescriptorWrite $descriptor")
+            descriptor?.let { forcedDescriptor ->
+                gatt?.device?.let { bluetoothDevice ->
+                    log("onDescriptorWrite value ${forcedDescriptor.value}")
+                    delegates.forEach {
+                        it.didWriteDescriptor(
+                            BluetoothPeripheral(bluetoothDevice),
+                            forcedDescriptor
+                        )
+                    }
+                }
+            }
+        }
+
         override fun onCharacteristicWrite(
             gatt: BluetoothGatt?,
             characteristic: BluetoothGattCharacteristic?,
