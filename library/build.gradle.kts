@@ -74,6 +74,12 @@ kotlin {
             xcf.add(this)
         }
     }
+    iosX64 {
+        binaries.framework {
+            baseName = frameworkName
+            xcf.add(this)
+        }
+    }
     iosArm64("ios") {
         binaries.framework {
             baseName = frameworkName
@@ -108,6 +114,8 @@ kotlin {
         val iosMain by getting
         val iosSimulatorArm64Main by getting
         iosSimulatorArm64Main.dependsOn(iosMain)
+        val iosX64Main by getting
+        iosX64Main.dependsOn(iosMain)
         val macosX64Main by getting
     }
 }
