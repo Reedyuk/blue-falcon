@@ -38,9 +38,14 @@ actual class BlueFalcon actual constructor(
 
     actual fun disconnect(bluetoothPeripheral: BluetoothPeripheral) {
         log("disconnect")
-        mGattClientCallback.gattForDevice(bluetoothPeripheral.bluetoothDevice)?.apply {
+        val gatt = mGattClientCallback.gattForDevice(bluetoothPeripheral.bluetoothDevice)
+        gatt?.apply {
             disconnect()
             close()
+        }
+
+        if (gatt != null) {
+            mGattClientCallback.removeGatt(gatt)
         }
         delegates.forEach { it.didDisconnect(bluetoothPeripheral) }
     }
@@ -270,7 +275,7 @@ actual class BlueFalcon actual constructor(
             }
         }
 
-        private fun removeGatt(gatt: BluetoothGatt) {
+        fun removeGatt(gatt: BluetoothGatt) {
             gatts.remove(gatt)
         }
 
@@ -292,6 +297,7 @@ actual class BlueFalcon actual constructor(
                         }
                     } else if (newState == STATE_DISCONNECTED) {
                         removeGatt(bluetoothGatt)
+                        bluetoothGatt.close()
                         delegates.forEach {
                             it.didDisconnect(BluetoothPeripheral(bluetoothGatt.device))
                         }
