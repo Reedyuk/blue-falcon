@@ -1,6 +1,9 @@
 package dev.bluefalcon.viewModels
 
 import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
+import androidx.annotation.RequiresApi
 import androidx.core.app.ActivityCompat
 import dev.bluefalcon.*
 import dev.bluefalcon.activities.DevicesActivity
@@ -18,6 +21,9 @@ class DevicesViewModel(private val devicesActivity: DevicesActivity): BluetoothS
         try {
             BlueFalconApplication.instance.bluetoothService.scan()
         } catch (exception: BluetoothPermissionException) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                requestScanPermission()
+            }
             requestLocationPermission()
         }
     }
@@ -30,9 +36,18 @@ class DevicesViewModel(private val devicesActivity: DevicesActivity): BluetoothS
         BlueFalconApplication.instance.bluetoothService.detectedDeviceDelegates.remove(this)
     }
 
+    @RequiresApi(Build.VERSION_CODES.S)
+    private fun requestScanPermission() {
+        if (ActivityCompat.checkSelfPermission(devicesActivity, Manifest.permission.BLUETOOTH_SCAN) != PackageManager.PERMISSION_GRANTED) {
+            val permission = arrayOf(Manifest.permission.BLUETOOTH_SCAN)
+            ActivityCompat.requestPermissions(devicesActivity, permission, 0)
+        }
+    }
     private fun requestLocationPermission() {
-        val permission = arrayOf(Manifest.permission.ACCESS_FINE_LOCATION)
-        ActivityCompat.requestPermissions(devicesActivity, permission, 0)
+        if (ActivityCompat.checkSelfPermission(devicesActivity, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+            val permission = arrayOf(Manifest.permission.ACCESS_FINE_LOCATION)
+            ActivityCompat.requestPermissions(devicesActivity, permission, 0)
+        }
     }
 
     override fun discoveredDevice(devices: List<BluetoothPeripheral>) {
