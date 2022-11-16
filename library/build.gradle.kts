@@ -92,6 +92,12 @@ kotlin {
             xcf.add(this)
         }
     }
+//    macosArm64 {
+//        binaries.framework {
+//            baseName = frameworkName
+//            xcf.add(this)
+//        }
+//    }
 
     sourceSets {
         val commonMain by getting {}
@@ -117,6 +123,8 @@ kotlin {
         val iosX64Main by getting
         iosX64Main.dependsOn(iosMain)
         val macosX64Main by getting
+//        val macosArm64Main by getting
+//        macosArm64Main.dependsOn(macosX64Main)
     }
 }
 
