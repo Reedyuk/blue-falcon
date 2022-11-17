@@ -1,9 +1,17 @@
 package dev.bluefalcon
 
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.flow.MutableStateFlow
+
 expect class BlueFalcon(context: ApplicationContext, serviceUUID: String?) {
+
+    val scope: CoroutineScope
 
     val delegates: MutableSet<BlueFalconDelegate>
     var isScanning: Boolean
+
+    internal val _peripherals: MutableStateFlow<Set<BluetoothPeripheral>>
+    val peripherals: NativeFlow<Set<BluetoothPeripheral>>
 
     fun connect(bluetoothPeripheral: BluetoothPeripheral, autoConnect: Boolean = false)
     fun disconnect(bluetoothPeripheral: BluetoothPeripheral)

@@ -10,6 +10,7 @@ import Foundation
 import BlueFalcon
 import CoreBluetooth
 import UIKit
+import Combine
 
 class BluetoothService {
 
@@ -23,6 +24,9 @@ class BluetoothService {
 
     init() {
         blueFalcon.delegates.add(self)
+        blueFalcon.peripherals.collect(block: { devices in
+            print("Devices from flow --> \(devices)")
+        })
     }
 
     func scan() throws {
@@ -124,7 +128,6 @@ extension BluetoothService: BlueFalconDelegate {
         } == nil) else { return }
         
         print("Device advertised data: \(advertisementData)")
-        
         
         devices.append(bluetoothPeripheral)
         detectedDeviceDelegates.forEach { delegate in

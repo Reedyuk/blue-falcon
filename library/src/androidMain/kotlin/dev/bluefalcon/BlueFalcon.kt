@@ -10,9 +10,13 @@ import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.ParcelUuid
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import java.nio.ByteBuffer
 import java.util.*
-
 
 actual class BlueFalcon actual constructor(
     private val context: ApplicationContext,
@@ -25,6 +29,10 @@ actual class BlueFalcon actual constructor(
     private val mGattClientCallback = GattClientCallback()
     var transportMethod: Int = BluetoothDevice.TRANSPORT_AUTO
     actual var isScanning: Boolean = false
+
+    actual val scope = CoroutineScope(Dispatchers.Default)
+    internal actual val _peripherals = MutableStateFlow<Set<BluetoothPeripheral>>(emptySet())
+    actual val peripherals: NativeFlow<Set<BluetoothPeripheral>> = _peripherals.toNativeType(scope)
 
     actual fun connect(bluetoothPeripheral: BluetoothPeripheral, autoConnect: Boolean) {
         log("connect")
@@ -256,6 +264,7 @@ actual class BlueFalcon actual constructor(
                     val bluetoothPeripheral = BluetoothPeripheral(device)
                     bluetoothPeripheral.rssi = scanResult.rssi.toFloat()
 
+                    _peripherals.tryEmit(_peripherals.value + setOf(bluetoothPeripheral))
                     delegates.forEach {
                         it.didDiscoverDevice(bluetoothPeripheral, sharedAdvertisementData)
                     }
@@ -315,7 +324,7 @@ actual class BlueFalcon actual constructor(
                 gatt.services.let { services ->
                     log("onServicesDiscovered -> $services")
                     val bluetoothPeripheral = BluetoothPeripheral(bluetoothDevice)
-                    bluetoothPeripheral.deviceServices = services.map { BluetoothService(it) }
+                    bluetoothPeripheral._servicesFlow.tryEmit(services.map {  BluetoothService(it) })
                     delegates.forEach {
                         it.didDiscoverServices(bluetoothPeripheral)
                         it.didDiscoverCharacteristics(bluetoothPeripheral)

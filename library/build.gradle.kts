@@ -39,6 +39,8 @@ val developerName: String by project
 val developerEmail: String by project
 val group: String by project
 
+val kotlinx_coroutines_version: String by project
+
 android {
     compileSdk = 26
     sourceSets["main"].manifest.srcFile("src/androidMain/AndroidManifest.xml")
@@ -100,7 +102,11 @@ kotlin {
 //    }
 
     sourceSets {
-        val commonMain by getting {}
+        val commonMain by getting {
+            dependencies {
+                implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:$kotlinx_coroutines_version")
+            }
+        }
         val commonTest by getting {
             dependencies {
                 implementation(kotlin("test-common"))

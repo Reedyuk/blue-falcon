@@ -2,6 +2,7 @@ package dev.bluefalcon
 
 import kotlinx.cinterop.addressOf
 import kotlinx.cinterop.usePinned
+import kotlinx.coroutines.flow.MutableStateFlow
 import platform.CoreBluetooth.CBCharacteristic
 import platform.CoreBluetooth.CBDescriptor
 import platform.posix.memcpy
@@ -19,6 +20,8 @@ actual class BluetoothCharacteristic(val characteristic: CBCharacteristic) {
         }
     actual val descriptors: List<BluetoothCharacteristicDescriptor>
         get() = characteristic.descriptors as List<BluetoothCharacteristicDescriptor>
+
+    internal actual val _descriptorsFlow = MutableStateFlow<List<BluetoothCharacteristicDescriptor>>(emptyList())
 }
 
 actual typealias  BluetoothCharacteristicDescriptor = CBDescriptor

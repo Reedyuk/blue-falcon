@@ -4,6 +4,9 @@ import AdvertisementDataRetrievalKeys
 import dev.bluefalcon.external.Bluetooth
 import dev.bluefalcon.external.BluetoothOptions
 import kotlinx.browser.window
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.MutableStateFlow
 import org.w3c.dom.Navigator
 
 @JsName("blueFalcon")
@@ -13,6 +16,10 @@ actual class BlueFalcon actual constructor(context: ApplicationContext, serviceU
 
     actual val delegates: MutableSet<BlueFalconDelegate> = mutableSetOf()
     actual var isScanning: Boolean = false
+
+    actual val scope = CoroutineScope(Dispatchers.Default)
+    internal actual val _peripherals = MutableStateFlow<Set<BluetoothPeripheral>>(emptySet())
+    actual val peripherals: NativeFlow<Set<BluetoothPeripheral>> = _peripherals.toNativeType(scope)
 
     private inline val Navigator.bluetooth: Bluetooth get() = asDynamic().bluetooth as Bluetooth
     private var optionalServices: Array<String> = emptyArray()
@@ -82,14 +89,17 @@ actual class BlueFalcon actual constructor(context: ApplicationContext, serviceU
         serviceUUID: String?
     ) {
         bluetoothPeripheral.device.gatt?.getPrimaryServices(serviceUUID)?.then { services ->
-            bluetoothPeripheral.deviceServices.addAll(services.map { BluetoothService(it) })
+            bluetoothPeripheral._servicesFlow.tryEmit(
+                (bluetoothPeripheral._servicesFlow.value + services.map { BluetoothService(it) })
+                    .toSet()
+                    .toList()
+            )
             delegates.forEach {
                 it.didDiscoverServices(bluetoothPeripheral)
             }
-            bluetoothPeripheral.deviceServices.forEach { service ->
+            bluetoothPeripheral.services.forEach { service ->
                 service.service.getCharacteristics(undefined).then { characteristics ->
-                    service.deviceCharacteristics =
-                        characteristics.map { BluetoothCharacteristic(it) }.toMutableSet()
+                    service._characteristicsFlow.tryEmit(characteristics.map { BluetoothCharacteristic(it) }.toSet().toList())
                     delegates.forEach {
                         it.didDiscoverCharacteristics(bluetoothPeripheral)
                     }

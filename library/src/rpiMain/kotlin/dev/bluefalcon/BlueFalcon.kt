@@ -2,17 +2,25 @@ package dev.bluefalcon
 
 import AdvertisementDataRetrievalKeys
 import com.welie.blessed.*
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.MutableStateFlow
 import java.util.*
 
 actual class BlueFalcon actual constructor(context: ApplicationContext, private val serviceUUID: String?) {
     actual val delegates: MutableSet<BlueFalconDelegate> = mutableSetOf()
     actual var isScanning: Boolean = false
 
+    actual val scope = CoroutineScope(Dispatchers.Default)
+    internal actual val _peripherals = MutableStateFlow<Set<BluetoothPeripheral>>(emptySet())
+    actual val peripherals: NativeFlow<Set<BluetoothPeripheral>> = _peripherals.toNativeType(scope)
+
     private val bluetoothManagerCallback = object: BluetoothCentralManagerCallback() {
         override fun onDiscoveredPeripheral(peripheral: com.welie.blessed.BluetoothPeripheral, scanResult: ScanResult) {
             val device = BluetoothPeripheral(peripheral)
 
             val sharedAdvertisementData = mapNativeAdvertisementDataToShared(scanResult = scanResult, isConnectable = true)
+            _peripherals.tryEmit(_peripherals.value + setOf(device))
             delegates.forEach { it.didDiscoverDevice(device, sharedAdvertisementData) }
         }
     }
@@ -22,7 +30,7 @@ actual class BlueFalcon actual constructor(context: ApplicationContext, private 
             services: MutableList<BluetoothGattService>
         ) {
             val device = BluetoothPeripheral(peripheral)
-            device.deviceServices = services.map { BluetoothService(it) }
+            device._servicesFlow.tryEmit(services.map { BluetoothService(it) })
             delegates.forEach { it.didDiscoverServices(device) }
         }
 

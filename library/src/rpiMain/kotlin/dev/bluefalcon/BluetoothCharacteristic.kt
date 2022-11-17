@@ -2,6 +2,7 @@ package dev.bluefalcon
 
 import com.welie.blessed.BluetoothGattCharacteristic
 import com.welie.blessed.BluetoothGattDescriptor
+import kotlinx.coroutines.flow.MutableStateFlow
 
 actual class BluetoothCharacteristic(val characteristic: BluetoothGattCharacteristic) {
     actual val name: String?
@@ -12,6 +13,7 @@ actual class BluetoothCharacteristic(val characteristic: BluetoothGattCharacteri
         get() = characteristic.descriptors
 
     internal var mutableVal: ByteArray? = null
+    internal actual val _descriptorsFlow = MutableStateFlow<List<BluetoothCharacteristicDescriptor>>(emptyList())
 }
 
 actual typealias BluetoothCharacteristicDescriptor = BluetoothGattDescriptor

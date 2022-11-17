@@ -1,5 +1,6 @@
 package dev.bluefalcon
 
+import kotlinx.coroutines.flow.MutableStateFlow
 import platform.CoreBluetooth.CBPeripheral
 import platform.CoreBluetooth.CBService
 
@@ -13,4 +14,5 @@ actual class BluetoothPeripheral(val bluetoothDevice: CBPeripheral, val rssiValu
     actual val uuid: String
         get() = bluetoothDevice.identifier.UUIDString
 
+    internal actual val _servicesFlow = MutableStateFlow<List<BluetoothService>>(emptyList())
 }

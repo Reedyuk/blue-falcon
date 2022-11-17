@@ -1,6 +1,9 @@
 package dev.bluefalcon
 
 import AdvertisementDataRetrievalKeys
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.MutableStateFlow
 import platform.CoreBluetooth.*
 import platform.Foundation.*
 import platform.darwin.NSObject
@@ -17,6 +20,10 @@ actual class BlueFalcon actual constructor(
     private val bluetoothPeripheralManager = BluetoothPeripheralManager()
     private val peripheralDelegate = PeripheralDelegate()
     actual var isScanning: Boolean = false
+
+    actual val scope = CoroutineScope(Dispatchers.Default)
+    internal actual val _peripherals = MutableStateFlow<Set<BluetoothPeripheral>>(emptySet())
+    actual val peripherals: NativeFlow<Set<BluetoothPeripheral>> = _peripherals.toNativeType(scope)
 
     init {
         centralManager = CBCentralManager(bluetoothPeripheralManager, null)
@@ -208,6 +215,7 @@ actual class BlueFalcon actual constructor(
             if (isScanning) {
                 log("Discovered device ${didDiscoverPeripheral.name}")
                 val device = BluetoothPeripheral(didDiscoverPeripheral, rssiValue = RSSI.floatValue)
+                _peripherals.tryEmit(_peripherals.value + setOf(device))
                 val sharedAdvertisementData = mapNativeAdvertisementDataToShared(advertisementData)
                 delegates.forEach {
                     it.didDiscoverDevice(

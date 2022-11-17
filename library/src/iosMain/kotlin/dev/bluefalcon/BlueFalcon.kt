@@ -1,5 +1,8 @@
 package dev.bluefalcon
 
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.MutableStateFlow
 import platform.CoreBluetooth.*
 import platform.Foundation.*
 import platform.darwin.NSObject
@@ -16,6 +19,10 @@ actual class BlueFalcon actual constructor(
     private val centralManager: CBCentralManager
     private val bluetoothPeripheralManager = BluetoothPeripheralManager(this)
     actual var isScanning: Boolean = false
+
+    actual val scope = CoroutineScope(Dispatchers.Default)
+    internal actual val _peripherals = MutableStateFlow<Set<BluetoothPeripheral>>(emptySet())
+    actual val peripherals: NativeFlow<Set<BluetoothPeripheral>> = _peripherals.toNativeType(scope)
 
     init {
         centralManager = CBCentralManager(bluetoothPeripheralManager, null)
