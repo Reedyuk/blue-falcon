@@ -2,7 +2,7 @@ import java.util.*
 import org.jetbrains.kotlin.gradle.plugin.mpp.apple.XCFramework
 
 plugins {
-    kotlin("multiplatform") version "1.7.20"
+    kotlin("multiplatform") version "1.7.21"
     id("com.android.library")
     id("maven-publish")
     id("signing")
