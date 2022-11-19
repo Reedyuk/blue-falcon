@@ -24,9 +24,6 @@ class BluetoothService {
 
     init() {
         blueFalcon.delegates.add(self)
-        blueFalcon.peripherals.collect(block: { devices in
-            print("Devices from flow --> \(devices)")
-        })
     }
 
     func scan() throws {
