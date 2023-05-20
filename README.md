@@ -74,6 +74,13 @@ See the JS-Example for details on how to use.
 
 ```kotlin
 implementation 'dev.bluefalcon:blue-falcon:0.10.10'
+
+repositories {
+    maven { url = uri("https://jitpack.io") }
+    // or if you use KTS
+    maven("https://jitpack.io")
+}
+
 ```
 
 Please look at the Kotlin Multiplatform example in the Examples folder.
