@@ -515,7 +515,6 @@ actual class BlueFalcon actual constructor(
                     sharedAdvertisementData[AdvertisementDataRetrievalKeys.ServiceUUIDsKey] =
                         uuidAsStringList
                 }
-                else -> continue
             }
 
             index += length
