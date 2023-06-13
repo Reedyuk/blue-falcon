@@ -10,6 +10,7 @@ import platform.darwin.NSObject
 actual class BluetoothPeripheralManager actual constructor(
     private val blueFalcon: BlueFalcon
 ) : NSObject(), CBCentralManagerDelegateProtocol {
+    private val delegate = PeripheralDelegate(blueFalcon)
 
     override fun centralManagerDidUpdateState(central: CBCentralManager) {
         when (central.state) {
@@ -50,7 +51,7 @@ actual class BluetoothPeripheralManager actual constructor(
         blueFalcon.delegates.forEach {
             it.didConnect(device)
         }
-        didConnectPeripheral.delegate = PeripheralDelegate(blueFalcon)
+        didConnectPeripheral.delegate = delegate
         didConnectPeripheral.discoverServices(null)
     }
 
