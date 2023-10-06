@@ -48,6 +48,9 @@ android {
         minSdk = 24
         targetSdk = 33
     }
+    lint {
+        disable += "MissingPermission"
+    }
 }
 
 val frameworkName = "BlueFalcon"
