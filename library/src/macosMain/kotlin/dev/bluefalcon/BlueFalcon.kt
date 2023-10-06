@@ -371,7 +371,7 @@ actual class BlueFalcon actual constructor(
             }
 
             if (mappedKey == AdvertisementDataRetrievalKeys.ServiceUUIDsKey) {
-                val serviceUUIDs = value as Array<CBUUID>
+                val serviceUUIDs = value as List<CBUUID>
                 val kotlinUUIDStrings = mutableListOf<String>()
                 for (serviceUUID in serviceUUIDs) {
                     val kotlinUUIDString = serviceUUID.UUIDString

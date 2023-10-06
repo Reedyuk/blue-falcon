@@ -2,7 +2,7 @@ import java.util.*
 import org.jetbrains.kotlin.gradle.plugin.mpp.apple.XCFramework
 
 plugins {
-    kotlin("multiplatform") version "1.7.21"
+    kotlin("multiplatform") version "1.9.10"
     id("com.android.library")
     id("maven-publish")
     id("signing")
@@ -42,19 +42,19 @@ val group: String by project
 val kotlinx_coroutines_version: String by project
 
 android {
-    compileSdk = 26
+    compileSdk = 33
     sourceSets["main"].manifest.srcFile("src/androidMain/AndroidManifest.xml")
     defaultConfig {
         minSdk = 24
-        targetSdk = 26
+        targetSdk = 33
     }
 }
 
 val frameworkName = "BlueFalcon"
 
 kotlin {
-    android {
-        publishLibraryVariants("debug", "release")
+    androidTarget {
+        publishAllLibraryVariants()
     }
     jvm("rpi") {
         compilations.all {
@@ -63,9 +63,6 @@ kotlin {
     }
     js {
         browser {
-            webpackTask {
-                output.libraryTarget = "umd"
-            }
             binaries.executable()
         }
     }
@@ -76,13 +73,13 @@ kotlin {
             xcf.add(this)
         }
     }
-    iosX64 {
+    ios {
         binaries.framework {
             baseName = frameworkName
             xcf.add(this)
         }
     }
-    iosArm64("ios") {
+    macosArm64 {
         binaries.framework {
             baseName = frameworkName
             xcf.add(this)
@@ -94,12 +91,6 @@ kotlin {
             xcf.add(this)
         }
     }
-//    macosArm64 {
-//        binaries.framework {
-//            baseName = frameworkName
-//            xcf.add(this)
-//        }
-//    }
 
     sourceSets {
         val commonMain by getting {
@@ -113,24 +104,29 @@ kotlin {
                 implementation(kotlin("test-annotations-common"))
             }
         }
-        val androidMain by getting {
-            dependencies {
-            }
-        }
+        val androidMain by getting
         val rpiMain by getting {
             dependencies {
                 implementation("com.github.weliem:blessed-bluez:0.38")
             }
         }
         val jsMain by getting
-        val iosMain by getting
+        val iosMain by getting {
+            dependsOn(commonMain)
+        }
         val iosSimulatorArm64Main by getting
         iosSimulatorArm64Main.dependsOn(iosMain)
         val iosX64Main by getting
         iosX64Main.dependsOn(iosMain)
-        val macosX64Main by getting
-//        val macosArm64Main by getting
-//        macosArm64Main.dependsOn(macosX64Main)
+        val macosMain by creating {
+            dependsOn(commonMain)
+        }
+        val macosX64Main by getting {
+            dependsOn(macosMain)
+        }
+        val macosArm64Main by getting {
+            dependsOn(macosMain)
+        }
     }
 }
 

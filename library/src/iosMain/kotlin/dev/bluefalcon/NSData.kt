@@ -9,6 +9,7 @@ fun NSData.string(): String? {
 }
 
 
+@OptIn(ExperimentalForeignApi::class)
 fun NSData.toByteArray(): ByteArray {
     val data = this
     val d = memScoped { data }
@@ -19,6 +20,7 @@ fun NSData.toByteArray(): ByteArray {
     }
 }
 
+@OptIn(ExperimentalForeignApi::class)
 fun ByteArray.toData(): NSData = memScoped {
     NSData.create(bytes = allocArrayOf(this@toData),
         length = this@toData.size.toULong())

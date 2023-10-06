@@ -1,5 +1,6 @@
 package dev.bluefalcon
 
+import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.addressOf
 import kotlinx.cinterop.usePinned
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -10,6 +11,7 @@ import platform.posix.memcpy
 actual class BluetoothCharacteristic(val characteristic: CBCharacteristic) {
     actual val name: String?
         get() = characteristic.UUID.UUIDString
+    @OptIn(ExperimentalForeignApi::class)
     actual val value: ByteArray?
         get() = characteristic.value?.let { data ->
             ByteArray(data.length.toInt()).apply {

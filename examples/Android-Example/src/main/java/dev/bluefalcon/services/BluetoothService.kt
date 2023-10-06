@@ -119,6 +119,13 @@ class BluetoothService: BlueFalconDelegate {
         print("didWriteCharacteristic $bluetoothCharacteristic --> success: $success")
     }
 
+    override fun didWriteDescriptor(
+        bluetoothPeripheral: BluetoothPeripheral,
+        bluetoothCharacteristicDescriptor: BluetoothCharacteristicDescriptor
+    ) {
+        print("didWriteDescriptor")
+    }
+
 }
 
 interface BluetoothServiceDetectedDeviceDelegate {
