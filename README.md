@@ -122,6 +122,11 @@ Open the kotlin MP example directory in InteliJ and then run the install targets
 ### iOS & MacOS
 
 To run the MacOS & iOS example, you need to reference the relevant framework by including it in your poroject. Ensure your project has the Framework search paths referencing the framework directory.
+ensure the framework is there if not run:
+```agsl
+    cd library
+    ./gradlew :assembleBlueFalconXCFramework 
+```
 
 ### Android
 
