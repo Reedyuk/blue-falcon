@@ -16,9 +16,9 @@ struct DevicesView: View {
                 Text("Scan")
             }
             List {
-//                ForEach(viewModel.devices, id: \.name) { device in
-//                    Text(device.name)
-//                }
+                ForEach(viewModel.devices, id: \.name) { device in
+                    Text(device.name ?? device.uuid)
+                }
             }
             Spacer()
         }
