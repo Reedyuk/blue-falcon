@@ -18,14 +18,7 @@ class DevicesViewModel(private val devicesActivity: DevicesActivity): BluetoothS
     val devicesActivityUI = DevicesActivityUI(this)
 
     fun setupBluetooth() {
-        try {
-            BlueFalconApplication.instance.bluetoothService.scan()
-        } catch (exception: BluetoothPermissionException) {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                requestScanPermission()
-            }
-            requestLocationPermission()
-        }
+        BlueFalconApplication.instance.bluetoothService.scan()
     }
 
     fun addDelegate() {
