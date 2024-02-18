@@ -46,5 +46,7 @@
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
+	<key>NSBluetoothAlwaysUsageDescription</key>
+    <string>This example needs bluetooth usage permission to demonstrate the capabilities of BlueFalcon in this example project.</string>
 </dict>
 </plist>
