@@ -1,0 +1,82 @@
+package com.example.bluefalconcomposemultiplatform.ble.data
+
+import AdvertisementDataRetrievalKeys
+import dev.bluefalcon.BlueFalconDelegate
+import dev.bluefalcon.BluetoothCharacteristic
+import dev.bluefalcon.BluetoothCharacteristicDescriptor
+import dev.bluefalcon.BluetoothPeripheral
+
+
+class BleDelegate: BlueFalconDelegate {
+    var writeChar: BluetoothCharacteristic? = null
+    var readChar: BluetoothCharacteristic? = null
+
+    private var onDeviceEvent: ((DeviceEvent) -> Unit)? = null
+    fun setListener(onEvent: (DeviceEvent) -> Unit) {
+        onDeviceEvent = onEvent
+    }
+    override fun didCharacteristcValueChanged(
+        bluetoothPeripheral: BluetoothPeripheral,
+        bluetoothCharacteristic: BluetoothCharacteristic
+    ) {
+        bluetoothCharacteristic.value?.let { bytes ->
+
+        }
+    }
+
+    override fun didConnect(bluetoothPeripheral: BluetoothPeripheral) {
+        onDeviceEvent?.let {
+            it(DeviceEvent.OnDeviceConnected(bluetoothPeripheral.uuid))
+        }
+    }
+
+    override fun didDisconnect(bluetoothPeripheral: BluetoothPeripheral) {
+        onDeviceEvent?.let {
+            it(DeviceEvent.OnDeviceDisconnected(bluetoothPeripheral.uuid))
+        }
+    }
+
+    override fun didDiscoverCharacteristics(bluetoothPeripheral: BluetoothPeripheral) {
+
+    }
+
+    override fun didDiscoverDevice(
+        bluetoothPeripheral: BluetoothPeripheral,
+        advertisementData: Map<AdvertisementDataRetrievalKeys, Any>
+    ) {
+
+    }
+
+    override fun didDiscoverServices(bluetoothPeripheral: BluetoothPeripheral) {
+
+    }
+
+    override fun didReadDescriptor(
+        bluetoothPeripheral: BluetoothPeripheral,
+        bluetoothCharacteristicDescriptor: BluetoothCharacteristicDescriptor
+    ) {
+
+    }
+
+    override fun didRssiUpdate(bluetoothPeripheral: BluetoothPeripheral) {
+    }
+
+    override fun didUpdateMTU(bluetoothPeripheral: BluetoothPeripheral) {
+
+    }
+
+    override fun didWriteCharacteristic(
+        bluetoothPeripheral: BluetoothPeripheral,
+        bluetoothCharacteristic: BluetoothCharacteristic,
+        success: Boolean
+    ) {
+
+    }
+
+    override fun didWriteDescriptor(
+        bluetoothPeripheral: BluetoothPeripheral,
+        bluetoothCharacteristicDescriptor: BluetoothCharacteristicDescriptor
+    ) {
+
+    }
+}
