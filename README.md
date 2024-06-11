@@ -28,13 +28,13 @@ blueFalcon.scan()
 #### Install
 
 ```kotlin
-implementation 'dev.bluefalcon:blue-falcon-android:1.0.0'
+implementation 'dev.bluefalcon:blue-falcon-android:1.0.1'
 ```
 
 And if you are using the debug variant:
 
 ```kotlin
-implementation 'dev.bluefalcon:blue-falcon-android-debug:1.0.0'
+implementation 'dev.bluefalcon:blue-falcon-android-debug:1.0.1'
 ```
 
 The Android sdk requires an Application context, we do this by passing in on the BlueFalcon constructor, in this example we are calling the code from an activity(this).
@@ -57,7 +57,7 @@ try {
 The Raspberry Pi library is using Java.
 
 ```kotlin
-implementation 'dev.bluefalcon:blue-falcon-rpi:1.0.0'
+implementation 'dev.bluefalcon:blue-falcon-rpi:1.0.1'
 ```
 
 ### Javascript 
@@ -73,7 +73,7 @@ See the JS-Example for details on how to use.
 ### Install
 
 ```kotlin
-implementation 'dev.bluefalcon:blue-falcon:1.0.0'
+implementation 'dev.bluefalcon:blue-falcon:1.0.1'
 
 ```
 
