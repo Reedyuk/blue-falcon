@@ -9,7 +9,7 @@ plugins {
 }
 
 group = "com.github.vishwaprojects"
-version = "1.0.1"
+version = "1.0.0-SNAPSHOT"
 
 repositories {
     google()
