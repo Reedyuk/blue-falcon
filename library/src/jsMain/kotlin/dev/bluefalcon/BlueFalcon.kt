@@ -56,11 +56,11 @@ actual class BlueFalcon actual constructor(context: ApplicationContext, serviceU
     @JsName("scan")
     fun scan(optionalServices: Array<String>) {
         this.optionalServices = optionalServices
-        scan()
+        //scan()
     }
 
     @JsName("rescan")
-    actual fun scan() {
+    actual fun scan(uuid : String?) {
         window.navigator.bluetooth.requestDevice(
             BluetoothOptions(
                 false,

@@ -45,7 +45,7 @@ actual class BlueFalcon actual constructor(
         BluetoothPermissionException::class,
         BluetoothNotEnabledException::class
     )
-    actual fun scan() {
+    actual fun scan(uuid : String?) {
         isScanning = true
         when (centralManager.state) {
             CBManagerStateUnknown -> throw BluetoothUnknownException()

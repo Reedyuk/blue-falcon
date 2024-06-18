@@ -44,7 +44,7 @@ actual class BlueFalcon actual constructor(
         BluetoothPermissionException::class,
         BluetoothNotEnabledException::class
     )
-    actual fun scan() {
+    actual fun scan(uuid : String?) {
         isScanning = true
         when (centralManager.state) {
             CBManagerStateUnknown -> throw BluetoothUnknownException()
@@ -53,8 +53,8 @@ actual class BlueFalcon actual constructor(
             CBManagerStateUnauthorized -> throw BluetoothPermissionException()
             CBManagerStatePoweredOff -> throw BluetoothNotEnabledException()
             CBManagerStatePoweredOn -> {
-                if (serviceUUID != null) {
-                    val serviceCBUUID = CBUUID.UUIDWithString(serviceUUID)
+                if (uuid != null) {
+                    val serviceCBUUID = CBUUID.UUIDWithString(uuid)
                     centralManager.scanForPeripheralsWithServices(listOf(serviceCBUUID), mapOf(CBCentralManagerScanOptionAllowDuplicatesKey to true) )
                 } else {
                     centralManager.scanForPeripheralsWithServices(null, mapOf(CBCentralManagerScanOptionAllowDuplicatesKey to true) )
