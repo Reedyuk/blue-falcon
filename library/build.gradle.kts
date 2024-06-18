@@ -8,6 +8,9 @@ plugins {
     id("signing")
 }
 
+group = "com.github.vishwaprojects"
+version = "1.0.1"
+
 repositories {
     google()
     mavenCentral()
