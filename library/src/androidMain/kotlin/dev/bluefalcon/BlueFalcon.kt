@@ -63,7 +63,7 @@ actual class BlueFalcon actual constructor(
         bluetoothManager.adapter?.bluetoothLeScanner?.stopScan(mBluetoothScanCallBack)
     }
 
-    actual fun scan() {
+    actual fun scan(uuid :String?) {
         if (context.checkSelfPermission(Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED)
             throw BluetoothPermissionException()
         log("BT Scan started")

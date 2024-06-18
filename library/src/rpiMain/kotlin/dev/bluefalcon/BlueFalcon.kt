@@ -79,7 +79,7 @@ actual class BlueFalcon actual constructor(context: ApplicationContext, private 
         BluetoothPermissionException::class,
         BluetoothNotEnabledException::class
     )
-    actual fun scan() {
+    actual fun scan(uuid : String?) {
         isScanning = true
         if(serviceUUID != null) {
             bluetoothManager.scanForPeripheralsWithServices(arrayOf(UUID.fromString(serviceUUID)))

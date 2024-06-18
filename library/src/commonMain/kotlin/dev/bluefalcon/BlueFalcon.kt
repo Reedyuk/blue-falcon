@@ -23,7 +23,7 @@ expect class BlueFalcon(context: ApplicationContext, serviceUUID: String?) {
         BluetoothPermissionException::class,
         BluetoothNotEnabledException::class
     )
-    fun scan()
+    fun scan(uuid :String?)
 
     fun stopScanning()
 

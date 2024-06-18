@@ -56,6 +56,7 @@ android {
 val frameworkName = "BlueFalcon"
 
 kotlin {
+    task("testClasses")
     androidTarget {
         publishAllLibraryVariants()
     }
