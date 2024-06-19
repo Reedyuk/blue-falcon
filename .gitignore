@@ -230,3 +230,6 @@ lint/generated/
 lint/outputs/
 lint/tmp/
 # lint/reports/
+
+.shared-*
+.kotlin

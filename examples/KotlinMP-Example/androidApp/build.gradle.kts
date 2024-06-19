@@ -1,6 +1,7 @@
 plugins {
     alias(libs.plugins.androidApplication)
     alias(libs.plugins.kotlinAndroid)
+    alias(libs.plugins.compose.compiler)
 }
 
 kotlin {
@@ -19,9 +20,6 @@ android {
     }
     buildFeatures {
         compose = true
-    }
-    composeOptions {
-        kotlinCompilerExtensionVersion = libs.versions.compose.compiler.get()
     }
     packaging {
         resources {
@@ -42,6 +40,10 @@ android {
     }
 }
 
+composeCompiler {
+    enableStrongSkippingMode = true
+}
+
 dependencies {
     implementation(projects.shared)
     implementation(libs.compose.ui)
@@ -50,5 +52,6 @@ dependencies {
     implementation(libs.androidx.activity.compose)
     implementation(libs.blue.falcon)
     implementation(libs.androidx.appcompat)
+    implementation(libs.compose.permissions)
     debugImplementation(libs.compose.ui.tooling)
 }
