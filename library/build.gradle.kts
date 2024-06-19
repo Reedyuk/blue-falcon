@@ -9,7 +9,8 @@ plugins {
 }
 
 group = "com.github.vishwaprojects"
-version = "1.0.0-SNAPSHOT"
+version = "master-SNAPSHOT"
+
 
 repositories {
     google()
@@ -155,6 +156,7 @@ publishing {
                 password = sonatypePasswordEnv
             }
         }
+        mavenLocal()
     }
 
     publications.all {
