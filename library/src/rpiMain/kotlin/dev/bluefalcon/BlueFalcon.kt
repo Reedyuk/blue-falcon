@@ -7,7 +7,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import java.util.*
 
-actual class BlueFalcon actual constructor(context: ApplicationContext, private val serviceUUID: String?) {
+actual class BlueFalcon actual constructor(context: ApplicationContext) {
     actual val delegates: MutableSet<BlueFalconDelegate> = mutableSetOf()
     actual var isScanning: Boolean = false
 
@@ -79,7 +79,7 @@ actual class BlueFalcon actual constructor(context: ApplicationContext, private 
         BluetoothPermissionException::class,
         BluetoothNotEnabledException::class
     )
-    actual fun scan(uuid : String?) {
+    actual fun scan(serviceUUID: String?) {
         isScanning = true
         if(serviceUUID != null) {
             bluetoothManager.scanForPeripheralsWithServices(arrayOf(UUID.fromString(serviceUUID)))

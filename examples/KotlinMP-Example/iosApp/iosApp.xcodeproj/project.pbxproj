@@ -10,11 +10,11 @@
 		058557BB273AAA24004C7B11 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 058557BA273AAA24004C7B11 /* Assets.xcassets */; };
 		058557D9273AAEEB004C7B11 /* Preview Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 058557D8273AAEEB004C7B11 /* Preview Assets.xcassets */; };
 		2152FB042600AC8F00CF470E /* iOSApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2152FB032600AC8F00CF470E /* iOSApp.swift */; };
+		49261E7E2C23286700328D4C /* KMPObservableViewModelCore in Frameworks */ = {isa = PBXBuildFile; productRef = 49261E7D2C23286700328D4C /* KMPObservableViewModelCore */; };
+		49261E802C23286700328D4C /* KMPObservableViewModelSwiftUI in Frameworks */ = {isa = PBXBuildFile; productRef = 49261E7F2C23286700328D4C /* KMPObservableViewModelSwiftUI */; };
 		4932F4A62AEC41EA007A6642 /* KMPNativeCoroutinesAsync in Frameworks */ = {isa = PBXBuildFile; productRef = 4932F4A52AEC41EA007A6642 /* KMPNativeCoroutinesAsync */; };
 		4932F4A82AEC41EA007A6642 /* KMPNativeCoroutinesCombine in Frameworks */ = {isa = PBXBuildFile; productRef = 4932F4A72AEC41EA007A6642 /* KMPNativeCoroutinesCombine */; };
 		4932F4AA2AEC41EA007A6642 /* KMPNativeCoroutinesCore in Frameworks */ = {isa = PBXBuildFile; productRef = 4932F4A92AEC41EA007A6642 /* KMPNativeCoroutinesCore */; };
-		4932F4AD2AEC420F007A6642 /* KMMViewModelCore in Frameworks */ = {isa = PBXBuildFile; productRef = 4932F4AC2AEC420F007A6642 /* KMMViewModelCore */; };
-		4932F4AF2AEC420F007A6642 /* KMMViewModelSwiftUI in Frameworks */ = {isa = PBXBuildFile; productRef = 4932F4AE2AEC420F007A6642 /* KMMViewModelSwiftUI */; };
 		4932F4B12AEC429D007A6642 /* KMMViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4932F4B02AEC429D007A6642 /* KMMViewModel.swift */; };
 		7555FF83242A565900829871 /* DevicesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7555FF82242A565900829871 /* DevicesView.swift */; };
 /* End PBXBuildFile section */
@@ -47,10 +47,10 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				49261E802C23286700328D4C /* KMPObservableViewModelSwiftUI in Frameworks */,
+				49261E7E2C23286700328D4C /* KMPObservableViewModelCore in Frameworks */,
 				4932F4A62AEC41EA007A6642 /* KMPNativeCoroutinesAsync in Frameworks */,
 				4932F4A82AEC41EA007A6642 /* KMPNativeCoroutinesCombine in Frameworks */,
-				4932F4AD2AEC420F007A6642 /* KMMViewModelCore in Frameworks */,
-				4932F4AF2AEC420F007A6642 /* KMMViewModelSwiftUI in Frameworks */,
 				4932F4AA2AEC41EA007A6642 /* KMPNativeCoroutinesCore in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -125,8 +125,8 @@
 				4932F4A52AEC41EA007A6642 /* KMPNativeCoroutinesAsync */,
 				4932F4A72AEC41EA007A6642 /* KMPNativeCoroutinesCombine */,
 				4932F4A92AEC41EA007A6642 /* KMPNativeCoroutinesCore */,
-				4932F4AC2AEC420F007A6642 /* KMMViewModelCore */,
-				4932F4AE2AEC420F007A6642 /* KMMViewModelSwiftUI */,
+				49261E7D2C23286700328D4C /* KMPObservableViewModelCore */,
+				49261E7F2C23286700328D4C /* KMPObservableViewModelSwiftUI */,
 			);
 			productName = iosApp;
 			productReference = 7555FF7B242A565900829871 /* iosApp.app */;
@@ -418,7 +418,7 @@
 			repositoryURL = "https://github.com/rickclephas/KMP-NativeCoroutines.git";
 			requirement = {
 				kind = exactVersion;
-				version = "1.0.0-ALPHA-17";
+				version = "1.0.0-ALPHA-31";
 			};
 		};
 		4932F4AB2AEC420F007A6642 /* XCRemoteSwiftPackageReference "KMM-ViewModel" */ = {
@@ -426,12 +426,22 @@
 			repositoryURL = "https://github.com/rickclephas/KMM-ViewModel.git";
 			requirement = {
 				kind = exactVersion;
-				version = "1.0.0-ALPHA-13";
+				version = "1.0.0-BETA-3";
 			};
 		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
+		49261E7D2C23286700328D4C /* KMPObservableViewModelCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 4932F4AB2AEC420F007A6642 /* XCRemoteSwiftPackageReference "KMM-ViewModel" */;
+			productName = KMPObservableViewModelCore;
+		};
+		49261E7F2C23286700328D4C /* KMPObservableViewModelSwiftUI */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 4932F4AB2AEC420F007A6642 /* XCRemoteSwiftPackageReference "KMM-ViewModel" */;
+			productName = KMPObservableViewModelSwiftUI;
+		};
 		4932F4A52AEC41EA007A6642 /* KMPNativeCoroutinesAsync */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = 4932F4A42AEC41EA007A6642 /* XCRemoteSwiftPackageReference "KMP-NativeCoroutines" */;
@@ -446,16 +456,6 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 4932F4A42AEC41EA007A6642 /* XCRemoteSwiftPackageReference "KMP-NativeCoroutines" */;
 			productName = KMPNativeCoroutinesCore;
-		};
-		4932F4AC2AEC420F007A6642 /* KMMViewModelCore */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = 4932F4AB2AEC420F007A6642 /* XCRemoteSwiftPackageReference "KMM-ViewModel" */;
-			productName = KMMViewModelCore;
-		};
-		4932F4AE2AEC420F007A6642 /* KMMViewModelSwiftUI */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = 4932F4AB2AEC420F007A6642 /* XCRemoteSwiftPackageReference "KMM-ViewModel" */;
-			productName = KMMViewModelSwiftUI;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

@@ -1,8 +1,7 @@
 package dev.bluefalcon.kotlinmp_example.android
 
-import android.Manifest
-import android.app.Activity
-import android.content.pm.PackageManager
+import android.os.Build
+import androidx.annotation.RequiresApi
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -14,14 +13,28 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import androidx.core.app.ActivityCompat
-import dev.bluefalcon.BluetoothPermissionException
+import com.dawidraszka.composepermissionhandler.core.ExperimentalPermissionHandlerApi
+import com.dawidraszka.composepermissionhandler.core.PermissionHandlerHost
+import com.dawidraszka.composepermissionhandler.core.PermissionHandlerHostState
+import com.dawidraszka.composepermissionhandler.core.PermissionHandlerResult
 import dev.bluefalcon.kotlinmp_example.viewmodels.DevicesViewModel
+import kotlinx.coroutines.launch
 
+@RequiresApi(Build.VERSION_CODES.S)
+@OptIn(ExperimentalPermissionHandlerApi::class)
 @Composable
-fun DevicesView(activity: Activity, viewModel: DevicesViewModel) {
+fun DevicesView(viewModel: DevicesViewModel) {
+
+    val permissionHandlerHostState = PermissionHandlerHostState(permissionList = listOf(
+        android.Manifest.permission.BLUETOOTH,
+        android.Manifest.permission.BLUETOOTH_SCAN,
+        android.Manifest.permission.BLUETOOTH_CONNECT,
+    ))
+    PermissionHandlerHost(hostState = permissionHandlerHostState)
+    val coroutineScope = rememberCoroutineScope()
 
     val devices = viewModel.devices.collectAsState(emptyList())
 
@@ -34,14 +47,20 @@ fun DevicesView(activity: Activity, viewModel: DevicesViewModel) {
                 onClick = {
                     try {
                         viewModel.scan()
-                    } catch (exception: BluetoothPermissionException) {
-                        if (ActivityCompat.checkSelfPermission(
-                                activity,
-                                Manifest.permission.BLUETOOTH_SCAN
-                            ) != PackageManager.PERMISSION_GRANTED
-                        ) {
-                            val permission = arrayOf(Manifest.permission.BLUETOOTH_SCAN)
-                            ActivityCompat.requestPermissions(activity, permission, 0)
+                    } catch (exception: SecurityException) {
+                        println("Requires permission --> $exception")
+                        coroutineScope.launch {
+                            when (permissionHandlerHostState.handlePermissions()) {
+                                PermissionHandlerResult.GRANTED -> {
+                                    println("Granted")
+                                }
+                                PermissionHandlerResult.DENIED -> {
+                                    println("Denied")
+                                }
+                                PermissionHandlerResult.DENIED_NEXT_RATIONALE -> {
+                                    println("Denied next rational")
+                                }
+                            }
                         }
                     }
                 },
