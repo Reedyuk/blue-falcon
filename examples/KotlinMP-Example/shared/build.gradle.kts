@@ -1,15 +1,15 @@
 plugins {
     alias(libs.plugins.kotlinMultiplatform)
     alias(libs.plugins.androidLibrary)
-    id("com.google.devtools.ksp") version "1.9.10-1.0.13"
-    id("com.rickclephas.kmp.nativecoroutines") version "1.0.0-ALPHA-18"
+    id("com.google.devtools.ksp") version "2.0.0-1.0.21"
+    id("com.rickclephas.kmp.nativecoroutines") version "1.0.0-ALPHA-31"
 }
 
 kotlin.sourceSets.all {
     languageSettings.optIn("kotlin.experimental.ExperimentalObjCName")
 }
 kotlin {
-    jvmToolchain(11)
+    jvmToolchain(17)
 }
 
 @OptIn(org.jetbrains.kotlin.gradle.ExperimentalKotlinGradlePluginApi::class)
@@ -17,11 +17,6 @@ kotlin {
     targetHierarchy.default()
 
     androidTarget {
-        compilations.all {
-            kotlinOptions {
-                jvmTarget = "11"
-            }
-        }
     }
     
     listOf(
@@ -35,6 +30,10 @@ kotlin {
     }
 
     sourceSets {
+        all {
+            languageSettings.optIn("kotlinx.cinterop.ExperimentalForeignApi")
+        }
+
         val commonMain by getting {
             dependencies {
                 implementation(libs.blue.falcon)

@@ -22,7 +22,7 @@ class MainActivity : ComponentActivity() {
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
                 ) {
-                    DevicesView(this, blueFalconApp.createDevicesViewModel())
+                    DevicesView(blueFalconApp.createDevicesViewModel())
                 }
             }
         }

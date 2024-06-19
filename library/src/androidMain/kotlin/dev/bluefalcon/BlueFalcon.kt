@@ -18,10 +18,7 @@ import kotlinx.coroutines.flow.StateFlow
 import java.nio.ByteBuffer
 import java.util.*
 
-actual class BlueFalcon actual constructor(
-    private val context: ApplicationContext,
-    private val serviceUUID: String?
-) {
+actual class BlueFalcon actual constructor(private val context: ApplicationContext) {
     actual val delegates: MutableSet<BlueFalconDelegate> = mutableSetOf()
     private val bluetoothManager: BluetoothManager =
         context.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
@@ -63,9 +60,7 @@ actual class BlueFalcon actual constructor(
         bluetoothManager.adapter?.bluetoothLeScanner?.stopScan(mBluetoothScanCallBack)
     }
 
-    actual fun scan(uuid :String?) {
-        if (context.checkSelfPermission(Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED)
-            throw BluetoothPermissionException()
+    actual fun scan(serviceUUID :String?) {
         log("BT Scan started")
         isScanning = true
 

@@ -1,8 +1,7 @@
 package dev.bluefalcon.kotlinmp_example.viewmodels
 
-import com.rickclephas.kmm.viewmodel.stateIn
-import com.rickclephas.kmp.nativecoroutines.NativeCoroutines
 import com.rickclephas.kmp.nativecoroutines.NativeCoroutinesState
+import com.rickclephas.kmp.observableviewmodel.stateIn
 import dev.bluefalcon.BlueFalcon
 import dev.bluefalcon.BluetoothPeripheral
 import kotlinx.coroutines.CoroutineScope
@@ -13,7 +12,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 
-class DevicesViewModel(private val blueFalcon: BlueFalcon) : ViewModel() {
+class DevicesViewModel(private val blueFalcon: BlueFalcon) : BlueViewModel() {
 
     private val _devices: MutableStateFlow<List<BluetoothPeripheral>> = MutableStateFlow(emptyList())
 

@@ -3,7 +3,7 @@ package dev.bluefalcon
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 
-expect class BlueFalcon(context: ApplicationContext, serviceUUID: String?) {
+expect class BlueFalcon(context: ApplicationContext) {
 
     val scope: CoroutineScope
 
@@ -23,7 +23,7 @@ expect class BlueFalcon(context: ApplicationContext, serviceUUID: String?) {
         BluetoothPermissionException::class,
         BluetoothNotEnabledException::class
     )
-    fun scan(uuid :String?)
+    fun scan(serviceUUID: String? = null)
 
     fun stopScanning()
 

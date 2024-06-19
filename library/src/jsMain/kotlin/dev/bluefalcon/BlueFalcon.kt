@@ -10,9 +10,9 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import org.w3c.dom.Navigator
 
 @JsName("blueFalcon")
-val blueFalcon = BlueFalcon(ApplicationContext(), null)
+val blueFalcon = BlueFalcon(ApplicationContext())
 
-actual class BlueFalcon actual constructor(context: ApplicationContext, serviceUUID: String?) {
+actual class BlueFalcon actual constructor(context: ApplicationContext) {
 
     actual val delegates: MutableSet<BlueFalconDelegate> = mutableSetOf()
     actual var isScanning: Boolean = false
@@ -60,7 +60,7 @@ actual class BlueFalcon actual constructor(context: ApplicationContext, serviceU
     }
 
     @JsName("rescan")
-    actual fun scan(uuid : String?) {
+    actual fun scan(serviceUUID : String?) {
         window.navigator.bluetooth.requestDevice(
             BluetoothOptions(
                 false,

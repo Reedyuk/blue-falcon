@@ -2,15 +2,11 @@ import java.util.*
 import org.jetbrains.kotlin.gradle.plugin.mpp.apple.XCFramework
 
 plugins {
-    kotlin("multiplatform") version "1.9.10"
+    kotlin("multiplatform") version "2.0.0"
     id("com.android.library")
     id("maven-publish")
     id("signing")
 }
-
-group = "com.github.vishwaprojects"
-version = "master-SNAPSHOT"
-
 
 repositories {
     google()
@@ -48,6 +44,7 @@ val kotlinx_coroutines_version: String by project
 android {
     compileSdk = 33
     sourceSets["main"].manifest.srcFile("src/androidMain/AndroidManifest.xml")
+    namespace = "dev.bluefalcon.blueFalcon"
     defaultConfig {
         minSdk = 24
         targetSdk = 33
@@ -60,7 +57,7 @@ android {
 val frameworkName = "BlueFalcon"
 
 kotlin {
-    task("testClasses")
+    jvmToolchain(17)
     androidTarget {
         publishAllLibraryVariants()
     }
@@ -74,31 +71,11 @@ kotlin {
             binaries.executable()
         }
     }
-    val xcf = XCFramework(frameworkName)
-    iosSimulatorArm64 {
-        binaries.framework {
-            baseName = frameworkName
-            xcf.add(this)
-        }
-    }
-    ios {
-        binaries.framework {
-            baseName = frameworkName
-            xcf.add(this)
-        }
-    }
-    macosArm64 {
-        binaries.framework {
-            baseName = frameworkName
-            xcf.add(this)
-        }
-    }
-    macosX64 {
-        binaries.framework {
-            baseName = frameworkName
-            xcf.add(this)
-        }
-    }
+    iosSimulatorArm64()
+    iosX64()
+    iosArm64()
+    macosArm64()
+    macosX64()
 
     sourceSets {
         val commonMain by getting {
@@ -119,22 +96,6 @@ kotlin {
             }
         }
         val jsMain by getting
-        val iosMain by getting {
-            dependsOn(commonMain)
-        }
-        val iosSimulatorArm64Main by getting
-        iosSimulatorArm64Main.dependsOn(iosMain)
-        val iosX64Main by getting
-        iosX64Main.dependsOn(iosMain)
-        val macosMain by creating {
-            dependsOn(commonMain)
-        }
-        val macosX64Main by getting {
-            dependsOn(macosMain)
-        }
-        val macosArm64Main by getting {
-            dependsOn(macosMain)
-        }
     }
 }
 
@@ -156,7 +117,6 @@ publishing {
                 password = sonatypePasswordEnv
             }
         }
-        mavenLocal()
     }
 
     publications.all {
