@@ -1,4 +1,4 @@
-# ![Blue Falcon](bluefalcon.png) Blue-Falcon ![CI](https://github.com/Reedyuk/blue-falcon/actions/workflows/release.yml/badge.svg) [![Kotlin](https://img.shields.io/badge/kotlin-1.9.10-blue.svg)](http://kotlinlang.org) ![badge][badge-android] ![badge][badge-native] ![badge][badge-mac] ![badge][badge-rpi] ![badge][badge-js]
+# ![Blue Falcon](bluefalcon.png) Blue-Falcon ![CI](https://github.com/Reedyuk/blue-falcon/actions/workflows/release.yml/badge.svg) [![Kotlin](https://img.shields.io/badge/kotlin-2.0.0-blue.svg)](http://kotlinlang.org) ![badge][badge-android] ![badge][badge-native] ![badge][badge-mac] ![badge][badge-rpi] ![badge][badge-js]
 
 A Bluetooth "Cross Platform" Kotlin Multiplatform library for iOS, Android, MacOS, Raspberry Pi and Javascript.
 
@@ -28,13 +28,13 @@ blueFalcon.scan()
 #### Install
 
 ```kotlin
-implementation 'dev.bluefalcon:blue-falcon-android:1.0.1'
+implementation 'dev.bluefalcon:blue-falcon-android:1.1.0'
 ```
 
 And if you are using the debug variant:
 
 ```kotlin
-implementation 'dev.bluefalcon:blue-falcon-android-debug:1.0.1'
+implementation 'dev.bluefalcon:blue-falcon-android-debug:1.1.0'
 ```
 
 The Android sdk requires an Application context, we do this by passing in on the BlueFalcon constructor, in this example we are calling the code from an activity(this).
@@ -57,7 +57,7 @@ try {
 The Raspberry Pi library is using Java.
 
 ```kotlin
-implementation 'dev.bluefalcon:blue-falcon-rpi:1.0.1'
+implementation 'dev.bluefalcon:blue-falcon-rpi:1.1.0'
 ```
 
 ### Javascript 
@@ -73,7 +73,7 @@ See the JS-Example for details on how to use.
 ### Install
 
 ```kotlin
-implementation 'dev.bluefalcon:blue-falcon:1.0.1'
+implementation 'dev.bluefalcon:blue-falcon:1.1.0'
 
 ```
 
@@ -118,19 +118,6 @@ This repo contains examples for kotlin MP, ios and android in the examples folde
 ### Kotlin MP
 
 Open the kotlin MP example directory in InteliJ and then run the install targets.
-
-### iOS & MacOS
-
-To run the MacOS & iOS example, you need to reference the relevant framework by including it in your project. Ensure your project has the Framework search paths referencing the framework directory.
-ensure the framework is there if not run:
-```agsl
-    cd library
-    ./gradlew :assembleBlueFalconXCFramework 
-```
-
-### Android
-
-Open the root directory of the project in Android Studio and run the Android app target from the ide.
 
 ### Raspberry Pi
 
