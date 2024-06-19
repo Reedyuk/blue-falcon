@@ -19,7 +19,7 @@ Create an instance of BlueFalcon and then call the scan method.
 By passing in a string uuid of the service uuid, you can filter to scan for only devices that have that service.
 
 ```swift
-let blueFalcon = BlueFalcon(serviceUUID: nil)
+let blueFalcon = BlueFalcon()
 blueFalcon.scan()
 ```
 
@@ -43,7 +43,7 @@ By passing in a string uuid of the service uuid, you can filter to scan for only
 
 ```kotlin
 try {
-    val blueFalcon = BlueFalcon(this, null)
+    val blueFalcon = BlueFalcon(this)
     blueFalcon.scan()
 } catch (exception: PermissionException) {
     //request the ACCESS_COARSE_LOCATION permission
