@@ -259,7 +259,7 @@ actual class BlueFalcon actual constructor(private val context: ApplicationConte
                     val bluetoothPeripheral = BluetoothPeripheral(device)
                     bluetoothPeripheral.rssi = scanResult.rssi.toFloat()
 
-                    _peripherals.tryEmit(_peripherals.value + setOf(bluetoothPeripheral))
+                    _peripherals.tryEmit(_peripherals.value.filter{ it.uuid != bluetoothPeripheral.uuid }.toSet() + setOf(bluetoothPeripheral))
                     delegates.forEach {
                         it.didDiscoverDevice(bluetoothPeripheral, sharedAdvertisementData)
                     }
