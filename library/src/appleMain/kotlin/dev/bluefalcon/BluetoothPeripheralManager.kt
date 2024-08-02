@@ -35,7 +35,7 @@ class BluetoothPeripheralManager constructor(
             val device = BluetoothPeripheral(didDiscoverPeripheral, rssiValue = RSSI.floatValue)
 
             val sharedAdvertisementData = mapNativeAdvertisementDataToShared(advertisementData)
-            blueFalcon._peripherals.tryEmit(blueFalcon._peripherals.value + setOf(device))
+            blueFalcon._peripherals.tryEmit(blueFalcon._peripherals.value.filter{ it.uuid != device.uuid }.toSet() + setOf(device))
             blueFalcon.delegates.forEach {
                 it.didDiscoverDevice(
                     bluetoothPeripheral = device,

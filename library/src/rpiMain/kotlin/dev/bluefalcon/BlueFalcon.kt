@@ -20,7 +20,7 @@ actual class BlueFalcon actual constructor(context: ApplicationContext) {
             val device = BluetoothPeripheral(peripheral)
 
             val sharedAdvertisementData = mapNativeAdvertisementDataToShared(scanResult = scanResult, isConnectable = true)
-            _peripherals.tryEmit(_peripherals.value + setOf(device))
+            _peripherals.tryEmit(_peripherals.value.filter{ it.uuid != device.uuid }.toSet() + setOf(device))
             delegates.forEach { it.didDiscoverDevice(device, sharedAdvertisementData) }
         }
     }
