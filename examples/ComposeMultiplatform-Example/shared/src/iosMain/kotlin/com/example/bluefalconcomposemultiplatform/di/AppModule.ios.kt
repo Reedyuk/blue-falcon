@@ -5,5 +5,5 @@ import dev.bluefalcon.BlueFalcon
 
 actual class AppModule {
     actual val blueFalcon: BlueFalcon
-        get() = BlueFalcon(ApplicationContext(), null)
+        get() = BlueFalcon(ApplicationContext())
 }

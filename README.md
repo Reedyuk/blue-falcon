@@ -12,30 +12,15 @@ What this library isn't? It is not a cross platform library, this is a multiplat
 
 ## Basic Usage
 
-### iOS & MacOS
+Include the library in your own KMP project as a dependancy on your common target.
 
-Create an instance of BlueFalcon and then call the scan method. 
-
-By passing in a string uuid of the service uuid, you can filter to scan for only devices that have that service.
-
-```swift
-let blueFalcon = BlueFalcon()
-blueFalcon.scan()
+```
+commonMain.dependancies {
+    implementation("dev.bluefalcon:blue-falcon:1.1.0")
+}
 ```
 
-### Android
-
-#### Install
-
-```kotlin
-implementation 'dev.bluefalcon:blue-falcon-android:1.1.0'
-```
-
-And if you are using the debug variant:
-
-```kotlin
-implementation 'dev.bluefalcon:blue-falcon-android-debug:1.1.0'
-```
+Once you have included it then you will need to create an instance of BlueFalcon and pass in an application context.
 
 The Android sdk requires an Application context, we do this by passing in on the BlueFalcon constructor, in this example we are calling the code from an activity(this).
 
@@ -50,16 +35,6 @@ try {
 }
 ```
 
-### Raspberry Pi
-
-#### Install
-
-The Raspberry Pi library is using Java.
-
-```kotlin
-implementation 'dev.bluefalcon:blue-falcon-rpi:1.1.0'
-```
-
 ### Javascript 
 
 #### Install
@@ -67,18 +42,6 @@ implementation 'dev.bluefalcon:blue-falcon-rpi:1.1.0'
 Simply copy the compiled javascript file (blue-falcon.js) to your web directory.
 
 See the JS-Example for details on how to use.
-
-### Kotlin Multiplatform
-
-### Install
-
-```kotlin
-implementation 'dev.bluefalcon:blue-falcon:1.1.0'
-
-```
-
-Please look at the Kotlin Multiplatform example in the Examples folder.
-
 
 ### BlueFalcon API
 
@@ -115,9 +78,13 @@ The basic functionality of the api is listed below, this should be a simplistic 
 
 This repo contains examples for kotlin MP, ios and android in the examples folder, install their dependencies, and run it locally:
 
+### Compose Multiplatform
+
+This example demonstrates using Kotlin Multiplatform Compose and Blue Falcon to scan for bluetooth devices and rendering using Multiplatform Compose
+
 ### Kotlin MP
 
-Open the kotlin MP example directory in InteliJ and then run the install targets.
+This example demonstrates how to integrate Blue Falcon in your own project as a dependancy on your library/project.
 
 ### Raspberry Pi
 
