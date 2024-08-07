@@ -11,8 +11,15 @@ actual class BluetoothPeripheral(val bluetoothDevice: CBPeripheral, val rssiValu
         get() = bluetoothDevice.services?.map {
             BluetoothService(it as CBService)
         } ?: emptyList()
-    actual val uuid: String
-        get() = bluetoothDevice.identifier.UUIDString
+    actual val uuid: String = bluetoothDevice.identifier.UUIDString
 
     internal actual val _servicesFlow = MutableStateFlow<List<BluetoothService>>(emptyList())
+
+    override fun toString(): String = uuid
+
+    override fun hashCode(): Int = uuid.hashCode()
+    override fun equals(other: Any?): Boolean {
+        if (other == null || other !is BluetoothPeripheral) return false
+        return other.uuid == uuid
+    }
 }

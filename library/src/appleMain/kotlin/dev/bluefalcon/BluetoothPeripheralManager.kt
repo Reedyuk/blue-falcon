@@ -31,11 +31,10 @@ class BluetoothPeripheralManager constructor(
         RSSI: NSNumber
     ) {
         if (blueFalcon.isScanning) {
-            log("Discovered device ${didDiscoverPeripheral.name}")
+            log("Discovered device ${didDiscoverPeripheral.name}:${didDiscoverPeripheral.identifier.UUIDString}")
             val device = BluetoothPeripheral(didDiscoverPeripheral, rssiValue = RSSI.floatValue)
-
             val sharedAdvertisementData = mapNativeAdvertisementDataToShared(advertisementData)
-            blueFalcon._peripherals.tryEmit(blueFalcon._peripherals.value.filter{ it.uuid != device.uuid }.toSet() + setOf(device))
+            blueFalcon._peripherals.tryEmit(blueFalcon._peripherals.value.plus(device))
             blueFalcon.delegates.forEach {
                 it.didDiscoverDevice(
                     bluetoothPeripheral = device,

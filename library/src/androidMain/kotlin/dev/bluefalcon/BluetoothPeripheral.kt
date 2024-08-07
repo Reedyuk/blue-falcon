@@ -21,6 +21,15 @@ actual class BluetoothPeripheral(val bluetoothDevice: BluetoothDevice) : Parcela
         rssi = parcel.readValue(Float::class.java.classLoader) as? Float
     }
 
+    override fun toString(): String = uuid
+
+    override fun hashCode(): Int = uuid.hashCode()
+
+    override fun equals(other: Any?): Boolean {
+        if (other == null || other !is BluetoothPeripheral) return false
+        return other.uuid == uuid
+    }
+
     override fun writeToParcel(parcel: Parcel, flags: Int) {
         parcel.writeParcelable(bluetoothDevice, flags)
         parcel.writeValue(rssi)

@@ -5,7 +5,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import platform.CoreBluetooth.*
 import platform.Foundation.*
-import platform.darwin.NSObject
 
 actual class BlueFalcon actual constructor(private val context: ApplicationContext) {
     actual val delegates: MutableSet<BlueFalconDelegate> = mutableSetOf()
