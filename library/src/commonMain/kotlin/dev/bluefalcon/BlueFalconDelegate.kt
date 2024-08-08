@@ -1,6 +1,5 @@
 package dev.bluefalcon
 
-import AdvertisementDataRetrievalKeys
 import kotlin.js.JsName
 
 @JsName("BlueFalconDelegate")

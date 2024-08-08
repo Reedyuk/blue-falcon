@@ -6,11 +6,14 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import platform.CoreBluetooth.*
 import platform.Foundation.*
 
-actual class BlueFalcon actual constructor(private val context: ApplicationContext) {
+actual class BlueFalcon actual constructor(
+    private val log: Logger,
+    private val context: ApplicationContext
+) {
     actual val delegates: MutableSet<BlueFalconDelegate> = mutableSetOf()
 
     private val centralManager: CBCentralManager
-    private val bluetoothPeripheralManager = BluetoothPeripheralManager(this)
+    private val bluetoothPeripheralManager = BluetoothPeripheralManager(log, this)
     actual var isScanning: Boolean = false
 
     actual val scope = CoroutineScope(Dispatchers.Default)
@@ -177,7 +180,7 @@ actual class BlueFalcon actual constructor(private val context: ApplicationConte
     }
 
     actual fun changeMTU(bluetoothPeripheral: BluetoothPeripheral, mtuSize: Int) {
-        println("Change MTU size called but not needed.")
+        log.debug("Change MTU size called but not needed.")
         delegates.forEach {
             it.didUpdateMTU(bluetoothPeripheral)
         }

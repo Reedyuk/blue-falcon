@@ -16,7 +16,7 @@ Include the library in your own KMP project as a dependancy on your common targe
 
 ```
 commonMain.dependancies {
-    implementation("dev.bluefalcon:blue-falcon:1.1.0")
+    implementation("dev.bluefalcon:blue-falcon:1.2.0")
 }
 ```
 
@@ -93,6 +93,12 @@ This example can only be ran on a Raspberry pi, it will crash otherwise.
 ### Javascript
 
 Open the index.html file in a web browser.
+
+## Logger
+
+BlueFalcon has a constructor that takes a Logger, you can implement your own logger, to handle and reduce or add to the noise generated.
+
+Look at the PrintLnLogger object of an example of how to do this.
 
 ## Support
 

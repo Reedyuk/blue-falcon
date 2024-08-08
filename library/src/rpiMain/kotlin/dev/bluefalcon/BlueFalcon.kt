@@ -1,13 +1,15 @@
 package dev.bluefalcon
 
-import AdvertisementDataRetrievalKeys
 import com.welie.blessed.*
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import java.util.*
 
-actual class BlueFalcon actual constructor(context: ApplicationContext) {
+actual class BlueFalcon actual constructor(
+    log: Logger,
+    context: ApplicationContext
+) {
     actual val delegates: MutableSet<BlueFalconDelegate> = mutableSetOf()
     actual var isScanning: Boolean = false
 

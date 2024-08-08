@@ -3,7 +3,10 @@ package dev.bluefalcon
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 
-expect class BlueFalcon(context: ApplicationContext) {
+expect class BlueFalcon(
+    log: Logger = PrintLnLogger,
+    context: ApplicationContext
+) {
 
     val scope: CoroutineScope
 

@@ -1,3 +1,5 @@
+package dev.bluefalcon
+
 enum class AdvertisementDataRetrievalKeys {
     LocalName,
     ManufacturerData,

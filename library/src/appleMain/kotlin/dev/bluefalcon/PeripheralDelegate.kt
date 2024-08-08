@@ -6,12 +6,13 @@ import platform.Foundation.NSNumber
 import platform.darwin.NSObject
 
 class PeripheralDelegate constructor(
+    private val log: Logger,
     private val blueFalcon: BlueFalcon
 ) : NSObject(), CBPeripheralDelegateProtocol {
 
     override fun peripheral(peripheral: CBPeripheral, didDiscoverServices: NSError?) {
         if (didDiscoverServices != null) {
-            println("Error with service discovery ${didDiscoverServices}")
+            log.error("Error with service discovery ${didDiscoverServices}")
         } else {
             val device = BluetoothPeripheral(peripheral, rssiValue = null)
             blueFalcon.delegates.forEach {
@@ -31,7 +32,7 @@ class PeripheralDelegate constructor(
         error: NSError?
     ) {
         if (error != null) {
-            println("Error with characteristic discovery ${didDiscoverCharacteristicsForService}")
+            log.error("Error with characteristic discovery ${didDiscoverCharacteristicsForService}")
         }
         val device = BluetoothPeripheral(peripheral, rssiValue = null)
         blueFalcon.delegates.forEach {
@@ -48,7 +49,7 @@ class PeripheralDelegate constructor(
         error: NSError?
     ) {
         if (error != null) {
-            println("Error with characteristic update ${error}")
+            log.error("Error with characteristic update ${error}")
         }
         println("didUpdateValueForCharacteristic")
         val device = BluetoothPeripheral(peripheral, rssiValue = null)
@@ -66,10 +67,10 @@ class PeripheralDelegate constructor(
         error: NSError?
     ) {
         if (error != null) {
-            println("Error during characteristic write $error")
+            log.error("Error during characteristic write $error")
         }
 
-        println("didWriteValueForCharacteristic")
+        log.info("didWriteValueForCharacteristic")
         val device = BluetoothPeripheral(peripheral, rssiValue = null)
         didWriteValueForDescriptor.characteristic?.let { characteristic ->
             val characteristic = BluetoothCharacteristic(characteristic)

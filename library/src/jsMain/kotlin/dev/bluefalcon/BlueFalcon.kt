@@ -1,6 +1,5 @@
 package dev.bluefalcon
 
-import AdvertisementDataRetrievalKeys
 import dev.bluefalcon.external.Bluetooth
 import dev.bluefalcon.external.BluetoothOptions
 import kotlinx.browser.window
@@ -10,9 +9,15 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import org.w3c.dom.Navigator
 
 @JsName("blueFalcon")
-val blueFalcon = BlueFalcon(ApplicationContext())
+val blueFalcon = BlueFalcon(
+    log = PrintLnLogger,
+    context = ApplicationContext()
+)
 
-actual class BlueFalcon actual constructor(context: ApplicationContext) {
+actual class BlueFalcon actual constructor(
+    private val log: Logger,
+    context: ApplicationContext
+) {
 
     actual val delegates: MutableSet<BlueFalconDelegate> = mutableSetOf()
     actual var isScanning: Boolean = false
@@ -36,7 +41,7 @@ actual class BlueFalcon actual constructor(context: ApplicationContext) {
 
     @JsName("connect")
     actual fun connect(bluetoothPeripheral: BluetoothPeripheral, autoConnect: Boolean) {
-        log("connect -> ${bluetoothPeripheral.device}:${bluetoothPeripheral.device.gatt} gatt connected? ${bluetoothPeripheral.device.gatt?.connected}")
+        log.info("connect -> ${bluetoothPeripheral.device}:${bluetoothPeripheral.device.gatt} gatt connected? ${bluetoothPeripheral.device.gatt?.connected}")
         if (bluetoothPeripheral.device.gatt?.connected == true) {
             delegates.forEach { it.didConnect(bluetoothPeripheral) }
         } else {
