@@ -1,12 +1,12 @@
 # ![Blue Falcon](bluefalcon.png) Blue-Falcon ![CI](https://github.com/Reedyuk/blue-falcon/actions/workflows/release.yml/badge.svg) [![Kotlin](https://img.shields.io/badge/kotlin-2.0.0-blue.svg)](http://kotlinlang.org) ![badge][badge-android] ![badge][badge-native] ![badge][badge-mac] ![badge][badge-rpi] ![badge][badge-js]
 
-A Bluetooth "Cross Platform" Kotlin Multiplatform library for iOS, Android, MacOS, Raspberry Pi and Javascript.
+A Bluetooth BLE "Cross Platform" Kotlin Multiplatform library for iOS, Android, MacOS, Raspberry Pi and Javascript.
 
-Bluetooth in general has the same functionality for all platforms, e.g. connect to device, fetch services, fetch characteristics.
+BLE in general has the same functionality for all platforms, e.g. connect to device, fetch services, fetch characteristics.
 
-This library is the glue that brings those together so that mobile developers can use one common api to perform the bluetooth actions.
+This library is the glue that brings those together so that mobile developers can use one common api to perform the BLE actions.
 
-The idea is to have a common api for using bluetooth as the principle of bluetooth is the same but each platform ios and android has different apis which means you have to duplicate the logic for each platform.
+The idea is to have a common api for BLE devices as the principle of BLE is the same but each platform ios and android has different apis which means you have to duplicate the logic for each platform.
 
 What this library isn't? It is not a cross platform library, this is a multiplatform library. The difference? each platform is compiled down to the native code, so when you use the library in iOS, you are consuming an obj-c library and same principle for Android and so on.
 
