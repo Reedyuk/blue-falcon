@@ -12,10 +12,10 @@ What this library isn't? It is not a cross platform library, this is a multiplat
 
 ## Basic Usage
 
-Include the library in your own KMP project as a dependancy on your common target.
+Include the library in your own KMP project as a dependency on your common target.
 
 ```
-commonMain.dependancies {
+commonMain.dependencies {
     implementation("dev.bluefalcon:blue-falcon:1.2.0")
 }
 ```
@@ -84,7 +84,7 @@ This example demonstrates using Kotlin Multiplatform Compose and Blue Falcon to 
 
 ### Kotlin MP
 
-This example demonstrates how to integrate Blue Falcon in your own project as a dependancy on your library/project.
+This example demonstrates how to integrate Blue Falcon in your own project as a dependency on your library/project.
 
 ### Raspberry Pi
 
