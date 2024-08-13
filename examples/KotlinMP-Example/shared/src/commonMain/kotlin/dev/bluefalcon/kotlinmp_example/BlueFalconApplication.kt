@@ -6,7 +6,7 @@ import dev.bluefalcon.kotlinmp_example.viewmodels.DevicesViewModel
 
 class BlueFalconApplication(context: ApplicationContext) {
 
-    val blueFalcon = BlueFalcon(context)
+    val blueFalcon = BlueFalcon(context = context)
 
     fun createDevicesViewModel(): DevicesViewModel = DevicesViewModel(blueFalcon)
 }

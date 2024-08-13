@@ -22,6 +22,7 @@ import com.dawidraszka.composepermissionhandler.core.PermissionHandlerHostState
 import com.dawidraszka.composepermissionhandler.core.PermissionHandlerResult
 import dev.bluefalcon.kotlinmp_example.viewmodels.DevicesViewModel
 import kotlinx.coroutines.launch
+import java.lang.Exception
 
 @RequiresApi(Build.VERSION_CODES.S)
 @OptIn(ExperimentalPermissionHandlerApi::class)
@@ -48,7 +49,6 @@ fun DevicesView(viewModel: DevicesViewModel) {
                     try {
                         viewModel.scan()
                     } catch (exception: SecurityException) {
-                        println("Requires permission --> $exception")
                         coroutineScope.launch {
                             when (permissionHandlerHostState.handlePermissions()) {
                                 PermissionHandlerResult.GRANTED -> {
