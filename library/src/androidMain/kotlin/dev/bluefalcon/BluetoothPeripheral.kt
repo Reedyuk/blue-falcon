@@ -14,6 +14,7 @@ actual class BluetoothPeripheral(val bluetoothDevice: BluetoothDevice) : Parcela
         get() = bluetoothDevice.address
 
     actual var rssi: Float? = null
+    actual var mtuSize: Int? = null
 
     internal actual val _servicesFlow = MutableStateFlow<List<BluetoothService>>(emptyList())
 

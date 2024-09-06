@@ -333,8 +333,10 @@ actual class BlueFalcon actual constructor(
                 return
             }
             gatt?.device?.let { bluetoothDevice ->
+                val bluetoothPeripheral = BluetoothPeripheral(bluetoothDevice)
+                bluetoothPeripheral.mtuSize = mtu
                 delegates.forEach {
-                    it.didUpdateMTU(BluetoothPeripheral(bluetoothDevice))
+                    it.didUpdateMTU(bluetoothPeripheral)
                 }
             }
         }
