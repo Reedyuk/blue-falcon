@@ -14,6 +14,10 @@ actual class BluetoothPeripheral(val device: BluetoothDevice) {
         get() = TODO("not implemented") //To change initializer of created properties use File | Settings | File Templates.
         set(value) {}
 
+    actual var mtuSize: Int?
+        get() = TODO("not implemented")
+        set(value) {}
+
     internal actual val _servicesFlow = MutableStateFlow<List<BluetoothService>>(emptyList())
     val serviceArray: Array<BluetoothService> get() = services.toTypedArray()
 }
