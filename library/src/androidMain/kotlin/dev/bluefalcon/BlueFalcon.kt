@@ -7,11 +7,13 @@ import android.bluetooth.le.*
 import android.content.Context
 import android.os.Build
 import android.os.ParcelUuid
+import android.os.RemoteException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import java.nio.ByteBuffer
 import java.util.*
+
 
 actual class BlueFalcon actual constructor(
     private val log: Logger,
@@ -31,12 +33,12 @@ actual class BlueFalcon actual constructor(
 
     actual fun connect(bluetoothPeripheral: BluetoothPeripheral, autoConnect: Boolean) {
         log.info("connect")
-        bluetoothPeripheral.bluetoothDevice.connectGatt(
-            context,
-            autoConnect,
-            mGattClientCallback,
-            transportMethod
-        )
+            bluetoothPeripheral.bluetoothDevice.connectGatt(
+                context,
+                autoConnect,
+                mGattClientCallback,
+                transportMethod
+            )
     }
 
     actual fun disconnect(bluetoothPeripheral: BluetoothPeripheral) {
@@ -284,6 +286,23 @@ actual class BlueFalcon actual constructor(
         fun gattForDevice(bluetoothDevice: BluetoothDevice): BluetoothGatt? =
             gatts.firstOrNull { it.device == bluetoothDevice }
 
+        /**
+         * Clears the internal cache and forces a refresh of the services from the
+         * remote device.
+         * @hide
+         */
+        private fun refresh(gatt: BluetoothGatt): Boolean {
+            try {
+                val refresh = gatt.javaClass.getMethod("refresh")
+                refresh.invoke(gatt)
+            } catch (e: RemoteException) {
+                log.error("Could not execute refresh", e)
+                return false
+            }
+
+            return true
+        }
+
         override fun onConnectionStateChange(gatt: BluetoothGatt?, status: Int, newState: Int) {
             super.onConnectionStateChange(gatt, status, newState)
             log.info("onConnectionStateChange")
@@ -292,6 +311,7 @@ actual class BlueFalcon actual constructor(
                     //BluetoothProfile#STATE_DISCONNECTED} or {@link BluetoothProfile#STATE_CONNECTED}
                     if (newState == STATE_CONNECTED) {
                         addGatt(bluetoothGatt)
+                        refresh(bluetoothGatt)
                         bluetoothGatt.readRemoteRssi()
                         bluetoothGatt.discoverServices()
                         delegates.forEach {
