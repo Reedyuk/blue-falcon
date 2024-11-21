@@ -1,5 +1,7 @@
 package dev.bluefalcon
 
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import platform.CoreBluetooth.*
 import platform.Foundation.NSData
 import platform.Foundation.NSError
@@ -7,20 +9,25 @@ import platform.Foundation.NSNumber
 import platform.darwin.NSObject
 
 class BluetoothPeripheralManager constructor(
-    private val log: Logger,
+    private val log: Logger?,
     private val blueFalcon: BlueFalcon
 ) : NSObject(), CBCentralManagerDelegateProtocol {
-    private val delegate = PeripheralDelegate(log, blueFalcon)
+
+    private val _managerState: MutableStateFlow<CBManagerState> = MutableStateFlow(CBManagerStateUnknown)
+    val managerState: StateFlow<CBManagerState> = _managerState
+
+    internal val delegate = PeripheralDelegate(log, blueFalcon)
 
     override fun centralManagerDidUpdateState(central: CBCentralManager) {
+        _managerState.tryEmit(central.state)
         when (central.state) {
-            CBManagerStateUnknown -> log.info("State 0 is .unknown")
-            CBManagerStateResetting -> log.info("State 1 is .resetting")
-            CBManagerStateUnsupported -> log.info("State 2 is .unsupported")
-            CBManagerStateUnauthorized -> log.info("State 3 is .unauthorised")
-            CBManagerStatePoweredOff -> log.info("State 4 is .poweredOff")
-            CBManagerStatePoweredOn -> log.info("State 5 is .poweredOn")
-            else -> log.info("State ${central.state.toInt()}")
+            CBManagerStateUnknown -> log?.info("State 0 is .unknown")
+            CBManagerStateResetting -> log?.info("State 1 is .resetting")
+            CBManagerStateUnsupported -> log?.info("State 2 is .unsupported")
+            CBManagerStateUnauthorized -> log?.info("State 3 is .unauthorised")
+            CBManagerStatePoweredOff -> log?.info("State 4 is .poweredOff")
+            CBManagerStatePoweredOn -> log?.info("State 5 is .poweredOn")
+            else -> log?.info("State ${central.state.toInt()}")
         }
     }
 
@@ -31,7 +38,7 @@ class BluetoothPeripheralManager constructor(
         RSSI: NSNumber
     ) {
         if (blueFalcon.isScanning) {
-            log.info("Discovered device ${didDiscoverPeripheral.name}:${didDiscoverPeripheral.identifier.UUIDString}")
+            log?.info("Discovered device ${didDiscoverPeripheral.name}:${didDiscoverPeripheral.identifier.UUIDString}")
             val device = BluetoothPeripheral(didDiscoverPeripheral, rssiValue = RSSI.floatValue)
             val sharedAdvertisementData = mapNativeAdvertisementDataToShared(advertisementData)
             blueFalcon._peripherals.tryEmit(blueFalcon._peripherals.value.plus(device))
@@ -45,13 +52,15 @@ class BluetoothPeripheralManager constructor(
     }
 
     override fun centralManager(central: CBCentralManager, didConnectPeripheral: CBPeripheral) {
-        log.info("DidConnectPeripheral ${didConnectPeripheral.name}")
+        log?.info("DidConnectPeripheral ${didConnectPeripheral.name}")
         val device = BluetoothPeripheral(didConnectPeripheral, rssiValue = null)
+        didConnectPeripheral.delegate = delegate
         blueFalcon.delegates.forEach {
             it.didConnect(device)
         }
-        didConnectPeripheral.delegate = delegate
-        didConnectPeripheral.discoverServices(null)
+        if (blueFalcon.autoDiscoverAllServicesAndCharacteristics) {
+            didConnectPeripheral.discoverServices(null)
+        }
     }
 
     override fun centralManager(
@@ -59,7 +68,7 @@ class BluetoothPeripheralManager constructor(
         didDisconnectPeripheral: CBPeripheral,
         error: NSError?
     ) {
-        log.info("DidDisconnectPeripheral ${didDisconnectPeripheral.name}")
+        log?.info("DidDisconnectPeripheral ${didDisconnectPeripheral.name}")
         val device = BluetoothPeripheral(didDisconnectPeripheral, rssiValue = null)
         blueFalcon.delegates.forEach {
             it.didDisconnect(device)

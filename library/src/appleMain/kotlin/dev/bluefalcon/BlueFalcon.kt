@@ -3,26 +3,35 @@ package dev.bluefalcon
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
 import platform.CoreBluetooth.*
 import platform.Foundation.*
 
 actual class BlueFalcon actual constructor(
-    private val log: Logger,
-    private val context: ApplicationContext
+    private val log: Logger?,
+    private val context: ApplicationContext,
+    internal val autoDiscoverAllServicesAndCharacteristics: Boolean
 ) {
+    actual val scope = CoroutineScope(Dispatchers.Default)
     actual val delegates: MutableSet<BlueFalconDelegate> = mutableSetOf()
 
-    private val centralManager: CBCentralManager
     private val bluetoothPeripheralManager = BluetoothPeripheralManager(log, this)
-    actual var isScanning: Boolean = false
 
-    actual val scope = CoroutineScope(Dispatchers.Default)
+    actual val managerState: StateFlow<BluetoothManagerState> = bluetoothPeripheralManager.managerState.map {
+        when (it) {
+            CBManagerStatePoweredOn -> BluetoothManagerState.Ready
+            else -> BluetoothManagerState.NotReady
+        }
+    }.stateIn(scope, SharingStarted.Eagerly, BluetoothManagerState.NotReady)
+
+    private val centralManager: CBCentralManager = CBCentralManager(bluetoothPeripheralManager, null)
+
+    actual var isScanning: Boolean = false
     internal actual val _peripherals = MutableStateFlow<Set<BluetoothPeripheral>>(emptySet())
     actual val peripherals: NativeFlow<Set<BluetoothPeripheral>> = _peripherals.toNativeType(scope)
-
-    init {
-        centralManager = CBCentralManager(bluetoothPeripheralManager, null)
-    }
 
     actual fun connect(bluetoothPeripheral: BluetoothPeripheral, autoConnect: Boolean) {
         //auto connect is ignored due to not needing it in iOS
@@ -40,18 +49,18 @@ actual class BlueFalcon actual constructor(
         BluetoothPermissionException::class,
         BluetoothNotEnabledException::class
     )
-    actual fun scan(serviceUUID : String?) {
+    actual fun scan(filters: ServiceFilter?) {
         isScanning = true
         when (centralManager.state) {
-            CBManagerStateUnknown -> throw BluetoothUnknownException()
+            CBManagerStateUnknown -> throw BluetoothUnknownException("Authorization state: ${centralManager.authorization()}")
             CBManagerStateResetting -> throw BluetoothResettingException()
             CBManagerStateUnsupported -> throw BluetoothUnsupportedException()
             CBManagerStateUnauthorized -> throw BluetoothPermissionException()
             CBManagerStatePoweredOff -> throw BluetoothNotEnabledException()
             CBManagerStatePoweredOn -> {
-                if (serviceUUID != null) {
+                if (filters != null) {
                     centralManager.scanForPeripheralsWithServices(
-                        listOf(CBUUID.UUIDWithString(serviceUUID)),
+                        filters.serviceUuids,
                         mapOf(CBCentralManagerScanOptionAllowDuplicatesKey to true)
                     )
                 } else {
@@ -64,6 +73,26 @@ actual class BlueFalcon actual constructor(
     actual fun stopScanning() {
         isScanning = false
         centralManager.stopScan()
+    }
+
+    actual fun discoverServices(
+        bluetoothPeripheral: BluetoothPeripheral,
+        serviceUUIDs: List<String>
+    ) {
+        log?.info("discoverServices ${bluetoothPeripheral.uuid} services: $serviceUUIDs")
+        bluetoothPeripheral.bluetoothDevice.discoverServices(
+            serviceUUIDs.map { CBUUID.UUIDWithString(it) }
+        )
+    }
+    actual fun discoverCharacteristics(
+        bluetoothPeripheral: BluetoothPeripheral,
+        bluetoothService: BluetoothService,
+        characteristicUUIDs: List<String>
+    ) {
+        log?.info("discoverCharacteristics ${bluetoothPeripheral.uuid} services: ${bluetoothService.uuid} chars: $characteristicUUIDs ${bluetoothPeripheral.bluetoothDevice.delegate}")
+        bluetoothPeripheral.bluetoothDevice.discoverCharacteristics(
+            characteristicUUIDs.map { CBUUID.UUIDWithString(it) }, bluetoothService.service
+        )
     }
 
     actual fun readCharacteristic(
@@ -161,6 +190,7 @@ actual class BlueFalcon actual constructor(
         value: NSData,
         writeType: Int?
     ) {
+        log?.info("Writing value $value with response $writeType")
         bluetoothPeripheral.bluetoothDevice.writeValue(
             value,
             bluetoothCharacteristic.characteristic,
@@ -179,9 +209,17 @@ actual class BlueFalcon actual constructor(
         bluetoothPeripheral.bluetoothDevice.discoverDescriptorsForCharacteristic(bluetoothCharacteristic.characteristic)
     }
 
+    actual fun writeDescriptor(
+        bluetoothPeripheral: BluetoothPeripheral,
+        bluetoothCharacteristicDescriptor: BluetoothCharacteristicDescriptor,
+        value: ByteArray
+    ) {
+        bluetoothPeripheral.bluetoothDevice.writeValue(data = value.toData(), bluetoothCharacteristicDescriptor)
+    }
+
     actual fun changeMTU(bluetoothPeripheral: BluetoothPeripheral, mtuSize: Int) {
         var mtu = bluetoothPeripheral.bluetoothDevice.maximumWriteValueLengthForType(CBCharacteristicWriteWithResponse)
-        log.debug("Change MTU size called but not needed: ${mtuSize}")
+        log?.debug("Change MTU size called but not needed: ${mtuSize}")
         val btPeripheral = bluetoothPeripheral
         btPeripheral.mtuSize = mtu.toInt()
         delegates.forEach {

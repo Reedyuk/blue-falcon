@@ -2,16 +2,20 @@ package dev.bluefalcon
 
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 
 expect class BlueFalcon(
-    log: Logger = PrintLnLogger,
-    context: ApplicationContext
+    log: Logger? = PrintLnLogger,
+    context: ApplicationContext,
+    autoDiscoverAllServicesAndCharacteristics: Boolean = true
 ) {
 
     val scope: CoroutineScope
 
     val delegates: MutableSet<BlueFalconDelegate>
     var isScanning: Boolean
+
+    val managerState: StateFlow<BluetoothManagerState>
 
     internal val _peripherals: MutableStateFlow<Set<BluetoothPeripheral>>
     val peripherals: NativeFlow<Set<BluetoothPeripheral>>
@@ -26,9 +30,17 @@ expect class BlueFalcon(
         BluetoothPermissionException::class,
         BluetoothNotEnabledException::class
     )
-    fun scan(serviceUUID: String? = null)
+    fun scan(filters: ServiceFilter? = null)
 
     fun stopScanning()
+
+    fun discoverServices(bluetoothPeripheral: BluetoothPeripheral, serviceUUIDs: List<String> = emptyList())
+
+    fun discoverCharacteristics(
+        bluetoothPeripheral: BluetoothPeripheral,
+        bluetoothService: BluetoothService,
+        characteristicUUIDs: List<String> = emptyList()
+    )
 
     fun readCharacteristic(
         bluetoothPeripheral: BluetoothPeripheral,
@@ -80,6 +92,16 @@ expect class BlueFalcon(
         bluetoothCharacteristicDescriptor: BluetoothCharacteristicDescriptor
     )
 
+    fun writeDescriptor(
+        bluetoothPeripheral: BluetoothPeripheral,
+        bluetoothCharacteristicDescriptor: BluetoothCharacteristicDescriptor,
+        value: ByteArray
+    )
+
     fun changeMTU(bluetoothPeripheral: BluetoothPeripheral, mtuSize: Int)
 
+}
+
+enum class BluetoothManagerState {
+    Ready, NotReady
 }

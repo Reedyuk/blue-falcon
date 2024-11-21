@@ -7,6 +7,8 @@ expect class BluetoothPeripheral {
     val uuid: String
     var rssi: Float?
     var mtuSize: Int?
-    val services: List<BluetoothService>
+    val services: Map<String, BluetoothService>
     internal val _servicesFlow: MutableStateFlow<List<BluetoothService>>
+
+    val characteristics: Map<String, BluetoothCharacteristic>
 }

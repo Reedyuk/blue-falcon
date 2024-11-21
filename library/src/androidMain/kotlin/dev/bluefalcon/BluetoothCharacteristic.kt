@@ -39,6 +39,9 @@ actual class BluetoothCharacteristic(val characteristic: BluetoothGattCharacteri
         }
     }
 
+    actual val uuid: String
+        get() = characteristic.uuid.toString().uppercase()
+
 
 }
 

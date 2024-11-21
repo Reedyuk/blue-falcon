@@ -4,11 +4,13 @@ import com.welie.blessed.*
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import java.util.*
 
 actual class BlueFalcon actual constructor(
-    log: Logger,
-    context: ApplicationContext
+    log: Logger?,
+    context: ApplicationContext,
+    private val autoDiscoverAllServicesAndCharacteristics: Boolean
 ) {
     actual val delegates: MutableSet<BlueFalconDelegate> = mutableSetOf()
     actual var isScanning: Boolean = false
@@ -16,6 +18,7 @@ actual class BlueFalcon actual constructor(
     actual val scope = CoroutineScope(Dispatchers.Default)
     internal actual val _peripherals = MutableStateFlow<Set<BluetoothPeripheral>>(emptySet())
     actual val peripherals: NativeFlow<Set<BluetoothPeripheral>> = _peripherals.toNativeType(scope)
+    actual val managerState: StateFlow<BluetoothManagerState> = MutableStateFlow(BluetoothManagerState.Ready)
 
     private val bluetoothManagerCallback = object: BluetoothCentralManagerCallback() {
         override fun onDiscoveredPeripheral(peripheral: com.welie.blessed.BluetoothPeripheral, scanResult: ScanResult) {
@@ -43,7 +46,7 @@ actual class BlueFalcon actual constructor(
             status: BluetoothCommandStatus
         ) {
             val device = BluetoothPeripheral(peripheral)
-            device.services.forEach { service ->
+            device.services.values.forEach { service ->
                 service.characteristics
                     .filter { it.name == characteristic.uuid.toString() }
                     .forEach { it.mutableVal = value }
@@ -81,10 +84,12 @@ actual class BlueFalcon actual constructor(
         BluetoothPermissionException::class,
         BluetoothNotEnabledException::class
     )
-    actual fun scan(serviceUUID: String?) {
+    actual fun scan(filters: ServiceFilter?) {
         isScanning = true
-        if(serviceUUID != null) {
-            bluetoothManager.scanForPeripheralsWithServices(arrayOf(UUID.fromString(serviceUUID)))
+        if(filters != null) {
+            bluetoothManager.scanForPeripheralsWithServices(
+                filters.serviceUuids.toTypedArray()
+            )
         } else {
             bluetoothManager.scanForPeripherals()
         }
@@ -93,6 +98,19 @@ actual class BlueFalcon actual constructor(
     actual fun stopScanning() {
         isScanning = false
         bluetoothManager.stopScan()
+    }
+
+    actual fun discoverServices(
+        bluetoothPeripheral: BluetoothPeripheral,
+        serviceUUIDs: List<String>
+    ) {
+    }
+    actual fun discoverCharacteristics(
+        bluetoothPeripheral: BluetoothPeripheral,
+        bluetoothService: BluetoothService,
+        characteristicUUIDs: List<String>
+    ) {
+        // no need to do anything.
     }
 
     actual fun readCharacteristic(
@@ -164,6 +182,14 @@ actual class BlueFalcon actual constructor(
         bluetoothPeripheral: BluetoothPeripheral,
         bluetoothCharacteristic: BluetoothCharacteristic,
         bluetoothCharacteristicDescriptor: BluetoothCharacteristicDescriptor
+    ) {
+        TODO()
+    }
+
+    actual fun writeDescriptor(
+        bluetoothPeripheral: BluetoothPeripheral,
+        bluetoothCharacteristicDescriptor: BluetoothCharacteristicDescriptor,
+        value: ByteArray
     ) {
         TODO()
     }

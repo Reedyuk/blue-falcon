@@ -6,8 +6,6 @@ import kotlinx.coroutines.flow.MutableStateFlow
 actual class BluetoothPeripheral(val device: BluetoothDevice) {
     actual val name: String?
         get() = device.name
-    actual val services: List<BluetoothService>
-        get() = _servicesFlow.value
     actual val uuid: String
         get() = device.id
     actual var rssi: Float?
@@ -19,5 +17,12 @@ actual class BluetoothPeripheral(val device: BluetoothDevice) {
         set(value) {}
 
     internal actual val _servicesFlow = MutableStateFlow<List<BluetoothService>>(emptyList())
-    val serviceArray: Array<BluetoothService> get() = services.toTypedArray()
+    val serviceArray: Array<BluetoothService> get() = services.values.toTypedArray()
+    actual val services: Map<String, BluetoothService>
+        get() = _servicesFlow.value.associateBy { it.uuid }
+
+    actual val characteristics: Map<String, BluetoothCharacteristic>
+        get() = services.values
+            .flatMap { it.characteristics }
+            .associateBy { it.uuid }
 }

@@ -35,6 +35,24 @@
 		7555FF82242A565900829871 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		7555FF8C242A565B00829871 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		87E4646B2B808845003F8CC1 /* ComposeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ComposeView.swift; sourceTree = "<group>"; };
+		8E10DB932CB709D300862B82 /* BlueFalcon.kt */ = {isa = PBXFileReference; lastKnownFileType = text; path = BlueFalcon.kt; sourceTree = "<group>"; };
+		8E10DB942CB709D300862B82 /* BluetoothCharacteristic.kt */ = {isa = PBXFileReference; lastKnownFileType = text; path = BluetoothCharacteristic.kt; sourceTree = "<group>"; };
+		8E10DB952CB709D300862B82 /* BluetoothPeripheral.kt */ = {isa = PBXFileReference; lastKnownFileType = text; path = BluetoothPeripheral.kt; sourceTree = "<group>"; };
+		8E10DB962CB709D300862B82 /* BluetoothPeripheralManager.kt */ = {isa = PBXFileReference; lastKnownFileType = text; path = BluetoothPeripheralManager.kt; sourceTree = "<group>"; };
+		8E10DB972CB709D300862B82 /* BluetoothService.kt */ = {isa = PBXFileReference; lastKnownFileType = text; path = BluetoothService.kt; sourceTree = "<group>"; };
+		8E10DB982CB709D300862B82 /* NSData.kt */ = {isa = PBXFileReference; lastKnownFileType = text; path = NSData.kt; sourceTree = "<group>"; };
+		8E10DB992CB709D300862B82 /* PeripheralDelegate.kt */ = {isa = PBXFileReference; lastKnownFileType = text; path = PeripheralDelegate.kt; sourceTree = "<group>"; };
+		8E10DB9E2CB709D300862B82 /* AdvertisementDataRetrievalKeys.kt */ = {isa = PBXFileReference; lastKnownFileType = text; path = AdvertisementDataRetrievalKeys.kt; sourceTree = "<group>"; };
+		8E10DB9F2CB709D300862B82 /* ApplicationContext.kt */ = {isa = PBXFileReference; lastKnownFileType = text; path = ApplicationContext.kt; sourceTree = "<group>"; };
+		8E10DBA02CB709D300862B82 /* BlueFalcon.kt */ = {isa = PBXFileReference; lastKnownFileType = text; path = BlueFalcon.kt; sourceTree = "<group>"; };
+		8E10DBA12CB709D300862B82 /* BlueFalconDelegate.kt */ = {isa = PBXFileReference; lastKnownFileType = text; path = BlueFalconDelegate.kt; sourceTree = "<group>"; };
+		8E10DBA22CB709D300862B82 /* BluetoothCharacteristic.kt */ = {isa = PBXFileReference; lastKnownFileType = text; path = BluetoothCharacteristic.kt; sourceTree = "<group>"; };
+		8E10DBA32CB709D300862B82 /* BluetoothPeripheral.kt */ = {isa = PBXFileReference; lastKnownFileType = text; path = BluetoothPeripheral.kt; sourceTree = "<group>"; };
+		8E10DBA42CB709D300862B82 /* BluetoothService.kt */ = {isa = PBXFileReference; lastKnownFileType = text; path = BluetoothService.kt; sourceTree = "<group>"; };
+		8E10DBA52CB709D300862B82 /* Exceptions.kt */ = {isa = PBXFileReference; lastKnownFileType = text; path = Exceptions.kt; sourceTree = "<group>"; };
+		8E10DBA62CB709D300862B82 /* Log.kt */ = {isa = PBXFileReference; lastKnownFileType = text; path = Log.kt; sourceTree = "<group>"; };
+		8E10DBA72CB709D300862B82 /* Logger.kt */ = {isa = PBXFileReference; lastKnownFileType = text; path = Logger.kt; sourceTree = "<group>"; };
+		8E10DBA82CB709D300862B82 /* NativeFlow.kt */ = {isa = PBXFileReference; lastKnownFileType = text; path = NativeFlow.kt; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -59,6 +77,8 @@
 		7555FF72242A565900829871 = {
 			isa = PBXGroup;
 			children = (
+				8E10DB9D2CB709D300862B82 /* appleMain */,
+				8E10DBAC2CB709D300862B82 /* commonMain */,
 				7555FF7D242A565900829871 /* iosBlueFalconExampleMP */,
 				7555FF7C242A565900829871 /* Products */,
 				7555FFB0242A642200829871 /* Frameworks */,
@@ -92,6 +112,88 @@
 			);
 			name = Frameworks;
 			sourceTree = "<group>";
+		};
+		8E10DB9A2CB709D300862B82 /* bluefalcon */ = {
+			isa = PBXGroup;
+			children = (
+				8E10DB932CB709D300862B82 /* BlueFalcon.kt */,
+				8E10DB942CB709D300862B82 /* BluetoothCharacteristic.kt */,
+				8E10DB952CB709D300862B82 /* BluetoothPeripheral.kt */,
+				8E10DB962CB709D300862B82 /* BluetoothPeripheralManager.kt */,
+				8E10DB972CB709D300862B82 /* BluetoothService.kt */,
+				8E10DB982CB709D300862B82 /* NSData.kt */,
+				8E10DB992CB709D300862B82 /* PeripheralDelegate.kt */,
+			);
+			path = bluefalcon;
+			sourceTree = "<group>";
+		};
+		8E10DB9B2CB709D300862B82 /* dev */ = {
+			isa = PBXGroup;
+			children = (
+				8E10DB9A2CB709D300862B82 /* bluefalcon */,
+			);
+			path = dev;
+			sourceTree = "<group>";
+		};
+		8E10DB9C2CB709D300862B82 /* kotlin */ = {
+			isa = PBXGroup;
+			children = (
+				8E10DB9B2CB709D300862B82 /* dev */,
+			);
+			path = kotlin;
+			sourceTree = "<group>";
+		};
+		8E10DB9D2CB709D300862B82 /* appleMain */ = {
+			isa = PBXGroup;
+			children = (
+				8E10DB9C2CB709D300862B82 /* kotlin */,
+			);
+			name = appleMain;
+			path = "/Users/andrew.reed/Documents/workspace/blue-falcon/library/src/appleMain";
+			sourceTree = "<absolute>";
+		};
+		8E10DBA92CB709D300862B82 /* bluefalcon */ = {
+			isa = PBXGroup;
+			children = (
+				8E10DB9E2CB709D300862B82 /* AdvertisementDataRetrievalKeys.kt */,
+				8E10DB9F2CB709D300862B82 /* ApplicationContext.kt */,
+				8E10DBA02CB709D300862B82 /* BlueFalcon.kt */,
+				8E10DBA12CB709D300862B82 /* BlueFalconDelegate.kt */,
+				8E10DBA22CB709D300862B82 /* BluetoothCharacteristic.kt */,
+				8E10DBA32CB709D300862B82 /* BluetoothPeripheral.kt */,
+				8E10DBA42CB709D300862B82 /* BluetoothService.kt */,
+				8E10DBA52CB709D300862B82 /* Exceptions.kt */,
+				8E10DBA62CB709D300862B82 /* Log.kt */,
+				8E10DBA72CB709D300862B82 /* Logger.kt */,
+				8E10DBA82CB709D300862B82 /* NativeFlow.kt */,
+			);
+			path = bluefalcon;
+			sourceTree = "<group>";
+		};
+		8E10DBAA2CB709D300862B82 /* dev */ = {
+			isa = PBXGroup;
+			children = (
+				8E10DBA92CB709D300862B82 /* bluefalcon */,
+			);
+			path = dev;
+			sourceTree = "<group>";
+		};
+		8E10DBAB2CB709D300862B82 /* kotlin */ = {
+			isa = PBXGroup;
+			children = (
+				8E10DBAA2CB709D300862B82 /* dev */,
+			);
+			path = kotlin;
+			sourceTree = "<group>";
+		};
+		8E10DBAC2CB709D300862B82 /* commonMain */ = {
+			isa = PBXGroup;
+			children = (
+				8E10DBAB2CB709D300862B82 /* kotlin */,
+			);
+			name = commonMain;
+			path = "/Users/andrew.reed/Documents/workspace/blue-falcon/library/src/commonMain";
+			sourceTree = "<absolute>";
 		};
 /* End PBXGroup section */
 
@@ -316,7 +418,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_STYLE = Automatic;
 				DEVELOPMENT_ASSET_PATHS = "\"iosBlueFalconExampleMP/Preview Content\"";
-				DEVELOPMENT_TEAM = "";
+				DEVELOPMENT_TEAM = L2QD36XTFJ;
 				ENABLE_PREVIEWS = YES;
 				FRAMEWORK_SEARCH_PATHS = (
 					"$(inherited)",
@@ -332,7 +434,7 @@
 					"-framework",
 					shared,
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = orgIdentifier.iosBlueFalconCMPExample;
+				PRODUCT_BUNDLE_IDENTIFIER = orgIdentifier.iosBlueFalconCMPExampleA;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
@@ -345,7 +447,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_STYLE = Automatic;
 				DEVELOPMENT_ASSET_PATHS = "\"iosBlueFalconExampleMP/Preview Content\"";
-				DEVELOPMENT_TEAM = "";
+				DEVELOPMENT_TEAM = L2QD36XTFJ;
 				ENABLE_PREVIEWS = YES;
 				FRAMEWORK_SEARCH_PATHS = (
 					"$(inherited)",
@@ -361,7 +463,7 @@
 					"-framework",
 					shared,
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = orgIdentifier.iosBlueFalconCMPExample;
+				PRODUCT_BUNDLE_IDENTIFIER = orgIdentifier.iosBlueFalconCMPExampleA;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";

@@ -83,6 +83,17 @@ class BluetoothDeviceViewModel(
                     blueFalcon.disconnect(it.peripheral)
                 }
             }
+
+            is UiEvent.OnReadCharacteristic -> {
+                _deviceState.value.devices[event.macId]?.let {
+                    blueFalcon.readCharacteristic(it.peripheral, event.characteristic)
+                }
+            }
+            is UiEvent.OnWriteCharacteristic -> {
+                _deviceState.value.devices[event.macId]?.let {
+                    blueFalcon.writeCharacteristic(it.peripheral, event.characteristic, event.value, null)
+                }
+            }
         }
     }
 }

@@ -15,7 +15,7 @@ compose-ui-tooling = { module = "androidx.compose.ui:ui-tooling", version.ref = 
 compose-ui-tooling-preview = { module = "androidx.compose.ui:ui-tooling-preview", version.ref = "compose" }
 compose-foundation = { module = "androidx.compose.foundation:foundation", version.ref = "compose" }
 compose-material3 = { module = "androidx.compose.material3:material3", version.ref = "compose-material3" }
-blue-falcon = { module = "dev.bluefalcon:blue-falcon", version = "1.1.1" }
+blue-falcon = { module = "dev.bluefalcon:blue-falcon", version = "2.0.0" }
 kmm-viewmodel = { module = "com.rickclephas.kmp:kmp-observableviewmodel-core", version = "1.0.0-BETA-3" }
 androidx-appcompat = { group = "androidx.appcompat", name = "appcompat", version.ref = "appcompat" }
 compose-permissions = { group = "com.github.dawidraszka.compose-permission-handler", name = "core", version = "1.5.0" }

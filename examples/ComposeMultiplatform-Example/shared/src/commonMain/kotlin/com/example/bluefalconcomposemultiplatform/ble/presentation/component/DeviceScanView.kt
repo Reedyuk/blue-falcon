@@ -45,11 +45,12 @@ fun DeviceScanView(
             .padding(10.dp),
     ) {
         LazyColumn {
-            items(state.devices.values.toList()) { device ->
+            items(state.devices.values.toList().sortedByDescending { it.peripheral.name }) { device ->
                 FoundDeviceCard(
                     deviceName = if (!device.peripheral.name.isNullOrBlank()) device.peripheral.name else "No Name",
                     macId = device.peripheral.uuid,
                     rssi = device.peripheral.rssi,
+                    services = device.peripheral.services.values.toList(),
                     connected = device.connected,
                     onEvent = onEvent
                 )

@@ -6,23 +6,26 @@ import platform.Foundation.NSNumber
 import platform.darwin.NSObject
 
 class PeripheralDelegate constructor(
-    private val log: Logger,
+    private val log: Logger?,
     private val blueFalcon: BlueFalcon
 ) : NSObject(), CBPeripheralDelegateProtocol {
 
     override fun peripheral(peripheral: CBPeripheral, didDiscoverServices: NSError?) {
         if (didDiscoverServices != null) {
-            log.error("Error with service discovery ${didDiscoverServices}")
+            log?.error("Error with service discovery ${didDiscoverServices}")
         } else {
+            log?.info("didDiscoverServices")
             val device = BluetoothPeripheral(peripheral, rssiValue = null)
             blueFalcon.delegates.forEach {
                 it.didDiscoverServices(device)
             }
-            peripheral.services
-                ?.mapNotNull { it as? CBService }
-                ?.forEach {
-                    peripheral.discoverCharacteristics(null, it)
-                }
+            if(blueFalcon.autoDiscoverAllServicesAndCharacteristics) {
+                peripheral.services
+                    ?.mapNotNull { it as? CBService }
+                    ?.forEach {
+                        peripheral.discoverCharacteristics(null, it)
+                    }
+            }
         }
     }
 
@@ -32,8 +35,9 @@ class PeripheralDelegate constructor(
         error: NSError?
     ) {
         if (error != null) {
-            log.error("Error with characteristic discovery ${didDiscoverCharacteristicsForService}")
+            log?.error("Error with characteristic discovery ${didDiscoverCharacteristicsForService}")
         }
+        log?.info("didDiscoverCharacteristicsForService")
         val device = BluetoothPeripheral(peripheral, rssiValue = null)
         blueFalcon.delegates.forEach {
             it.didDiscoverCharacteristics(device)
@@ -49,9 +53,9 @@ class PeripheralDelegate constructor(
         error: NSError?
     ) {
         if (error != null) {
-            log.error("Error with characteristic update ${error}")
+            log?.error("Error with characteristic update ${error}")
         }
-        println("didUpdateValueForCharacteristic")
+        log?.info("didUpdateValueForCharacteristic")
         val device = BluetoothPeripheral(peripheral, rssiValue = null)
         val characteristic = BluetoothCharacteristic(didUpdateValueForCharacteristic)
         blueFalcon.delegates.forEach {
@@ -67,10 +71,10 @@ class PeripheralDelegate constructor(
         error: NSError?
     ) {
         if (error != null) {
-            log.error("Error during characteristic write $error")
+            log?.error("Error during characteristic write $error")
         }
 
-        log.info("didWriteValueForCharacteristic")
+        log?.info("didWriteValueForCharacteristic")
         val device = BluetoothPeripheral(peripheral, rssiValue = null)
         didWriteValueForDescriptor.characteristic?.let { characteristic ->
             val characteristic = BluetoothCharacteristic(characteristic)
