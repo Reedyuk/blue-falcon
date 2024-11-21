@@ -16,7 +16,7 @@ Include the library in your own KMP project as a dependency on your common targe
 
 ```
 commonMain.dependencies {
-    implementation("dev.bluefalcon:blue-falcon:1.2.0")
+    implementation("dev.bluefalcon:blue-falcon:2.0.0")
 }
 ```
 
@@ -28,7 +28,7 @@ By passing in a string uuid of the service uuid, you can filter to scan for only
 
 ```kotlin
 try {
-    val blueFalcon = BlueFalcon(this)
+    val blueFalcon = BlueFalcon(log = null, ApplicationContext())
     blueFalcon.scan()
 } catch (exception: PermissionException) {
     //request the ACCESS_COARSE_LOCATION permission
