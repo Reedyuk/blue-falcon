@@ -1,6 +1,6 @@
 package com.example.bluefalconcomposemultiplatform.ble.data
 
-import AdvertisementDataRetrievalKeys
+import dev.bluefalcon.AdvertisementDataRetrievalKeys
 import dev.bluefalcon.BlueFalconDelegate
 import dev.bluefalcon.BluetoothCharacteristic
 import dev.bluefalcon.BluetoothCharacteristicDescriptor
@@ -37,13 +37,6 @@ class BleDelegate: BlueFalconDelegate {
     }
 
     override fun didDiscoverCharacteristics(bluetoothPeripheral: BluetoothPeripheral) {
-
-    }
-
-    override fun didDiscoverDevice(
-        bluetoothPeripheral: BluetoothPeripheral,
-        advertisementData: Map<AdvertisementDataRetrievalKeys, Any>
-    ) {
 
     }
 

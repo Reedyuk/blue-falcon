@@ -6,6 +6,7 @@ import kotlinx.browser.window
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import org.w3c.dom.Navigator
 
 @JsName("blueFalcon")
@@ -15,8 +16,9 @@ val blueFalcon = BlueFalcon(
 )
 
 actual class BlueFalcon actual constructor(
-    private val log: Logger,
-    context: ApplicationContext
+    private val log: Logger?,
+    context: ApplicationContext,
+    private val autoDiscoverAllServicesAndCharacteristics: Boolean
 ) {
 
     actual val delegates: MutableSet<BlueFalconDelegate> = mutableSetOf()
@@ -27,7 +29,8 @@ actual class BlueFalcon actual constructor(
     actual val peripherals: NativeFlow<Set<BluetoothPeripheral>> = _peripherals.toNativeType(scope)
 
     private inline val Navigator.bluetooth: Bluetooth get() = asDynamic().bluetooth as Bluetooth
-    private var optionalServices: Array<String> = emptyArray()
+
+    actual val managerState: StateFlow<BluetoothManagerState> = MutableStateFlow(BluetoothManagerState.Ready)
 
     @JsName("addDelegate")
     fun addDelegate(blueFalconDelegate: BlueFalconDelegate) {
@@ -41,7 +44,7 @@ actual class BlueFalcon actual constructor(
 
     @JsName("connect")
     actual fun connect(bluetoothPeripheral: BluetoothPeripheral, autoConnect: Boolean) {
-        log.info("connect -> ${bluetoothPeripheral.device}:${bluetoothPeripheral.device.gatt} gatt connected? ${bluetoothPeripheral.device.gatt?.connected}")
+        log?.info("connect -> ${bluetoothPeripheral.device}:${bluetoothPeripheral.device.gatt} gatt connected? ${bluetoothPeripheral.device.gatt?.connected}")
         if (bluetoothPeripheral.device.gatt?.connected == true) {
             delegates.forEach { it.didConnect(bluetoothPeripheral) }
         } else {
@@ -58,19 +61,13 @@ actual class BlueFalcon actual constructor(
 
     actual fun stopScanning() {}
 
-    @JsName("scan")
-    fun scan(optionalServices: Array<String>) {
-        this.optionalServices = optionalServices
-        //scan()
-    }
-
     @JsName("rescan")
-    actual fun scan(serviceUUID : String?) {
+    actual fun scan(filters: ServiceFilter?) {
         window.navigator.bluetooth.requestDevice(
             BluetoothOptions(
                 false,
-                arrayOf(BluetoothOptions.Filter.Services(optionalServices)),
-                optionalServices
+                arrayOf(BluetoothOptions.Filter.Services(filters?.serviceUuids ?: emptyArray())),
+                filters?.serviceUuids ?: emptyArray()
             )
         )
             .then { bluetoothDevice ->
@@ -88,6 +85,29 @@ actual class BlueFalcon actual constructor(
             }
     }
 
+    actual fun discoverServices(
+        bluetoothPeripheral: BluetoothPeripheral,
+        serviceUUIDs: List<String>
+    ) {
+        readService(
+            bluetoothPeripheral,
+            serviceUUIDs.joinToString(",")
+        )
+    }
+    actual fun discoverCharacteristics(
+        bluetoothPeripheral: BluetoothPeripheral,
+        bluetoothService: BluetoothService,
+        characteristicUUIDs: List<String>
+    ) {
+        if (!bluetoothPeripheral.services.containsKey(bluetoothService.uuid)) {
+            readService(
+                bluetoothPeripheral,
+                bluetoothService.uuid
+            )
+        }
+        // no need to do anything.
+    }
+
     @JsName("readService")
     fun readService(
         bluetoothPeripheral: BluetoothPeripheral,
@@ -102,11 +122,13 @@ actual class BlueFalcon actual constructor(
             delegates.forEach {
                 it.didDiscoverServices(bluetoothPeripheral)
             }
-            bluetoothPeripheral.services.forEach { service ->
-                service.service.getCharacteristics(undefined).then { characteristics ->
-                    service._characteristicsFlow.tryEmit(characteristics.map { BluetoothCharacteristic(it) }.toSet().toList())
-                    delegates.forEach {
-                        it.didDiscoverCharacteristics(bluetoothPeripheral)
+            if (autoDiscoverAllServicesAndCharacteristics) {
+                bluetoothPeripheral.services.values.forEach { service ->
+                    service.service.getCharacteristics(undefined).then { characteristics ->
+                        service._characteristicsFlow.tryEmit(characteristics.map { BluetoothCharacteristic(it) }.toSet().toList())
+                        delegates.forEach {
+                            it.didDiscoverCharacteristics(bluetoothPeripheral)
+                        }
                     }
                 }
             }
@@ -185,6 +207,15 @@ actual class BlueFalcon actual constructor(
         bluetoothPeripheral: BluetoothPeripheral,
         bluetoothCharacteristic: BluetoothCharacteristic,
         bluetoothCharacteristicDescriptor: BluetoothCharacteristicDescriptor
+    ) {
+        TODO("not implemented")
+    }
+
+    @JsName("writeDescriptor")
+    actual fun writeDescriptor(
+        bluetoothPeripheral: BluetoothPeripheral,
+        bluetoothCharacteristicDescriptor: BluetoothCharacteristicDescriptor,
+        value: ByteArray
     ) {
         TODO("not implemented")
     }

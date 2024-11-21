@@ -20,7 +20,7 @@ fun NSData.toByteArray(): ByteArray {
     }
 }
 
-@OptIn(ExperimentalForeignApi::class)
+@OptIn(ExperimentalForeignApi::class, BetaInteropApi::class)
 fun ByteArray.toData(): NSData = memScoped {
     NSData.create(bytes = allocArrayOf(this@toData),
         length = this@toData.size.toULong())

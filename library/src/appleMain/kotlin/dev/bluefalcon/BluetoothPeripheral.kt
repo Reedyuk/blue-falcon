@@ -8,10 +8,6 @@ actual class BluetoothPeripheral(val bluetoothDevice: CBPeripheral, val rssiValu
     actual val name: String? = bluetoothDevice.name
     actual var rssi: Float? = rssiValue
     actual var mtuSize: Int? = null
-    actual val services: List<BluetoothService>
-        get() = bluetoothDevice.services?.map {
-            BluetoothService(it as CBService)
-        } ?: emptyList()
     actual val uuid: String = bluetoothDevice.identifier.UUIDString
 
     internal actual val _servicesFlow = MutableStateFlow<List<BluetoothService>>(emptyList())
@@ -23,4 +19,16 @@ actual class BluetoothPeripheral(val bluetoothDevice: CBPeripheral, val rssiValu
         if (other == null || other !is BluetoothPeripheral) return false
         return other.uuid == uuid
     }
+
+    actual val services: Map<String, BluetoothService>
+        get() = bluetoothDevice.services
+            ?.filterIsInstance<CBService>()
+            ?.map { service -> BluetoothService(service) }
+            ?.associateBy { it.uuid }
+            ?: emptyMap()
+
+    actual val characteristics: Map<String, BluetoothCharacteristic>
+        get() = services.values
+            .flatMap { it.characteristics }
+            .associateBy { it.uuid }
 }
