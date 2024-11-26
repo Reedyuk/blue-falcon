@@ -26,6 +26,9 @@ actual class BluetoothCharacteristic(val characteristic: CBCharacteristic) {
     internal actual val _descriptorsFlow = MutableStateFlow<List<BluetoothCharacteristicDescriptor>>(emptyList())
     actual val uuid: String
         get() = characteristic.UUID.UUIDString.uppercase()
+
+    actual val isNotifying: Boolean
+        get() = characteristic.isNotifying
 }
 
 actual typealias  BluetoothCharacteristicDescriptor = CBDescriptor

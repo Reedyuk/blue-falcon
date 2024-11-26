@@ -42,7 +42,8 @@ actual class BluetoothCharacteristic(val characteristic: BluetoothGattCharacteri
     actual val uuid: String
         get() = characteristic.uuid.toString().uppercase()
 
-
+    actual val isNotifying: Boolean
+        get() = (characteristic.properties and BluetoothGattCharacteristic.PROPERTY_NOTIFY) == BluetoothGattCharacteristic.PROPERTY_NOTIFY
 }
 
 actual typealias BluetoothCharacteristicDescriptor = BluetoothGattDescriptor

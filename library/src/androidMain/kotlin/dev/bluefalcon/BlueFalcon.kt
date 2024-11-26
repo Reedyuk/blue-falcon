@@ -34,7 +34,7 @@ actual class BlueFalcon actual constructor(
 
     actual fun connect(bluetoothPeripheral: BluetoothPeripheral, autoConnect: Boolean) {
         log?.info("connect")
-        bluetoothPeripheral.bluetoothDevice.connectGatt(
+        bluetoothPeripheral.device.connectGatt(
             context,
             autoConnect,
             mGattClientCallback,
@@ -44,7 +44,7 @@ actual class BlueFalcon actual constructor(
 
     actual fun disconnect(bluetoothPeripheral: BluetoothPeripheral) {
         log?.info("disconnect")
-        val gatt = mGattClientCallback.gattForDevice(bluetoothPeripheral.bluetoothDevice)
+        val gatt = mGattClientCallback.gattForDevice(bluetoothPeripheral.device)
         gatt?.apply {
             disconnect()
             close()
@@ -84,7 +84,7 @@ actual class BlueFalcon actual constructor(
         serviceUUIDs: List<String>
     ) {
         // cant individually get services.
-        mGattClientCallback.gattForDevice(bluetoothPeripheral.bluetoothDevice)?.discoverServices()
+        mGattClientCallback.gattForDevice(bluetoothPeripheral.device)?.discoverServices()
     }
     actual fun discoverCharacteristics(
         bluetoothPeripheral: BluetoothPeripheral,
@@ -92,7 +92,7 @@ actual class BlueFalcon actual constructor(
         characteristicUUIDs: List<String>
     ) {
         if (!bluetoothPeripheral.services.containsKey(bluetoothService.uuid)) {
-            mGattClientCallback.gattForDevice(bluetoothPeripheral.bluetoothDevice)?.discoverServices()
+            mGattClientCallback.gattForDevice(bluetoothPeripheral.device)?.discoverServices()
         }
         // no need to do anything here for android.
     }
@@ -120,7 +120,7 @@ actual class BlueFalcon actual constructor(
         bluetoothPeripheral: BluetoothPeripheral,
         bluetoothCharacteristic: BluetoothCharacteristic
     ) {
-        mGattClientCallback.gattForDevice(bluetoothPeripheral.bluetoothDevice)?.let { gatt ->
+        mGattClientCallback.gattForDevice(bluetoothPeripheral.device)?.let { gatt ->
             fetchCharacteristic(bluetoothCharacteristic, gatt)
                 .forEach { gatt.readCharacteristic(it.characteristic) }
         }
@@ -133,7 +133,7 @@ actual class BlueFalcon actual constructor(
         descriptorValue: ByteArray
     ) {
         log?.info("setCharacteristicNotification ${bluetoothCharacteristic.uuid} enable $enable")
-        mGattClientCallback.gattForDevice(bluetoothPeripheral.bluetoothDevice)?.let { gatt ->
+        mGattClientCallback.gattForDevice(bluetoothPeripheral.device)?.let { gatt ->
             fetchCharacteristic(bluetoothCharacteristic, gatt).forEach {
                 log?.info("setCharacteristicNotification ${it.uuid} enable $enable ${gatt}")
                 gatt.setCharacteristicNotification(it.characteristic, enable)
@@ -157,7 +157,7 @@ actual class BlueFalcon actual constructor(
         value: ByteArray
     ) {
         log?.info("writeDescriptor ${bluetoothCharacteristicDescriptor.uuid} value $value")
-        mGattClientCallback.gattForDevice(bluetoothPeripheral.bluetoothDevice)?.let { gatt ->
+        mGattClientCallback.gattForDevice(bluetoothPeripheral.device)?.let { gatt ->
             bluetoothCharacteristicDescriptor.value = value
             gatt.writeDescriptor(bluetoothCharacteristicDescriptor)
         }
@@ -264,14 +264,14 @@ actual class BlueFalcon actual constructor(
         writeType: Int?
     ) {
         log?.info("Writing value {length = ${value.size}, bytes = 0x${value.toHexString()}} with response $writeType")
-        mGattClientCallback.gattForDevice(bluetoothPeripheral.bluetoothDevice)?.let { gatt ->
+        mGattClientCallback.gattForDevice(bluetoothPeripheral.device)?.let { gatt ->
             fetchCharacteristic(bluetoothCharacteristic, gatt)
                 .forEach {
                     writeType?.let { writeType ->
                         it.characteristic.writeType = writeType
                     }
                     it.characteristic.setValue(value)
-                    val resp = gatt.writeCharacteristic(it.characteristic)
+                    gatt.writeCharacteristic(it.characteristic)
                 }
         }
     }
@@ -281,13 +281,13 @@ actual class BlueFalcon actual constructor(
         bluetoothCharacteristic: BluetoothCharacteristic,
         bluetoothCharacteristicDescriptor: BluetoothCharacteristicDescriptor
     ) {
-        mGattClientCallback.gattForDevice(bluetoothPeripheral.bluetoothDevice)
+        mGattClientCallback.gattForDevice(bluetoothPeripheral.device)
             ?.readDescriptor(bluetoothCharacteristicDescriptor)
         log?.debug("readDescriptor -> ${bluetoothCharacteristicDescriptor.uuid}")
     }
 
     actual fun changeMTU(bluetoothPeripheral: BluetoothPeripheral, mtuSize: Int) {
-        mGattClientCallback.gattForDevice(bluetoothPeripheral.bluetoothDevice)?.requestMtu(mtuSize)
+        mGattClientCallback.gattForDevice(bluetoothPeripheral.device)?.requestMtu(mtuSize)
     }
 
     inner class BluetoothScanCallBack : ScanCallback() {

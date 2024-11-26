@@ -4,7 +4,7 @@ import org.w3c.dom.events.EventTarget
 import kotlin.js.Promise
 
 //https://developer.mozilla.org/en-US/docs/Web/API/BluetoothDevice
-abstract external class BluetoothDevice : EventTarget {
+external class BluetoothDevice : EventTarget {
     val id: String
     val name: String?
     val gatt: BluetoothRemoteGATTServer?

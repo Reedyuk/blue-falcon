@@ -5,13 +5,13 @@ import android.os.Parcel
 import android.os.Parcelable
 import kotlinx.coroutines.flow.MutableStateFlow
 
-actual class BluetoothPeripheral(val bluetoothDevice: BluetoothDevice) : Parcelable {
+actual class BluetoothPeripheral actual constructor(val device: NativeBluetoothDevice) : Parcelable {
     actual val name: String?
-        get() = bluetoothDevice.name ?: bluetoothDevice.address
+        get() = device.name ?: device.address
     actual val services: Map<String, BluetoothService>
         get() = _servicesFlow.value.associateBy { it.uuid }
     actual val uuid: String
-        get() = bluetoothDevice.address
+        get() = device.address
 
     actual var rssi: Float? = null
     actual var mtuSize: Int? = null
@@ -32,7 +32,7 @@ actual class BluetoothPeripheral(val bluetoothDevice: BluetoothDevice) : Parcela
     }
 
     override fun writeToParcel(parcel: Parcel, flags: Int) {
-        parcel.writeParcelable(bluetoothDevice, flags)
+        parcel.writeParcelable(device, flags)
         parcel.writeValue(rssi)
     }
 

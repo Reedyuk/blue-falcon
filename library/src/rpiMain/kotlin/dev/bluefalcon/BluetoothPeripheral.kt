@@ -3,11 +3,11 @@ package dev.bluefalcon
 import com.welie.blessed.BluetoothPeripheral
 import kotlinx.coroutines.flow.MutableStateFlow
 
-actual class BluetoothPeripheral(val bluetoothDevice: BluetoothPeripheral) {
+actual class BluetoothPeripheral actual constructor(val device: NativeBluetoothDevice) {
     actual val name: String?
-        get() = bluetoothDevice.name
+        get() = device.name
     actual val uuid: String
-        get() = bluetoothDevice.address
+        get() = device.address
 
     actual var rssi: Float? = null
     actual var mtuSize: Int? = null

@@ -18,6 +18,8 @@ actual class BluetoothCharacteristic(val characteristic: BluetoothRemoteGATTChar
     internal actual val _descriptorsFlow = MutableStateFlow<List<BluetoothCharacteristicDescriptor>>(emptyList())
     actual val uuid: String
         get() = characteristic.uuid.uppercase()
+    actual val isNotifying: Boolean
+        get() = false
 }
 
 actual class BluetoothCharacteristicDescriptor
