@@ -5,6 +5,8 @@ import platform.CoreBluetooth.CBPeripheral
 import platform.CoreBluetooth.CBService
 
 actual class BluetoothPeripheral(val bluetoothDevice: CBPeripheral, val rssiValue: Float?) {
+    actual constructor(device: NativeBluetoothDevice): this(device, null)
+
     actual val name: String? = bluetoothDevice.name
     actual var rssi: Float? = rssiValue
     actual var mtuSize: Int? = null

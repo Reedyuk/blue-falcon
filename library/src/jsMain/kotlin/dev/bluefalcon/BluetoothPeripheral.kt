@@ -1,9 +1,8 @@
 package dev.bluefalcon
 
-import dev.bluefalcon.external.BluetoothDevice
 import kotlinx.coroutines.flow.MutableStateFlow
 
-actual class BluetoothPeripheral(val device: BluetoothDevice) {
+actual class BluetoothPeripheral actual constructor(val device: NativeBluetoothDevice) {
     actual val name: String?
         get() = device.name
     actual val uuid: String

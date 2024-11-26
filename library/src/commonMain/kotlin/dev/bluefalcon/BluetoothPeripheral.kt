@@ -2,7 +2,7 @@ package dev.bluefalcon
 
 import kotlinx.coroutines.flow.MutableStateFlow
 
-expect class BluetoothPeripheral {
+expect class BluetoothPeripheral(device: NativeBluetoothDevice) {
     val name: String?
     val uuid: String
     var rssi: Float?
@@ -12,3 +12,5 @@ expect class BluetoothPeripheral {
 
     val characteristics: Map<String, BluetoothCharacteristic>
 }
+
+expect class NativeBluetoothDevice
