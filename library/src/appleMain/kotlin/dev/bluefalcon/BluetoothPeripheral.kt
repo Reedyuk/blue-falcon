@@ -22,14 +22,14 @@ actual class BluetoothPeripheral(val bluetoothDevice: CBPeripheral, val rssiValu
         return other.uuid == uuid
     }
 
-    actual val services: Map<String, BluetoothService>
+    actual val services: Map<Uuid, BluetoothService>
         get() = bluetoothDevice.services
             ?.filterIsInstance<CBService>()
             ?.map { service -> BluetoothService(service) }
             ?.associateBy { it.uuid }
             ?: emptyMap()
 
-    actual val characteristics: Map<String, BluetoothCharacteristic>
+    actual val characteristics: Map<Uuid, BluetoothCharacteristic>
         get() = services.values
             .flatMap { it.characteristics }
             .associateBy { it.uuid }

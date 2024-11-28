@@ -5,7 +5,6 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
-import java.util.*
 
 actual class BlueFalcon actual constructor(
     log: Logger?,
@@ -102,13 +101,13 @@ actual class BlueFalcon actual constructor(
 
     actual fun discoverServices(
         bluetoothPeripheral: BluetoothPeripheral,
-        serviceUUIDs: List<String>
+        serviceUUIDs: List<Uuid>
     ) {
     }
     actual fun discoverCharacteristics(
         bluetoothPeripheral: BluetoothPeripheral,
         bluetoothService: BluetoothService,
-        characteristicUUIDs: List<String>
+        characteristicUUIDs: List<Uuid>
     ) {
         // no need to do anything.
     }

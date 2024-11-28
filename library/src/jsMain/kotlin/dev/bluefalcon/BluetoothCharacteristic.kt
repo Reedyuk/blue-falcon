@@ -16,8 +16,9 @@ actual class BluetoothCharacteristic(val characteristic: BluetoothRemoteGATTChar
 
     val stringValue get() = value?.decodeToString()
     internal actual val _descriptorsFlow = MutableStateFlow<List<BluetoothCharacteristicDescriptor>>(emptyList())
-    actual val uuid: String
-        get() = characteristic.uuid.uppercase()
+
+    actual val uuid: Uuid
+        get() = Uuid.parse(characteristic.uuid)
     actual val isNotifying: Boolean
         get() = false
 }

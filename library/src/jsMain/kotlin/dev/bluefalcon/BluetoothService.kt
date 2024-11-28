@@ -10,6 +10,6 @@ actual class BluetoothService(val service: BluetoothRemoteGATTService) {
         get() = _characteristicsFlow.value
     val characteristicArray: Array<BluetoothCharacteristic> get() = characteristics.toTypedArray()
     internal actual val _characteristicsFlow = MutableStateFlow<List<BluetoothCharacteristic>>(emptyList())
-    actual val uuid: String
-        get() = service.uuid.uppercase()
+    actual val uuid: Uuid
+        get() = Uuid.parse(service.uuid)
 }

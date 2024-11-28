@@ -1,6 +1,5 @@
 package dev.bluefalcon
 
-import com.welie.blessed.BluetoothPeripheral
 import kotlinx.coroutines.flow.MutableStateFlow
 
 actual class BluetoothPeripheral actual constructor(val device: NativeBluetoothDevice) {
@@ -13,10 +12,10 @@ actual class BluetoothPeripheral actual constructor(val device: NativeBluetoothD
     actual var mtuSize: Int? = null
 
     internal actual val _servicesFlow = MutableStateFlow<List<BluetoothService>>(emptyList())
-    actual val services: Map<String, BluetoothService>
+    actual val services: Map<Uuid, BluetoothService>
         get() = _servicesFlow.value.associateBy { it.uuid }
 
-    actual val characteristics: Map<String, BluetoothCharacteristic>
+    actual val characteristics: Map<Uuid, BluetoothCharacteristic>
         get() = services.values
             .flatMap { it.characteristics }
             .associateBy { it.uuid }

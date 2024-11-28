@@ -77,21 +77,21 @@ actual class BlueFalcon actual constructor(
 
     actual fun discoverServices(
         bluetoothPeripheral: BluetoothPeripheral,
-        serviceUUIDs: List<String>
+        serviceUUIDs: List<Uuid>
     ) {
         log?.info("discoverServices ${bluetoothPeripheral.uuid} services: $serviceUUIDs")
         bluetoothPeripheral.bluetoothDevice.discoverServices(
-            serviceUUIDs.map { CBUUID.UUIDWithString(it) }
+            serviceUUIDs.map { CBUUID.UUIDWithString(it.toString()) }
         )
     }
     actual fun discoverCharacteristics(
         bluetoothPeripheral: BluetoothPeripheral,
         bluetoothService: BluetoothService,
-        characteristicUUIDs: List<String>
+        characteristicUUIDs: List<Uuid>
     ) {
         log?.info("discoverCharacteristics ${bluetoothPeripheral.uuid} services: ${bluetoothService.uuid} chars: $characteristicUUIDs ${bluetoothPeripheral.bluetoothDevice.delegate}")
         bluetoothPeripheral.bluetoothDevice.discoverCharacteristics(
-            characteristicUUIDs.map { CBUUID.UUIDWithString(it) }, bluetoothService.service
+            characteristicUUIDs.map { CBUUID.UUIDWithString(it.toString()) }, bluetoothService.service
         )
     }
 
@@ -107,6 +107,7 @@ actual class BlueFalcon actual constructor(
         bluetoothCharacteristic: BluetoothCharacteristic,
         notify: Boolean
     ) {
+        log?.info("notifyCharacteristic setNotify for ${bluetoothCharacteristic.uuid} notify: $notify")
         bluetoothPeripheral.bluetoothDevice.setNotifyValue(notify, bluetoothCharacteristic.characteristic)
     }
 

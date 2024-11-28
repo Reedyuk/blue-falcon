@@ -8,7 +8,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 actual class BluetoothPeripheral actual constructor(val device: NativeBluetoothDevice) : Parcelable {
     actual val name: String?
         get() = device.name ?: device.address
-    actual val services: Map<String, BluetoothService>
+    actual val services: Map<Uuid, BluetoothService>
         get() = _servicesFlow.value.associateBy { it.uuid }
     actual val uuid: String
         get() = device.address
@@ -50,7 +50,7 @@ actual class BluetoothPeripheral actual constructor(val device: NativeBluetoothD
         }
     }
 
-    actual val characteristics: Map<String, BluetoothCharacteristic>
+    actual val characteristics: Map<Uuid, BluetoothCharacteristic>
         get() = services.values
             .flatMap { it.characteristics }
             .associateBy { it.uuid }

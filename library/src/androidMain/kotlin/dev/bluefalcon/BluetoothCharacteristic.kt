@@ -5,6 +5,7 @@ import android.bluetooth.BluetoothGattDescriptor
 import android.os.Parcel
 import android.os.Parcelable
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlin.uuid.toKotlinUuid
 
 actual class BluetoothCharacteristic(val characteristic: BluetoothGattCharacteristic) : Parcelable {
     actual val name: String?
@@ -39,8 +40,8 @@ actual class BluetoothCharacteristic(val characteristic: BluetoothGattCharacteri
         }
     }
 
-    actual val uuid: String
-        get() = characteristic.uuid.toString().uppercase()
+    actual val uuid: Uuid
+        get() = characteristic.uuid.toKotlinUuid()
 
     actual val isNotifying: Boolean
         get() = (characteristic.properties and BluetoothGattCharacteristic.PROPERTY_NOTIFY) == BluetoothGattCharacteristic.PROPERTY_NOTIFY
