@@ -2,7 +2,7 @@ import java.util.*
 import org.jetbrains.kotlin.gradle.plugin.mpp.apple.XCFramework
 
 plugins {
-    kotlin("multiplatform") version "2.0.0"
+    kotlin("multiplatform") version "2.0.20"
     id("com.android.library")
     id("maven-publish")
     id("signing")
@@ -55,6 +55,10 @@ android {
 }
 
 val frameworkName = "BlueFalcon"
+
+kotlin.sourceSets.all {
+    languageSettings.optIn("kotlin.uuid.ExperimentalUuidApi")
+}
 
 kotlin {
     jvmToolchain(17)

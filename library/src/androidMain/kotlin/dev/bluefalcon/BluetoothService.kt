@@ -2,6 +2,7 @@ package dev.bluefalcon
 
 import android.bluetooth.BluetoothGattService
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlin.uuid.toKotlinUuid
 
 actual class BluetoothService(val service: BluetoothGattService) {
     actual val name: String?
@@ -11,6 +12,6 @@ actual class BluetoothService(val service: BluetoothGattService) {
             BluetoothCharacteristic(it)
         }
     internal actual val _characteristicsFlow = MutableStateFlow<List<BluetoothCharacteristic>>(emptyList())
-    actual val uuid: String
-        get() = service.uuid.toString().uppercase()
+    actual val uuid: Uuid
+        get() = service.uuid.toKotlinUuid()
 }

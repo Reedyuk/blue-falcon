@@ -81,7 +81,7 @@ actual class BlueFalcon actual constructor(
 
     actual fun discoverServices(
         bluetoothPeripheral: BluetoothPeripheral,
-        serviceUUIDs: List<String>
+        serviceUUIDs: List<Uuid>
     ) {
         // cant individually get services.
         mGattClientCallback.gattForDevice(bluetoothPeripheral.device)?.discoverServices()
@@ -89,7 +89,7 @@ actual class BlueFalcon actual constructor(
     actual fun discoverCharacteristics(
         bluetoothPeripheral: BluetoothPeripheral,
         bluetoothService: BluetoothService,
-        characteristicUUIDs: List<String>
+        characteristicUUIDs: List<Uuid>
     ) {
         if (!bluetoothPeripheral.services.containsKey(bluetoothService.uuid)) {
             mGattClientCallback.gattForDevice(bluetoothPeripheral.device)?.discoverServices()
@@ -130,16 +130,19 @@ actual class BlueFalcon actual constructor(
         bluetoothPeripheral: BluetoothPeripheral,
         bluetoothCharacteristic: BluetoothCharacteristic,
         enable: Boolean,
-        descriptorValue: ByteArray
+        descriptorValue: ByteArray?
     ) {
-        log?.info("setCharacteristicNotification ${bluetoothCharacteristic.uuid} enable $enable")
+        log?.info("notifyCharacteristic setNotify for ${bluetoothCharacteristic.uuid} notify: $enable $bluetoothCharacteristic")
         mGattClientCallback.gattForDevice(bluetoothPeripheral.device)?.let { gatt ->
             fetchCharacteristic(bluetoothCharacteristic, gatt).forEach {
-                log?.info("setCharacteristicNotification ${it.uuid} enable $enable ${gatt}")
+                log?.info("setCharacteristicNotification ${it.uuid} enable $enable ${gatt} ${it}")
                 gatt.setCharacteristicNotification(it.characteristic, enable)
-                it.characteristic.descriptors.forEach { descriptor ->
-                    descriptor.value = descriptorValue
-                    gatt.writeDescriptor(descriptor)
+                descriptorValue?.let { descriptorValue ->
+                    it.characteristic.descriptors.forEach { descriptor ->
+                        writeDescriptor(
+                            bluetoothPeripheral, descriptor, descriptorValue
+                        )
+                    }
                 }
                 val read = (bluetoothCharacteristic.characteristic.properties and BluetoothGattCharacteristic.PROPERTY_READ) == BluetoothGattCharacteristic.PROPERTY_READ
                 val notify = (bluetoothCharacteristic.characteristic.properties and BluetoothGattCharacteristic.PROPERTY_NOTIFY) == BluetoothGattCharacteristic.PROPERTY_NOTIFY

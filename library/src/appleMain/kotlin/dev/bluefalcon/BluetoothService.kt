@@ -13,6 +13,6 @@ actual class BluetoothService(val service: CBService) {
         } ?: emptyList()
 
     internal actual val _characteristicsFlow = MutableStateFlow<List<BluetoothCharacteristic>>(emptyList())
-    actual val uuid: String
-        get() = service.UUID.UUIDString.uppercase()
+    actual val uuid: Uuid
+        get() = service.UUID
 }

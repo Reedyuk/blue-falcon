@@ -17,10 +17,10 @@ actual class BluetoothPeripheral actual constructor(val device: NativeBluetoothD
 
     internal actual val _servicesFlow = MutableStateFlow<List<BluetoothService>>(emptyList())
     val serviceArray: Array<BluetoothService> get() = services.values.toTypedArray()
-    actual val services: Map<String, BluetoothService>
+    actual val services: Map<Uuid, BluetoothService>
         get() = _servicesFlow.value.associateBy { it.uuid }
 
-    actual val characteristics: Map<String, BluetoothCharacteristic>
+    actual val characteristics: Map<Uuid, BluetoothCharacteristic>
         get() = services.values
             .flatMap { it.characteristics }
             .associateBy { it.uuid }

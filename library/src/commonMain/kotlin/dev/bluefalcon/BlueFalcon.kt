@@ -34,12 +34,12 @@ expect class BlueFalcon(
 
     fun stopScanning()
 
-    fun discoverServices(bluetoothPeripheral: BluetoothPeripheral, serviceUUIDs: List<String> = emptyList())
+    fun discoverServices(bluetoothPeripheral: BluetoothPeripheral, serviceUUIDs: List<Uuid> = emptyList())
 
     fun discoverCharacteristics(
         bluetoothPeripheral: BluetoothPeripheral,
         bluetoothService: BluetoothService,
-        characteristicUUIDs: List<String> = emptyList()
+        characteristicUUIDs: List<Uuid> = emptyList()
     )
 
     fun readCharacteristic(

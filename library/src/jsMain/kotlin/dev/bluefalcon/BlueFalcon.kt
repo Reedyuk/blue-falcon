@@ -87,7 +87,7 @@ actual class BlueFalcon actual constructor(
 
     actual fun discoverServices(
         bluetoothPeripheral: BluetoothPeripheral,
-        serviceUUIDs: List<String>
+        serviceUUIDs: List<Uuid>
     ) {
         readService(
             bluetoothPeripheral,
@@ -97,12 +97,12 @@ actual class BlueFalcon actual constructor(
     actual fun discoverCharacteristics(
         bluetoothPeripheral: BluetoothPeripheral,
         bluetoothService: BluetoothService,
-        characteristicUUIDs: List<String>
+        characteristicUUIDs: List<Uuid>
     ) {
         if (!bluetoothPeripheral.services.containsKey(bluetoothService.uuid)) {
             readService(
                 bluetoothPeripheral,
-                bluetoothService.uuid
+                bluetoothService.uuid.toString()
             )
         }
         // no need to do anything.
