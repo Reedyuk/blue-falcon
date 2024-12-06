@@ -1,5 +1,5 @@
 package dev.bluefalcon
 
-import platform.UIKit.UIView
+import platform.UIKit.UIApplication
 
-actual typealias ApplicationContext = UIView
+actual typealias ApplicationContext = UIApplication
