@@ -46,6 +46,7 @@ fun DeviceScanView(
     ) {
         LazyColumn {
             items(state.devices.values.toList().sortedByDescending { it.peripheral.name }) { device ->
+                @OptIn(kotlin.uuid.ExperimentalUuidApi::class)
                 FoundDeviceCard(
                     deviceName = if (!device.peripheral.name.isNullOrBlank()) device.peripheral.name else "No Name",
                     macId = device.peripheral.uuid,
