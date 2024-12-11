@@ -2,7 +2,6 @@ package dev.bluefalcon
 
 import platform.CoreBluetooth.*
 import platform.Foundation.NSError
-import platform.Foundation.NSNumber
 import platform.darwin.NSObject
 
 class PeripheralDelegate constructor(
@@ -55,7 +54,7 @@ class PeripheralDelegate constructor(
         if (error != null) {
             log?.error("Error with characteristic update ${error}")
         }
-        log?.info("didUpdateValueForCharacteristic")
+        log?.info("handleCharacteristicValueChange ${didUpdateValueForCharacteristic.UUID}")
         val device = BluetoothPeripheral(peripheral, rssiValue = null)
         val characteristic = BluetoothCharacteristic(didUpdateValueForCharacteristic)
         blueFalcon.delegates.forEach {

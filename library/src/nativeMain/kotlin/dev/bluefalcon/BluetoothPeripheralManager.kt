@@ -18,6 +18,11 @@ class BluetoothPeripheralManager constructor(
 
     internal val delegate = PeripheralDelegate(log, blueFalcon)
 
+    fun setPeripheralDelegate(peripheral: BluetoothPeripheral, unset: Boolean = false) {
+        log?.debug("setPeripheralDelegate ${peripheral.uuid}")
+        peripheral.bluetoothDevice.delegate = delegate.takeUnless { unset }
+    }
+
     override fun centralManagerDidUpdateState(central: CBCentralManager) {
         _managerState.tryEmit(central.state)
         when (central.state) {
@@ -73,6 +78,7 @@ class BluetoothPeripheralManager constructor(
         blueFalcon.delegates.forEach {
             it.didDisconnect(device)
         }
+        didDisconnectPeripheral.delegate = null
     }
 
     //Helper
