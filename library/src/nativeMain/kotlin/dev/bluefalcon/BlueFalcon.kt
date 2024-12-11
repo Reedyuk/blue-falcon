@@ -39,6 +39,7 @@ actual class BlueFalcon actual constructor(
     }
 
     actual fun disconnect(bluetoothPeripheral: BluetoothPeripheral) {
+        log?.info("disconnect ${bluetoothPeripheral.uuid}")
         centralManager.cancelPeripheralConnection(bluetoothPeripheral.bluetoothDevice)
     }
 
@@ -107,6 +108,9 @@ actual class BlueFalcon actual constructor(
         bluetoothCharacteristic: BluetoothCharacteristic,
         notify: Boolean
     ) {
+        if (bluetoothPeripheral.bluetoothDevice.delegate == null) {
+            bluetoothPeripheralManager.setPeripheralDelegate(bluetoothPeripheral)
+        }
         log?.info("notifyCharacteristic setNotify for ${bluetoothCharacteristic.uuid} notify: $notify")
         bluetoothPeripheral.bluetoothDevice.setNotifyValue(notify, bluetoothCharacteristic.characteristic)
     }
