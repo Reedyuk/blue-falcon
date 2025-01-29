@@ -285,7 +285,10 @@ actual class BlueFalcon actual constructor(
     }
 
     actual fun changeMTU(bluetoothPeripheral: BluetoothPeripheral, mtuSize: Int) {
-        mGattClientCallback.gattsForDevice(bluetoothPeripheral.device).forEach { it.requestMtu(mtuSize) }
+        log?.debug("changeMTU -> ${bluetoothPeripheral.uuid} mtuSize: $mtuSize")
+        mGattClientCallback.gattsForDevice(bluetoothPeripheral.device).forEach { gatt ->
+            gatt.requestMtu(mtuSize)
+        }
     }
 
     inner class BluetoothScanCallBack : ScanCallback() {
@@ -398,16 +401,14 @@ actual class BlueFalcon actual constructor(
         }
 
         override fun onMtuChanged(gatt: BluetoothGatt?, mtu: Int, status: Int) {
-            super.onMtuChanged(gatt, mtu, status)
             log?.info("onMtuChanged$mtu status:$status")
-            if (status != BluetoothGatt.GATT_SUCCESS) {
-                return
-            }
             gatt?.device?.let { bluetoothDevice ->
                 val bluetoothPeripheral = BluetoothPeripheral(bluetoothDevice)
-                bluetoothPeripheral.mtuSize = mtu
+                if (status == BluetoothGatt.GATT_SUCCESS) {
+                    bluetoothPeripheral.mtuSize = mtu
+                }
                 delegates.forEach {
-                    it.didUpdateMTU(bluetoothPeripheral)
+                    it.didUpdateMTU(bluetoothPeripheral, status)
                 }
             }
         }
