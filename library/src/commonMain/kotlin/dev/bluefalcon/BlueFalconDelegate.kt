@@ -23,7 +23,7 @@ interface BlueFalconDelegate {
     @JsName("didRssiUpdate")
     fun didRssiUpdate(bluetoothPeripheral: BluetoothPeripheral) {}
     @JsName("didUpdateMTU")
-    fun didUpdateMTU(bluetoothPeripheral: BluetoothPeripheral) {}
+    fun didUpdateMTU(bluetoothPeripheral: BluetoothPeripheral, status: Int) {}
     @JsName("didReadDescriptor")
     fun didReadDescriptor(
         bluetoothPeripheral: BluetoothPeripheral,

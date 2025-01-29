@@ -54,7 +54,7 @@ class BleDelegate: BlueFalconDelegate {
     override fun didRssiUpdate(bluetoothPeripheral: BluetoothPeripheral) {
     }
 
-    override fun didUpdateMTU(bluetoothPeripheral: BluetoothPeripheral) {
+    override fun didUpdateMTU(bluetoothPeripheral: BluetoothPeripheral, status: Int) {
 
     }
 

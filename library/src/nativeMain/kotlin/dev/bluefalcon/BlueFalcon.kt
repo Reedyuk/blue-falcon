@@ -221,12 +221,11 @@ actual class BlueFalcon actual constructor(
     }
 
     actual fun changeMTU(bluetoothPeripheral: BluetoothPeripheral, mtuSize: Int) {
-        var mtu = bluetoothPeripheral.bluetoothDevice.maximumWriteValueLengthForType(CBCharacteristicWriteWithResponse)
-        log?.debug("Change MTU size called but not needed: ${mtuSize}")
-        val btPeripheral = bluetoothPeripheral
-        btPeripheral.mtuSize = mtu.toInt()
+        val mtu = bluetoothPeripheral.bluetoothDevice.maximumWriteValueLengthForType(CBCharacteristicWriteWithResponse)
+        log?.debug("Change MTU size called but not needed for darwin platforms: $mtuSize:$mtu")
+        bluetoothPeripheral.mtuSize = mtu.toInt()
         delegates.forEach {
-            it.didUpdateMTU(btPeripheral)
+            it.didUpdateMTU(bluetoothPeripheral, 1)
         }
     }
 }
