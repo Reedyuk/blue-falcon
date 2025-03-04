@@ -29,7 +29,7 @@ actual class BlueFalcon actual constructor(
 
     actual val scope = CoroutineScope(Dispatchers.Default)
     internal actual val _peripherals = MutableStateFlow<Set<BluetoothPeripheral>>(emptySet())
-    actual val peripherals: NativeFlow<Set<BluetoothPeripheral>> = _peripherals.toNativeType(scope)
+    actual val peripherals: StateFlow<Set<BluetoothPeripheral>> = _peripherals
     actual val managerState: StateFlow<BluetoothManagerState> = MutableStateFlow(BluetoothManagerState.Ready)
 
     actual fun connect(bluetoothPeripheral: BluetoothPeripheral, autoConnect: Boolean) {

@@ -1,51 +1,76 @@
-import com.vanniktech.maven.publish.JavadocJar
-import com.vanniktech.maven.publish.KotlinMultiplatform
-import org.jetbrains.kotlin.gradle.ExperimentalKotlinGradlePluginApi
-import org.jetbrains.kotlin.gradle.dsl.JvmTarget
-import org.jetbrains.kotlin.gradle.plugin.KotlinSourceSetTree
+import java.util.*
 import org.jetbrains.kotlin.gradle.plugin.mpp.apple.XCFramework
 
 plugins {
     alias(libs.plugins.kotlinMultiplatform)
-    alias(libs.plugins.androidLibrary)
     alias(libs.plugins.vanniktech.mavenPublish)
+//    "signing" apply false
 }
 
 group = "dev.bluefalcon"
 version = libs.versions.blue.falcon.get()
 
-android {
-    compileSdk = 33
-    sourceSets["main"].manifest.srcFile("src/androidMain/AndroidManifest.xml")
-    namespace = "dev.bluefalcon.blueFalcon"
-    defaultConfig {
-        minSdk = 24
-        targetSdk = 33
-    }
-    lint {
-        disable += "MissingPermission"
-    }
-}
+
+//plugins {
+//    kotlin("multiplatform") version "2.0.20"
+////    id("com.android.library")
+//    id("maven-publish")
+//    id("signing")
+//}
+
+//repositories {
+//    google()
+//    mavenCentral()
+//    google()
+//    maven("https://jitpack.io")
+//    mavenLocal()
+//}
+//
+////expose properties
+//val sonatypeStaging = "https://oss.sonatype.org/service/local/staging/deploy/maven2/"
+//val sonatypeSnapshots = "https://oss.sonatype.org/content/repositories/snapshots/"
+//
+//val local = Properties()
+//val localProperties: File = rootProject.file("local.properties")
+//if (localProperties.exists()) {
+//    localProperties.inputStream().use { local.load(it) }
+//}
+//
+//val sonatypePasswordEnv = System.getenv("sonatypePasswordEnv")
+//val sonatypeUsernameEnv = System.getenv("sonatypeUsernameEnv")
+//
+//val projectGithubUrl: String by project
+//val projectGithubSCM: String by project
+//val projectGithubSCMSSL: String by project
+//val projectDescription: String by project
+//
+//val developerId: String by project
+//val developerName: String by project
+//val developerEmail: String by project
+//val group: String by project
+//
+//val kotlinx_coroutines_version: String by project
+//
+//android {
+//    compileSdk = 33
+//    sourceSets["main"].manifest.srcFile("src/androidMain/AndroidManifest.xml")
+//    namespace = "dev.bluefalcon.blueFalcon"
+//    defaultConfig {
+//        minSdk = 24
+//        targetSdk = 33
+//    }
+//    lint {
+//        disable += "MissingPermission"
+//    }
+//}
+
+val frameworkName = "BlueFalcon"
 
 kotlin.sourceSets.all {
     languageSettings.optIn("kotlin.uuid.ExperimentalUuidApi")
 }
 
 kotlin {
-    jvmToolchain(17)
-    androidTarget {
-        publishAllLibraryVariants()
-    }
-//    jvm("rpi") {
-//        compilations.all {
-//            kotlinOptions.jvmTarget = "1.8"
-//        }
-//    }
-    js {
-        browser {
-            binaries.executable()
-        }
-    }
     iosSimulatorArm64()
     iosX64()
     iosArm64()
@@ -58,18 +83,27 @@ kotlin {
                 implementation(libs.coroutines)
             }
         }
-        val commonTest by getting {
+        val darwinMain by creating {
             dependencies {
-                implementation(libs.kotlin.test)
+                dependsOn(commonMain)
+                implementation(project(":blue-falcon-core"))
             }
         }
-        val androidMain by getting
-//        val rpiMain by getting {
-//            dependencies {
-//                implementation("com.github.weliem:blessed-bluez:0.38")
-//            }
-//        }
-        val jsMain by getting
+        val macosX64Main by getting {
+            dependsOn(darwinMain)
+        }
+        val iosX64Main by getting {
+            dependsOn(darwinMain)
+        }
+        val macosArm64Main by getting {
+            dependsOn(darwinMain)
+        }
+        val iosArm64Main by getting {
+            dependsOn(darwinMain)
+        }
+        val iosSimulatorArm64Main by getting {
+            dependsOn(darwinMain)
+        }
     }
 }
 
