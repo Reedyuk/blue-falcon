@@ -31,7 +31,7 @@ actual class BlueFalcon actual constructor(
 
     actual var isScanning: Boolean = false
     internal actual val _peripherals = MutableStateFlow<Set<BluetoothPeripheral>>(emptySet())
-    actual val peripherals: NativeFlow<Set<BluetoothPeripheral>> = _peripherals.toNativeType(scope)
+    actual val peripherals: StateFlow<Set<BluetoothPeripheral>> = _peripherals
 
     actual fun connect(bluetoothPeripheral: BluetoothPeripheral, autoConnect: Boolean) {
         //auto connect is ignored due to not needing it in iOS

@@ -12,4 +12,6 @@ actual class AppModule(
             log = null,
             context as ApplicationContext,
         )
+    actual val applicationContext: ApplicationContext
+        get() = context as ApplicationContext
 }

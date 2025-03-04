@@ -10,4 +10,6 @@ actual class AppModule {
             log = null,
             context = UIApplication.sharedApplication
         )
+    actual val applicationContext: ApplicationContext
+        get() = UIApplication.sharedApplication
 }

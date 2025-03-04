@@ -18,7 +18,7 @@ expect class BlueFalcon(
     val managerState: StateFlow<BluetoothManagerState>
 
     internal val _peripherals: MutableStateFlow<Set<BluetoothPeripheral>>
-    val peripherals: NativeFlow<Set<BluetoothPeripheral>>
+    val peripherals: StateFlow<Set<BluetoothPeripheral>>
 
     fun connect(bluetoothPeripheral: BluetoothPeripheral, autoConnect: Boolean = false)
     fun disconnect(bluetoothPeripheral: BluetoothPeripheral)

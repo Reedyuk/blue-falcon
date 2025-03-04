@@ -55,7 +55,7 @@ kotlin {
     sourceSets {
         val commonMain by getting {
             dependencies {
-                implementation(libs.coroutines)
+                api(project(":blue-falcon-core"))
             }
         }
         val commonTest by getting {
@@ -63,13 +63,38 @@ kotlin {
                 implementation(libs.kotlin.test)
             }
         }
-        val androidMain by getting
-//        val rpiMain by getting {
-//            dependencies {
-//                implementation("com.github.weliem:blessed-bluez:0.38")
-//            }
-//        }
-        val jsMain by getting
+        val androidMain by getting {
+            dependencies {
+                implementation(project(":blue-falcon-engine-android"))
+            }
+        }
+        val darwinMain by creating {
+            dependencies {
+                dependsOn(commonMain)
+                implementation(project(":blue-falcon-engine-darwin"))
+            }
+        }
+        val macosX64Main by getting {
+            dependsOn(darwinMain)
+        }
+        val iosX64Main by getting {
+            dependsOn(darwinMain)
+        }
+        val macosArm64Main by getting {
+            dependsOn(darwinMain)
+        }
+        val iosArm64Main by getting {
+            dependsOn(darwinMain)
+        }
+        val iosSimulatorArm64Main by getting {
+            dependsOn(darwinMain)
+        }
+
+        val jsMain by getting {
+            dependencies {
+                implementation(project(":blue-falcon-engine-js"))
+            }
+        }
     }
 }
 

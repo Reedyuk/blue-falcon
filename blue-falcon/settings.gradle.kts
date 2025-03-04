@@ -16,7 +16,8 @@ dependencyResolutionManagement {
 
 rootProject.name = "blue-falcon"
 
-include(":blue-falcon-android")
 include(":blue-falcon-core")
-include(":blue-falcon-darwin")
-include(":blue-falcon-js")
+include(":blue-falcon-engine-android")
+include(":blue-falcon-engine-darwin")
+include(":blue-falcon-engine-js")
+include(":blue-falcon")
