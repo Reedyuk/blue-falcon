@@ -1,10 +1,9 @@
 package dev.bluefalcon.engine
 
-import dev.bluefalcon.ApplicationContext
 import dev.bluefalcon.BlueFalconDelegate
 
 class DarwinBluetoothEngineConfig(
-    context: ApplicationContext,
+    val autoDiscoverAllServicesAndCharacteristics: Boolean = true,
     bluetoothCallbackDelegate: BlueFalconDelegate,
-) : BluetoothEngineConfig(context, bluetoothCallbackDelegate) {
+) : BluetoothEngineConfig(bluetoothCallbackDelegate) {
 }

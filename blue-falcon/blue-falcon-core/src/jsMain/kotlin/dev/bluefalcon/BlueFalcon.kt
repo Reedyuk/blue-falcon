@@ -12,12 +12,11 @@ import org.w3c.dom.Navigator
 @JsName("blueFalcon")
 val blueFalcon = BlueFalcon(
     log = PrintLnLogger,
-    context = ApplicationContext()
+    autoDiscoverAllServicesAndCharacteristics = true
 )
 
-actual class BlueFalcon actual constructor(
-    private val log: Logger?,
-    context: ApplicationContext,
+actual class BlueFalcon(
+    actual val log: Logger?,
     private val autoDiscoverAllServicesAndCharacteristics: Boolean
 ) {
 

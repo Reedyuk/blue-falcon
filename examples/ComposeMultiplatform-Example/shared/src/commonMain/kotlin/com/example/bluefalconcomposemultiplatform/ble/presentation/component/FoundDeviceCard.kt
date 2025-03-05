@@ -2,14 +2,21 @@ package com.example.bluefalconcomposemultiplatform.ble.presentation.component
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ArrowDownward
+import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.material3.Button
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -54,47 +61,52 @@ fun FoundDeviceCard(
             Column(
                 modifier = Modifier.weight(1f)
             ) {
-                Text(
-                    "NAME: $deviceName",
-                    color = MaterialTheme.colorScheme.onPrimary,
-                    fontSize = 12.sp
-                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text(
+                        "NAME: $deviceName",
+                        color = MaterialTheme.colorScheme.onPrimary,
+                        fontSize = 12.sp
+                    )
+                    if (!connected) {
+                        Button(
+                            onClick = {
+                                onEvent(UiEvent.OnConnectClick(macId))
+                            }
+                        ) {
+                            Text("Connect")
+                        }
+                    } else {
+                        Button(
+                            onClick = {
+                                onEvent(UiEvent.OnDisconnectClick(macId))
+                            }
+                        ) {
+                            Text("Disconnect")
+                        }
+                    }
+                }
+
                 rssi?.let {
                     Text(
                         text = "RSSI: $rssi",
                         color = MaterialTheme.colorScheme.onPrimary,
-                        fontSize = 8.sp
+                        fontSize = 10.sp
                     )
                 }
                 Column {
                     Text(
                         "Services",
                         color = MaterialTheme.colorScheme.onPrimary,
-                        fontSize = 8.sp
+                        fontSize = 10.sp
                     )
                     services.forEach {
                         ServiceRow(macId, it, onEvent)
                     }
                 }
             }
-            if (!connected) {
-                Button(
-                    onClick = {
-                        onEvent(UiEvent.OnConnectClick(macId))
-                    }
-                ) {
-                    Text("Connect")
-                }
-            } else {
-                Button(
-                    onClick = {
-                        onEvent(UiEvent.OnDisconnectClick(macId))
-                    }
-                ) {
-                    Text("Disconnect")
-                }
-            }
-
         }
     }
 }
@@ -109,7 +121,7 @@ fun ServiceRow(
         Text(
             "Name: ${service.name}",
             color = MaterialTheme.colorScheme.onPrimary,
-            fontSize = 6.sp
+            fontSize = 10.sp
         )
         Column {
             service.characteristics.forEach {
@@ -125,37 +137,53 @@ fun CharacteristicsRow(
     characteristic: BluetoothCharacteristic,
     onEvent: (UiEvent) -> Unit
 ) {
-    Column {
-        Text(
-            "Name: ${characteristic.name}",
-            color = MaterialTheme.colorScheme.onPrimary,
-            fontSize = 6.sp
-        )
-        Text(
-            "Value: ${characteristic.value.contentToString()}",
-            color = MaterialTheme.colorScheme.onPrimary,
-            fontSize = 6.sp
-        )
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        Row {
+            Column {
+                Text(
+                    "Name: ${characteristic.name}",
+                    color = MaterialTheme.colorScheme.onPrimary,
+                    fontSize = 10.sp
+                )
+                Text(
+                    "Value: ${characteristic.value.contentToString()}",
+                    color = MaterialTheme.colorScheme.onPrimary,
+                    fontSize = 10.sp
+                )
+                Text(
+                    "Value: ${characteristic.value?.decodeToString()}",
+                    color = MaterialTheme.colorScheme.onPrimary,
+                    fontSize = 10.sp
+                )
+            }
+        }
         Row {
             Button(
                 onClick = {
                     onEvent(UiEvent.OnReadCharacteristic(macId, characteristic))
                 },
-                modifier = Modifier
-                    .width(140.dp)
-                    .padding(start = 20.dp, top = 20.dp)
+                contentPadding = PaddingValues(1.dp)
             ) {
-                Text("Read")
+                Icon(
+                    modifier = Modifier.size(40.dp),
+                    imageVector = Icons.Default.ArrowUpward,
+                    contentDescription = "Read"
+                )
             }
             Button(
                 onClick = {
                     onEvent(UiEvent.OnWriteCharacteristic(macId, characteristic, "123"))
                 },
-                modifier = Modifier
-                    .width(140.dp)
-                    .padding(start = 20.dp, top = 20.dp)
+                contentPadding = PaddingValues(1.dp)
             ) {
-                Text("Write")
+                Icon(
+                    modifier = Modifier.size(40.dp),
+                    imageVector = Icons.Default.ArrowDownward,
+                    contentDescription = "Write"
+                )
             }
         }
     }

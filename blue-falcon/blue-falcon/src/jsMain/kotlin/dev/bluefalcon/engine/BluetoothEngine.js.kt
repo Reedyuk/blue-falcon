@@ -8,7 +8,6 @@ actual fun blueFalconEngine(
     delegate: dev.bluefalcon.BlueFalconDelegate
 ): BluetoothEngine = JsBluetoothEngine(
     config = JsBluetoothEngineConfig(
-        context = context,
         bluetoothCallbackDelegate = delegate
     )
 )

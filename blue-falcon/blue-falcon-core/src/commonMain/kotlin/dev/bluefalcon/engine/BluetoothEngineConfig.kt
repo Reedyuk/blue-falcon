@@ -1,13 +1,11 @@
 package dev.bluefalcon.engine
 
-import dev.bluefalcon.ApplicationContext
 import dev.bluefalcon.BlueFalconDelegate
 import dev.bluefalcon.Logger
+import kotlin.Boolean
 
 open class BluetoothEngineConfig(
-    val context: ApplicationContext,
     val bluetoothCallbackDelegate: BlueFalconDelegate,
-    val logger: Logger? = null
+    val logger: Logger? = null,
 ) {
-
 }
