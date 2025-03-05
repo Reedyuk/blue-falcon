@@ -3,7 +3,6 @@ package com.example.bluefalconcomposemultiplatform.ble.presentation
 import com.example.bluefalconcomposemultiplatform.ble.data.BleDelegate
 import com.example.bluefalconcomposemultiplatform.ble.data.DeviceEvent
 import dev.bluefalcon.engine.blueFalconEngine
-import dev.bluefalcon.BlueFalcon
 import dev.bluefalcon.BluetoothPeripheral
 import dev.bluefalcon.ApplicationContext
 import dev.bluefalcon.engine.BluetoothAction
@@ -17,7 +16,6 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 class BluetoothDeviceViewModel(
-    private val blueFalcon: BlueFalcon,
     applicationContext: ApplicationContext,
     delegate: BleDelegate = BleDelegate()
 ): ViewModel() {
@@ -67,28 +65,11 @@ class BluetoothDeviceViewModel(
                 }
             }
         }
-        blueFalcon.delegates.add(delegate)
-//        CoroutineScope(Dispatchers.IO).launch {
-//            blueFalcon.peripherals.collect { peripherals ->
-//                val uniqueKeys = _deviceState.value.devices.keys.toList()
-//                val filteredPeripheral = peripherals.filter { !uniqueKeys.contains(it.uuid) }
-//                filteredPeripheral.map { peripheral ->
-//                    _deviceState.update {
-//                        val updateDevices = it.devices.toMutableMap()
-//                        updateDevices[peripheral.uuid] = EnhancedBluetoothPeripheral(false, peripheral)
-//                        it.copy(
-//                            devices = HashMap(updateDevices)
-//                        )
-//                    }
-//                }
-//            }
-//        }
     }
 
     fun onEvent(event: UiEvent) {
         when(event) {
             UiEvent.OnScanClick -> {
-//                blueFalcon.scan()
                 CoroutineScope(Dispatchers.IO).launch {
                     blueFalconEngine.execute(BluetoothAction.Scan())
                 }
@@ -112,13 +93,29 @@ class BluetoothDeviceViewModel(
             }
 
             is UiEvent.OnReadCharacteristic -> {
-                _deviceState.value.devices[event.macId]?.let {
-                    blueFalcon.readCharacteristic(it.peripheral, event.characteristic)
+                CoroutineScope(Dispatchers.IO).launch {
+                    _deviceState.value.devices[event.macId]?.let {
+                        blueFalconEngine.execute(
+                            BluetoothAction.ReadCharacteristic(
+                                it.peripheral.uuid,
+                                event.characteristic.uuid
+                            )
+                        )
+                    }
                 }
             }
             is UiEvent.OnWriteCharacteristic -> {
-                _deviceState.value.devices[event.macId]?.let {
-                    blueFalcon.writeCharacteristic(it.peripheral, event.characteristic, event.value, null)
+                CoroutineScope(Dispatchers.IO).launch {
+                    _deviceState.value.devices[event.macId]?.let {
+                        blueFalconEngine.execute(
+                            BluetoothAction.WriteCharacteristic(
+                                it.peripheral.uuid,
+                                event.characteristic.uuid,
+                                event.value.encodeToByteArray(),
+                                true
+                            )
+                        )
+                    }
                 }
             }
         }

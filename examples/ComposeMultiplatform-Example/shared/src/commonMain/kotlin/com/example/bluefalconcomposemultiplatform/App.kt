@@ -35,7 +35,6 @@ fun App(
             key = "bluetooth-device-screen",
             factory = viewModelFactory {
                 BluetoothDeviceViewModel(
-                    appModule.blueFalcon,
                     appModule.applicationContext
                 )
             }

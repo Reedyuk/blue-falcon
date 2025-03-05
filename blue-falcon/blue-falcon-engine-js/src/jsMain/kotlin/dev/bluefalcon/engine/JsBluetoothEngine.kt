@@ -8,7 +8,7 @@ class JsBluetoothEngine(
 
     private val blueFalcon: BlueFalcon = BlueFalcon(
         config.logger,
-        config.context
+        false
     ).also { it.delegates.add(config.bluetoothCallbackDelegate) }
 
     override suspend fun execute(action: BluetoothAction) {
@@ -22,6 +22,8 @@ class JsBluetoothEngine(
             is BluetoothAction.Scan -> {
                  blueFalcon.scan(action.filters)
             }
+            is BluetoothAction.ReadCharacteristic -> TODO()
+            is BluetoothAction.WriteCharacteristic -> TODO()
         }
     }
 }

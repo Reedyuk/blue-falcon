@@ -14,10 +14,10 @@ import java.nio.ByteBuffer
 import java.nio.charset.Charset
 import java.util.*
 
-actual class BlueFalcon actual constructor(
-    private val log: Logger?,
+actual class BlueFalcon(
+    actual val log: Logger? = PrintLnLogger,
     private val context: ApplicationContext,
-    private val autoDiscoverAllServicesAndCharacteristics: Boolean
+    private val autoDiscoverAllServicesAndCharacteristics: Boolean = true
 ) {
     actual val delegates: MutableSet<BlueFalconDelegate> = mutableSetOf()
     private val bluetoothManager: BluetoothManager =

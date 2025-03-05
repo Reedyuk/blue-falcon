@@ -5,7 +5,6 @@ actual fun blueFalconEngine(
     delegate: dev.bluefalcon.BlueFalconDelegate
 ): BluetoothEngine = DarwinBluetoothEngine(
     config = DarwinBluetoothEngineConfig(
-        context = context,
         bluetoothCallbackDelegate = delegate
     )
 )

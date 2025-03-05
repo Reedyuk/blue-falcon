@@ -4,11 +4,8 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 
-expect class BlueFalcon(
-    log: Logger? = PrintLnLogger,
-    context: ApplicationContext,
-    autoDiscoverAllServicesAndCharacteristics: Boolean = true
-) {
+internal expect class BlueFalcon {
+    val log: Logger?
 
     val scope: CoroutineScope
 

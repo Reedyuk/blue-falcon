@@ -10,10 +10,9 @@ import kotlinx.coroutines.flow.stateIn
 import platform.CoreBluetooth.*
 import platform.Foundation.*
 
-actual class BlueFalcon actual constructor(
-    private val log: Logger?,
-    private val context: ApplicationContext,
-    internal val autoDiscoverAllServicesAndCharacteristics: Boolean
+actual class BlueFalcon(
+    actual val log: Logger?,
+    val autoDiscoverAllServicesAndCharacteristics: Boolean
 ) {
     actual val scope = CoroutineScope(Dispatchers.Default)
     actual val delegates: MutableSet<BlueFalconDelegate> = mutableSetOf()

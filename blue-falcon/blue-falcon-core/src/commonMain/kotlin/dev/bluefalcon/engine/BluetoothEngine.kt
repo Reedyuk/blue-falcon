@@ -1,6 +1,5 @@
 package dev.bluefalcon.engine
 
-import dev.bluefalcon.BlueFalcon
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 
@@ -11,9 +10,4 @@ interface BluetoothEngine : CoroutineScope {
 
     // this will be the bluetooth action.
     suspend fun execute(action: BluetoothAction)
-
-    fun install(blueFalcon: BlueFalcon) {
-        // install the blue falcon client.
-
-    }
 }
