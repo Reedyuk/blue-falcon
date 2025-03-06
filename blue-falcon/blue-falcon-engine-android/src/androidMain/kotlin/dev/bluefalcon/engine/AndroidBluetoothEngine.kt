@@ -25,10 +25,12 @@ class AndroidBluetoothEngine(
             is BluetoothAction.Disconnect -> {
                 blueFalcon.disconnect(getDevice(action.device))
             }
+            is BluetoothAction.StopScan -> {
+                blueFalcon.stopScanning()
+            }
             is BluetoothAction.Scan -> {
                 blueFalcon.scan(action.filters)
             }
-
             is BluetoothAction.ReadCharacteristic -> {
                 getDevice(action.device).let { device ->
                     blueFalcon.readCharacteristic(
@@ -44,16 +46,31 @@ class AndroidBluetoothEngine(
                         device,
                         device.characteristics.getValue(action.characteristic),
                         action.value,
-                        if (action.withResponse) {  // should replace with real android values
-                            0
-                        } else {
-                            1
+                        when(action.writeType) {
+                            WriteType.writeTypeDefault -> 0
+                            WriteType.writeTypeNoResponse -> 1
                         }
+                    )
+                }
+            }
+
+            is BluetoothAction.DiscoverCharacteristics -> {
+                getDevice(action.device).let { device ->
+                    blueFalcon.discoverCharacteristics(
+                        device,
+                        device.services.getValue(action.service),
+                        action.characteristicUUIDs
+                    )
+                }
+            }
+            is BluetoothAction.DiscoverServices -> {
+                getDevice(action.device).let { device ->
+                    blueFalcon.discoverServices(
+                        device,
+                        action.serviceUUIDs
                     )
                 }
             }
         }
     }
-
-
 }

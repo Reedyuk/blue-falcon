@@ -3,6 +3,7 @@ package com.example.bluefalconcomposemultiplatform.ble.presentation
 import com.example.bluefalconcomposemultiplatform.ble.data.BleDelegate
 import com.example.bluefalconcomposemultiplatform.ble.data.DeviceEvent
 import dev.bluefalcon.engine.blueFalconEngine
+import dev.bluefalcon.engine.WriteType
 import dev.bluefalcon.BluetoothPeripheral
 import dev.bluefalcon.ApplicationContext
 import dev.bluefalcon.engine.BluetoothAction
@@ -35,9 +36,7 @@ class BluetoothDeviceViewModel(
                     _deviceState.update {
                         val updateDevices = it.devices.toMutableMap()
                         updateDevices[event.macId] = EnhancedBluetoothPeripheral(false, event.device)
-                        it.copy(
-                            devices = HashMap(updateDevices)
-                        )
+                        it.copy(devices = HashMap(updateDevices))
                     }
                 }
                 is DeviceEvent.OnDeviceConnected -> {
@@ -71,7 +70,14 @@ class BluetoothDeviceViewModel(
         when(event) {
             UiEvent.OnScanClick -> {
                 CoroutineScope(Dispatchers.IO).launch {
-                    blueFalconEngine.execute(BluetoothAction.Scan())
+                    if (_deviceState.value.isScanning) {
+                        blueFalconEngine.execute(BluetoothAction.StopScan)
+                    } else {
+                        blueFalconEngine.execute(BluetoothAction.Scan())
+                    }
+                    _deviceState.update { state ->
+                        state.copy(isScanning = !state.isScanning)
+                    }
                 }
             }
 
@@ -112,7 +118,7 @@ class BluetoothDeviceViewModel(
                                 it.peripheral.uuid,
                                 event.characteristic.uuid,
                                 event.value.encodeToByteArray(),
-                                true
+                                WriteType.writeTypeDefault
                             )
                         )
                     }
