@@ -22,8 +22,11 @@ class JsBluetoothEngine(
             is BluetoothAction.Scan -> {
                  blueFalcon.scan(action.filters)
             }
+            is BluetoothAction.StopScan -> TODO()
             is BluetoothAction.ReadCharacteristic -> TODO()
             is BluetoothAction.WriteCharacteristic -> TODO()
+            is BluetoothAction.DiscoverCharacteristics -> TODO()
+            is BluetoothAction.DiscoverServices -> TODO()
         }
     }
 }
