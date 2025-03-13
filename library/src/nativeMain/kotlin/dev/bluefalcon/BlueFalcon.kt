@@ -33,9 +33,23 @@ actual class BlueFalcon actual constructor(
     internal actual val _peripherals = MutableStateFlow<Set<BluetoothPeripheral>>(emptySet())
     actual val peripherals: NativeFlow<Set<BluetoothPeripheral>> = _peripherals.toNativeType(scope)
 
+    actual fun connectionState(bluetoothPeripheral: BluetoothPeripheral): BluetoothPeripheralState =
+        when (bluetoothPeripheral.bluetoothDevice.state) {
+            CBPeripheralStateConnected -> BluetoothPeripheralState.Connected
+            CBPeripheralStateConnecting -> BluetoothPeripheralState.Connecting
+            CBPeripheralStateDisconnected -> BluetoothPeripheralState.Disconnected
+            CBPeripheralStateDisconnecting -> BluetoothPeripheralState.Disconnecting
+            else -> BluetoothPeripheralState.Unknown
+        }
+
     actual fun connect(bluetoothPeripheral: BluetoothPeripheral, autoConnect: Boolean) {
         //auto connect is ignored due to not needing it in iOS
-        centralManager.connectPeripheral(bluetoothPeripheral.bluetoothDevice, null)
+        log?.info("connect ${bluetoothPeripheral.uuid} current state ${bluetoothPeripheral.bluetoothDevice.state}")
+        if (bluetoothPeripheral.bluetoothDevice.state == CBPeripheralStateConnected) {
+            bluetoothPeripheralManager.centralManager(centralManager, didConnectPeripheral = bluetoothPeripheral.bluetoothDevice)
+        } else {
+            centralManager.connectPeripheral(bluetoothPeripheral.bluetoothDevice, null)
+        }
     }
 
     actual fun disconnect(bluetoothPeripheral: BluetoothPeripheral) {

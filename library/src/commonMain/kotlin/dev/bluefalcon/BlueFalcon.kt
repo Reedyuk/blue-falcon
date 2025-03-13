@@ -23,6 +23,8 @@ expect class BlueFalcon(
     fun connect(bluetoothPeripheral: BluetoothPeripheral, autoConnect: Boolean = false)
     fun disconnect(bluetoothPeripheral: BluetoothPeripheral)
 
+    fun connectionState(bluetoothPeripheral: BluetoothPeripheral): BluetoothPeripheralState
+
     @Throws(
         BluetoothUnknownException::class,
         BluetoothResettingException::class,
