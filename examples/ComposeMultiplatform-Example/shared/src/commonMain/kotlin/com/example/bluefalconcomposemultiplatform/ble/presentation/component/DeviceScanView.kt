@@ -31,7 +31,11 @@ fun DeviceScanView(
             .width(140.dp)
             .padding(start = 20.dp, top = 20.dp)
     ) {
-        Text("Scan")
+        if(state.isScanning) {
+            Text("Stop Scanning")
+        } else {
+            Text("Scan")
+        }
     }
     Column(
         modifier = Modifier
