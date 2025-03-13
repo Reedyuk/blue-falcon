@@ -42,6 +42,14 @@ actual class BlueFalcon actual constructor(
         delegates.remove(blueFalconDelegate)
     }
 
+    @JsName("connectionState")
+    actual fun connectionState(bluetoothPeripheral: BluetoothPeripheral): BluetoothPeripheralState =
+        if (bluetoothPeripheral.device.gatt?.connected == true) {
+            BluetoothPeripheralState.Connected
+        } else {
+            BluetoothPeripheralState.Disconnected
+        }
+
     @JsName("connect")
     actual fun connect(bluetoothPeripheral: BluetoothPeripheral, autoConnect: Boolean) {
         log?.info("connect -> ${bluetoothPeripheral.device}:${bluetoothPeripheral.device.gatt} gatt connected? ${bluetoothPeripheral.device.gatt?.connected}")

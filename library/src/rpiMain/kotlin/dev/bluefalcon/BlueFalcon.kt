@@ -68,6 +68,15 @@ actual class BlueFalcon actual constructor(
     }
     private val bluetoothManager = BluetoothCentralManager(bluetoothManagerCallback)
 
+    actual fun connectionState(bluetoothPeripheral: BluetoothPeripheral): BluetoothPeripheralState =
+        when (bluetoothPeripheral.device.state) {
+            ConnectionState.CONNECTED -> BluetoothPeripheralState.Connected
+            ConnectionState.CONNECTING -> BluetoothPeripheralState.Connecting
+            ConnectionState.DISCONNECTED -> BluetoothPeripheralState.Disconnected
+            ConnectionState.DISCONNECTING -> BluetoothPeripheralState.Disconnecting
+            else -> BluetoothPeripheralState.Unknown
+        }
+
     actual fun connect(bluetoothPeripheral: BluetoothPeripheral, autoConnect: Boolean) {
         bluetoothManager.connectPeripheral(bluetoothPeripheral.device, bluetoothPeripheralCallback)
     }

@@ -65,11 +65,11 @@ kotlin {
     androidTarget {
         publishAllLibraryVariants()
     }
-    jvm("rpi") {
-        compilations.all {
-            kotlinOptions.jvmTarget = "1.8"
-        }
-    }
+//    jvm("rpi") {
+//        compilations.all {
+//            kotlinOptions.jvmTarget = "1.8"
+//        }
+//    }
     js {
         browser {
             binaries.executable()
@@ -94,11 +94,11 @@ kotlin {
             }
         }
         val androidMain by getting
-        val rpiMain by getting {
-            dependencies {
-                implementation("com.github.weliem:blessed-bluez:0.38")
-            }
-        }
+//        val rpiMain by getting {
+//            dependencies {
+//                implementation("com.github.weliem:blessed-bluez:0.38")
+//            }
+//        }
         val jsMain by getting
     }
 }

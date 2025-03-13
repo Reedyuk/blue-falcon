@@ -1,5 +1,6 @@
 package dev.bluefalcon
 
+import kotlinx.cinterop.ObjCSignatureOverride
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import platform.CoreBluetooth.*
@@ -68,6 +69,12 @@ class BluetoothPeripheralManager constructor(
         }
     }
 
+    @ObjCSignatureOverride
+    override fun centralManager(central: CBCentralManager, didFailToConnectPeripheral: CBPeripheral, error: NSError?) {
+        log?.info("DidFailToConnectPeripheral ${didFailToConnectPeripheral.name}")
+    }
+
+    @ObjCSignatureOverride
     override fun centralManager(
         central: CBCentralManager,
         didDisconnectPeripheral: CBPeripheral,
