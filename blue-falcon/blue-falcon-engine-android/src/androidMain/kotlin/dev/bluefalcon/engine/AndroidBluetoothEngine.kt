@@ -1,7 +1,20 @@
 package dev.bluefalcon.engine
 
+import dev.bluefalcon.AdvertisementDataRetrievalKeys
+import dev.bluefalcon.BTCharacteristic
+import dev.bluefalcon.BTService
 import dev.bluefalcon.BlueFalcon
+import dev.bluefalcon.BlueFalconDelegate
+import dev.bluefalcon.BluetoothDevice
+import dev.bluefalcon.BluetoothPeripheral
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.IO
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 import kotlin.uuid.ExperimentalUuidApi
 
 class AndroidBluetoothEngine(
@@ -17,9 +30,29 @@ class AndroidBluetoothEngine(
     private fun getDevice(device: String) = blueFalcon.peripherals.value.first { peripheral -> peripheral.uuid == device }
 
     @OptIn(ExperimentalUuidApi::class)
-    override suspend fun execute(action: BluetoothAction) {
+    override suspend fun execute(action: BluetoothAction): Flow<BluetoothActionResult> {
+        val resultFlow: MutableSharedFlow<BluetoothActionResult> = MutableSharedFlow()
         when (action) {
             is BluetoothAction.Connect -> {
+                blueFalcon.delegates.add(
+                    object : BlueFalconDelegate {
+                        override fun didConnect(bluetoothPeripheral: BluetoothPeripheral) {
+                            CoroutineScope(Dispatchers.IO).launch {
+                                resultFlow.emit(
+                                    BluetoothActionResult.Connect(
+                                        device =
+                                            BluetoothDevice(
+                                                bluetoothPeripheral.uuid,
+                                                bluetoothPeripheral.name,
+                                                bluetoothPeripheral.rssi,
+                                                bluetoothPeripheral.mtuSize
+                                            )
+                                    )
+                                )
+                            }
+                        }
+                    }
+                )
                 blueFalcon.connect(getDevice(action.device))
             }
             is BluetoothAction.Disconnect -> {
@@ -29,6 +62,25 @@ class AndroidBluetoothEngine(
                 blueFalcon.stopScanning()
             }
             is BluetoothAction.Scan -> {
+                blueFalcon.delegates.add(object : BlueFalconDelegate {
+                    override fun didDiscoverDevice(
+                        bluetoothPeripheral: BluetoothPeripheral,
+                        advertisementData: Map<AdvertisementDataRetrievalKeys, Any>
+                    ) {
+                        CoroutineScope(Dispatchers.IO).launch {
+                            resultFlow.emit(
+                                BluetoothActionResult.Scan(
+                                    device = BluetoothDevice(
+                                        bluetoothPeripheral.uuid,
+                                        bluetoothPeripheral.name,
+                                        bluetoothPeripheral.rssi,
+                                        bluetoothPeripheral.mtuSize
+                                    )
+                                )
+                            )
+                        }
+                    }
+                })
                 blueFalcon.scan(action.filters)
             }
             is BluetoothAction.ReadCharacteristic -> {
@@ -55,22 +107,62 @@ class AndroidBluetoothEngine(
             }
 
             is BluetoothAction.DiscoverCharacteristics -> {
-                getDevice(action.device).let { device ->
-                    blueFalcon.discoverCharacteristics(
-                        device,
-                        device.services.getValue(action.service),
-                        action.characteristicUUIDs
-                    )
-                }
+                blueFalcon.delegates.add(object : BlueFalconDelegate {
+                    override fun didDiscoverCharacteristics(bluetoothPeripheral: BluetoothPeripheral) {
+                        CoroutineScope(Dispatchers.IO).launch {
+                            resultFlow.emit(
+                                BluetoothActionResult.DiscoverCharacteristics(
+                                    device = BluetoothDevice(
+                                        bluetoothPeripheral.uuid,
+                                        bluetoothPeripheral.name,
+                                        bluetoothPeripheral.rssi,
+                                        bluetoothPeripheral.mtuSize,
+                                        bluetoothPeripheral.services.map {
+                                            BTService(
+                                                it.key,
+                                                it.value.name,
+                                                it.value.characteristics.map { characteristic ->
+                                                    BTCharacteristic(
+                                                        characteristic.uuid,
+                                                        characteristic.name,
+                                                        characteristic.value
+                                                    )
+                                                }
+                                            )
+                                        }
+                                    )
+                                )
+                            )
+                        }
+                    }
+                })
+                val device = getDevice(action.device)
+                val service = device.services.getValue(action.service)
+                blueFalcon.discoverCharacteristics(device, service, action.characteristicUUIDs)
             }
             is BluetoothAction.DiscoverServices -> {
-                getDevice(action.device).let { device ->
-                    blueFalcon.discoverServices(
-                        device,
-                        action.serviceUUIDs
-                    )
-                }
+                blueFalcon.delegates.add(object : BlueFalconDelegate {
+                    override fun didDiscoverServices(bluetoothPeripheral: BluetoothPeripheral) {
+                        CoroutineScope(Dispatchers.IO).launch {
+                            resultFlow.emit(
+                                BluetoothActionResult.DiscoverServices(
+                                    device = BluetoothDevice(
+                                        bluetoothPeripheral.uuid,
+                                        bluetoothPeripheral.name,
+                                        bluetoothPeripheral.rssi,
+                                        bluetoothPeripheral.mtuSize,
+                                        bluetoothPeripheral.services.map {
+                                            BTService(it.key, it.value.name)
+                                        }
+                                    )
+                                )
+                            )
+                        }
+                    }
+                })
+                blueFalcon.discoverServices(getDevice(action.device), action.serviceUUIDs)
             }
         }
+        return resultFlow
     }
 }

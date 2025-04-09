@@ -2,6 +2,7 @@ package dev.bluefalcon.engine
 
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.flow.Flow
 
 interface BluetoothEngine : CoroutineScope {
     val config: BluetoothEngineConfig
@@ -9,5 +10,5 @@ interface BluetoothEngine : CoroutineScope {
     // config object
 
     // this will be the bluetooth action.
-    suspend fun execute(action: BluetoothAction)
+    suspend fun execute(action: BluetoothAction): Flow<BluetoothActionResult>
 }

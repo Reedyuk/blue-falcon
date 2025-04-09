@@ -1,6 +1,8 @@
 package dev.bluefalcon.engine
 
 import dev.bluefalcon.BlueFalcon
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.emptyFlow
 
 class JsBluetoothEngine(
     override val config: JsBluetoothEngineConfig
@@ -11,7 +13,7 @@ class JsBluetoothEngine(
         false
     ).also { it.delegates.add(config.bluetoothCallbackDelegate) }
 
-    override suspend fun execute(action: BluetoothAction) {
+    override suspend fun execute(action: BluetoothAction): Flow<BluetoothActionResult> {
         when (action) {
             is BluetoothAction.Connect -> {
                 // blueFalcon.connect(action.device)
@@ -28,5 +30,6 @@ class JsBluetoothEngine(
             is BluetoothAction.DiscoverCharacteristics -> TODO()
             is BluetoothAction.DiscoverServices -> TODO()
         }
+        return emptyFlow()
     }
 }

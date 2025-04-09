@@ -17,9 +17,9 @@ class BleDelegate: BlueFalconDelegate {
     }
 
     override fun didDiscoverDevice(bluetoothPeripheral: BluetoothPeripheral, advertisementData: Map<AdvertisementDataRetrievalKeys, Any>) {
-        onDeviceEvent?.let {
-            it(DeviceEvent.OnDeviceDiscovered(bluetoothPeripheral.uuid, bluetoothPeripheral))
-        }
+//        onDeviceEvent?.let {
+//            it(DeviceEvent.OnDeviceDiscovered(bluetoothPeripheral.uuid, bluetoothPeripheral))
+//        }
     }
 
     override fun didCharacteristcValueChanged(
@@ -32,9 +32,9 @@ class BleDelegate: BlueFalconDelegate {
     }
 
     override fun didConnect(bluetoothPeripheral: BluetoothPeripheral) {
-        onDeviceEvent?.let {
-            it(DeviceEvent.OnDeviceConnected(bluetoothPeripheral.uuid))
-        }
+//        onDeviceEvent?.let {
+//            it(DeviceEvent.OnDeviceConnected(bluetoothPeripheral.uuid))
+//        }
     }
 
     override fun didDisconnect(bluetoothPeripheral: BluetoothPeripheral) {

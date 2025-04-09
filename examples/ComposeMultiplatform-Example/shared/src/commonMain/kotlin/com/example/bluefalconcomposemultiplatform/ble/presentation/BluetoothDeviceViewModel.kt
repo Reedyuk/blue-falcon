@@ -7,6 +7,7 @@ import dev.bluefalcon.engine.WriteType
 import dev.bluefalcon.BluetoothPeripheral
 import dev.bluefalcon.ApplicationContext
 import dev.bluefalcon.engine.BluetoothAction
+import dev.bluefalcon.engine.BluetoothActionResult
 import dev.icerock.moko.mvvm.viewmodel.ViewModel
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -73,7 +74,23 @@ class BluetoothDeviceViewModel(
                     if (_deviceState.value.isScanning) {
                         blueFalconEngine.execute(BluetoothAction.StopScan)
                     } else {
-                        blueFalconEngine.execute(BluetoothAction.Scan())
+                        CoroutineScope(Dispatchers.IO).launch {
+                            blueFalconEngine.execute(BluetoothAction.Scan()).collect {
+                                when (it) {
+                                    is BluetoothActionResult.Scan -> {
+                                        _deviceState.update { state ->
+                                            val updateDevices = state.devices.toMutableMap()
+                                            updateDevices[it.device.uuid] = EnhancedBluetoothPeripheral(
+                                                false,
+                                                it.device
+                                            )
+                                            state.copy(devices = HashMap(updateDevices))
+                                        }
+                                    }
+                                    else -> {}
+                                }
+                            }
+                        }
                     }
                     _deviceState.update { state ->
                         state.copy(isScanning = !state.isScanning)
@@ -83,9 +100,46 @@ class BluetoothDeviceViewModel(
 
             is UiEvent.OnConnectClick -> {
                 CoroutineScope(Dispatchers.IO).launch {
-                    _deviceState.value.devices[event.macId]?.let {
-                        blueFalconEngine.execute(BluetoothAction.Connect(it.peripheral.uuid))
-                        //                    blueFalcon.connect(it.peripheral, false)
+                    blueFalconEngine.execute(BluetoothAction.Connect(event.macId)).collect { connectState ->
+                        when (connectState) {
+                            is BluetoothActionResult.Connect -> {
+                                _deviceState.update { state ->
+                                    val updateDevices = state.devices.toMutableMap()
+                                    updateDevices[event.macId]?.let {
+                                        updateDevices[event.macId] = it.copy(connected = true)
+                                    }
+                                    state.copy(devices = HashMap(updateDevices))
+                                }
+                            }
+                            else -> {}
+                        }
+                        blueFalconEngine.execute(BluetoothAction.DiscoverServices(event.macId)).collect { discoverServiceState ->
+                            when (discoverServiceState) {
+                                is BluetoothActionResult.DiscoverServices -> {
+                                    discoverServiceState.device.services.forEach { service ->
+                                        blueFalconEngine.execute(
+                                            BluetoothAction.DiscoverCharacteristics(event.macId, service.uuid)
+                                        ).collect { discoverState ->
+                                            when (discoverState) {
+                                                is BluetoothActionResult.DiscoverCharacteristics -> {
+                                                    _deviceState.update { state ->
+                                                        val updateDevices =
+                                                            state.devices.toMutableMap()
+                                                        updateDevices[event.macId]?.let {
+                                                            updateDevices[event.macId] = it.copy(peripheral = discoverState.device)
+                                                        }
+                                                        state.copy(devices = HashMap(updateDevices))
+                                                    }
+                                                }
+
+                                                else -> {}
+                                            }
+                                        }
+                                    }
+                                }
+                                else -> {}
+                            }
+                        }
                     }
                 }
             }

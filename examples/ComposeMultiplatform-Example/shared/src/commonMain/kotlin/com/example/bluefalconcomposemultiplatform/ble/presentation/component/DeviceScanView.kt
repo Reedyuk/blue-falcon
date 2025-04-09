@@ -55,7 +55,7 @@ fun DeviceScanView(
                     deviceName = if (!device.peripheral.name.isNullOrBlank()) device.peripheral.name else "No Name",
                     macId = device.peripheral.uuid,
                     rssi = device.peripheral.rssi,
-                    services = device.peripheral.services.values.toList(),
+                    services = device.peripheral.services,
                     connected = device.connected,
                     onEvent = onEvent
                 )

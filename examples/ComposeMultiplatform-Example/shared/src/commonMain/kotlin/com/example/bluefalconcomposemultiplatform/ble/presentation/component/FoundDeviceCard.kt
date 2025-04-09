@@ -25,6 +25,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.bluefalconcomposemultiplatform.ble.presentation.UiEvent
+import dev.bluefalcon.BTCharacteristic
+import dev.bluefalcon.BTService
 import dev.bluefalcon.BluetoothCharacteristic
 import dev.bluefalcon.BluetoothService
 
@@ -33,7 +35,7 @@ fun FoundDeviceCard(
     deviceName: String?,
     macId: String,
     rssi: Float?,
-    services: List<BluetoothService>,
+    services: List<BTService>,
     connected: Boolean,
     onEvent: (UiEvent) -> Unit
 ) {
@@ -114,7 +116,7 @@ fun FoundDeviceCard(
 @Composable
 fun ServiceRow(
     macId: String,
-    service: BluetoothService,
+    service: BTService,
     onEvent: (UiEvent) -> Unit
 ) {
     Column {
@@ -134,7 +136,7 @@ fun ServiceRow(
 @Composable
 fun CharacteristicsRow(
     macId: String,
-    characteristic: BluetoothCharacteristic,
+    characteristic: BTCharacteristic,
     onEvent: (UiEvent) -> Unit
 ) {
     Row(
@@ -163,7 +165,7 @@ fun CharacteristicsRow(
         Row {
             Button(
                 onClick = {
-                    onEvent(UiEvent.OnReadCharacteristic(macId, characteristic))
+//                    onEvent(UiEvent.OnReadCharacteristic(macId, characteristic))
                 },
                 contentPadding = PaddingValues(1.dp)
             ) {
@@ -175,7 +177,7 @@ fun CharacteristicsRow(
             }
             Button(
                 onClick = {
-                    onEvent(UiEvent.OnWriteCharacteristic(macId, characteristic, "123"))
+//                    onEvent(UiEvent.OnWriteCharacteristic(macId, characteristic, "123"))
                 },
                 contentPadding = PaddingValues(1.dp)
             ) {

@@ -4,6 +4,7 @@ import kotlinx.cinterop.*
 import platform.Foundation.*
 import platform.posix.memcpy
 
+@OptIn(BetaInteropApi::class)
 fun NSData.string(): String? {
     return NSString.create(this, NSUTF8StringEncoding) as String?
 }

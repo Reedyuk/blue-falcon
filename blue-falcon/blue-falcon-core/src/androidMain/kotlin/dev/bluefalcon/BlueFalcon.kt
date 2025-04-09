@@ -3,6 +3,7 @@ package dev.bluefalcon
 import android.bluetooth.*
 import android.bluetooth.BluetoothAdapter.STATE_CONNECTED
 import android.bluetooth.BluetoothAdapter.STATE_DISCONNECTED
+import android.bluetooth.BluetoothDevice
 import android.bluetooth.le.*
 import android.content.Context
 import android.os.Build
@@ -24,7 +25,7 @@ actual class BlueFalcon(
         context.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
     private val mBluetoothScanCallBack = BluetoothScanCallBack()
     private val mGattClientCallback = GattClientCallback()
-    var transportMethod: Int = BluetoothDevice.TRANSPORT_AUTO
+    var transportMethod: Int = android.bluetooth.BluetoothDevice.TRANSPORT_AUTO
     actual var isScanning: Boolean = false
 
     actual val scope = CoroutineScope(Dispatchers.Default)

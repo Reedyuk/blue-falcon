@@ -1,5 +1,6 @@
 package dev.bluefalcon
 
+import kotlinx.cinterop.BetaInteropApi
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -128,6 +129,7 @@ actual class BlueFalcon(
         notifyCharacteristic(bluetoothPeripheral, bluetoothCharacteristic, enable)
     }
 
+    @OptIn(BetaInteropApi::class)
     actual fun writeCharacteristic(
         bluetoothPeripheral: BluetoothPeripheral,
         bluetoothCharacteristic: BluetoothCharacteristic,
@@ -142,6 +144,7 @@ actual class BlueFalcon(
         )
     }
 
+    @OptIn(BetaInteropApi::class)
     actual fun writeCharacteristic(
         bluetoothPeripheral: BluetoothPeripheral,
         bluetoothCharacteristic: BluetoothCharacteristic,

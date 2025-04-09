@@ -17,7 +17,11 @@ sealed class BluetoothAction {
         val characteristicUUIDs: List<Uuid> = emptyList()
     ) : BluetoothAction()
 
-    data class ReadCharacteristic(val device: String, val characteristic: Uuid) : BluetoothAction()
+    data class ReadCharacteristic(
+        val device: String,
+        val characteristic: Uuid
+    ) : BluetoothAction()
+
     data class WriteCharacteristic(
         val device: String,
         val characteristic: Uuid,
