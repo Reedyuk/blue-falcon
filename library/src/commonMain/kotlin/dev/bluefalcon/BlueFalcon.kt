@@ -23,6 +23,8 @@ expect class BlueFalcon(
     fun connect(bluetoothPeripheral: BluetoothPeripheral, autoConnect: Boolean = false)
     fun disconnect(bluetoothPeripheral: BluetoothPeripheral)
 
+    fun requestConnectionPriority(bluetoothPeripheral: BluetoothPeripheral, connectionPriority: Int)
+
     fun connectionState(bluetoothPeripheral: BluetoothPeripheral): BluetoothPeripheralState
 
     @Throws(
