@@ -32,6 +32,16 @@ actual class BlueFalcon actual constructor(
     actual val peripherals: NativeFlow<Set<BluetoothPeripheral>> = _peripherals.toNativeType(scope)
     actual val managerState: StateFlow<BluetoothManagerState> = MutableStateFlow(BluetoothManagerState.Ready)
 
+    actual fun requestConnectionPriority(
+        bluetoothPeripheral: BluetoothPeripheral,
+        connectionPriority: Int
+    ) {
+        log?.info("requestConnectionPriority")
+        mGattClientCallback.gattsForDevice(bluetoothPeripheral.device).forEach { gatt ->
+            gatt.requestConnectionPriority(connectionPriority)
+        }
+    }
+
     actual fun connectionState(bluetoothPeripheral: BluetoothPeripheral): BluetoothPeripheralState =
         when (bluetoothManager.getConnectionState(bluetoothPeripheral.device, BluetoothProfile.GATT)) {
             BluetoothProfile.STATE_CONNECTED -> BluetoothPeripheralState.Connected

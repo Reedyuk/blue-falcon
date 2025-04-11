@@ -42,6 +42,14 @@ actual class BlueFalcon actual constructor(
         delegates.remove(blueFalconDelegate)
     }
 
+    @JsName("requestConnectionPriority")
+    actual fun requestConnectionPriority(
+        bluetoothPeripheral: BluetoothPeripheral,
+        connectionPriority: Int
+    ) {
+        // Not supported in Web Bluetooth API
+    }
+
     @JsName("connectionState")
     actual fun connectionState(bluetoothPeripheral: BluetoothPeripheral): BluetoothPeripheralState =
         if (bluetoothPeripheral.device.gatt?.connected == true) {
