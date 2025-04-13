@@ -548,12 +548,78 @@ actual class BlueFalcon actual constructor(
         sharedAdvertisementData[AdvertisementDataRetrievalKeys.IsConnectable] =
             if (isConnectable) 1 else 0
 
-        sharedAdvertisementData[AdvertisementDataRetrievalKeys.LocalName] = scanRecord.getDeviceName()
-        sharedAdvertisementData[AdvertisementDataRetrievalKeys.ManufacturerData] = scanRecord.getManufacturerSpecificData()
+        if (Build.VERSION.SDK_INT >= 33) {
+            sharedAdvertisementData[AdvertisementDataRetrievalKeys.LocalName] =
+                scanRecord.deviceName as Any
+            sharedAdvertisementData[AdvertisementDataRetrievalKeys.ManufacturerData] =
+                scanRecord.manufacturerSpecificData
 
-        // Map from ParcelUuid to Strings
-        sharedAdvertisementData[AdvertisementDataRetrievalKeys.ServiceUUIDsKey] = scanRecord.getServiceUuids().map({ it.toString() })
-        
+            // Map from ParcelUuid to Strings
+            sharedAdvertisementData[AdvertisementDataRetrievalKeys.ServiceUUIDsKey] =
+                scanRecord.serviceUuids.map { it.toString() }
+        } else {
+            val advertisementBytes = scanRecord.bytes
+            var index = 0
+            while (index < advertisementBytes.size) {
+                val length = advertisementBytes[index].toUByte().toInt()
+                index += 1
+
+                //Zero value indicates that we are done with the record now
+                if (length == 0) break
+
+                val type = advertisementBytes[index].toUByte().toInt()
+
+                //if the type is zero, then we are pass the significant section of the data,
+                // and we are  done
+                if (type == 0) break
+
+                if (index + length > advertisementBytes.size - 1) {
+                    // we  pass the significant section of the data,
+                    // and we are done
+                    break
+                }
+
+                //Keys according to:
+                // https://github.com/zephyrproject-rtos/zephyr/blob/1e02dd0dc1958fed957c6962ad4213c556639188/include/zephyr/bluetooth/gap.h#L29
+                val value = advertisementBytes.copyOfRange(index + 1, index + length)
+                when (type) {
+                    0x09 -> {
+                        sharedAdvertisementData[AdvertisementDataRetrievalKeys.LocalName] =
+                            String(value)
+
+                    }
+
+                    0xff -> {
+                        sharedAdvertisementData[AdvertisementDataRetrievalKeys.ManufacturerData] =
+                            value
+
+                    }
+
+                    0x07 -> {
+                        val uuidAsStringList = mutableListOf<String>()
+                        value.reverse() //Because service uuids are in reversed order
+
+                        var uuidIndex = 0
+                        val uuidLength = 16 //One UUID has the size of 128bit which are 16 bits.
+                        while (uuidIndex + uuidLength <= value.size) {
+                            val uuidAsBytes = value.copyOfRange(uuidIndex, uuidIndex + uuidLength)
+                            val byteBuffer = ByteBuffer.wrap(uuidAsBytes)
+                            val high = byteBuffer.long
+                            val low = byteBuffer.long
+                            val uuid = UUID(high, low)
+
+                            uuidAsStringList.add(uuid.toString())
+                            uuidIndex += uuidLength
+                        }
+
+                        sharedAdvertisementData[AdvertisementDataRetrievalKeys.ServiceUUIDsKey] =
+                            uuidAsStringList
+                    }
+                }
+                index += length
+            }
+        }
+
         return sharedAdvertisementData
     }
 }
