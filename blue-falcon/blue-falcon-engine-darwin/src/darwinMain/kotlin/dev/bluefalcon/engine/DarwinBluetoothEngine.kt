@@ -52,6 +52,9 @@ class DarwinBluetoothEngine(
             }
             is BluetoothAction.Disconnect -> {
                 blueFalcon.disconnect(getDevice(action.device))
+                CoroutineScope(Dispatchers.IO).launch {
+                    resultFlow.emit(BluetoothActionResult.Success)
+                }
             }
             is BluetoothAction.Scan -> {
                 blueFalcon.delegates.add(
@@ -79,6 +82,9 @@ class DarwinBluetoothEngine(
             }
             is BluetoothAction.StopScan -> {
                 blueFalcon.stopScanning()
+                CoroutineScope(Dispatchers.IO).launch {
+                    resultFlow.emit(BluetoothActionResult.Success)
+                }
             }
 
             is BluetoothAction.ReadCharacteristic -> {
@@ -108,6 +114,15 @@ class DarwinBluetoothEngine(
                 blueFalcon.delegates.add(object : BlueFalconDelegate {
                     override fun didDiscoverCharacteristics(bluetoothPeripheral: BluetoothPeripheral) {
                         CoroutineScope(Dispatchers.IO).launch {
+                            val characteristics = bluetoothPeripheral.services.flatMap { service ->
+                                service.value.characteristics.map { characteristic ->
+                                    BTCharacteristic(
+                                        characteristic.uuid,
+                                        characteristic.name,
+                                        characteristic.value
+                                    )
+                                }
+                            }
                             resultFlow.emit(
                                 BluetoothActionResult.DiscoverCharacteristics(
                                     device = BluetoothDevice(
@@ -119,16 +134,11 @@ class DarwinBluetoothEngine(
                                             BTService(
                                                 it.key,
                                                 it.value.name,
-                                                it.value.characteristics.map { characteristic ->
-                                                    BTCharacteristic(
-                                                        characteristic.uuid,
-                                                        characteristic.name,
-                                                        characteristic.value
-                                                    )
-                                                }
+                                                characteristics
                                             )
                                         }
-                                    )
+                                    ),
+                                    characteristics = characteristics
                                 )
                             )
                         }
@@ -143,6 +153,9 @@ class DarwinBluetoothEngine(
                 blueFalcon.delegates.add(object : BlueFalconDelegate {
                     override fun didDiscoverServices(bluetoothPeripheral: BluetoothPeripheral) {
                         CoroutineScope(Dispatchers.IO).launch {
+                            val services = bluetoothPeripheral.services.map {
+                                BTService(it.key, it.value.name)
+                            }
                             resultFlow.emit(
                                 BluetoothActionResult.DiscoverServices(
                                     device = BluetoothDevice(
@@ -150,10 +163,9 @@ class DarwinBluetoothEngine(
                                         bluetoothPeripheral.name,
                                         bluetoothPeripheral.rssi,
                                         bluetoothPeripheral.mtuSize,
-                                        bluetoothPeripheral.services.map {
-                                            BTService(it.key, it.value.name)
-                                        }
-                                    )
+                                        services = services
+                                    ),
+                                    services = services
                                 )
                             )
                         }

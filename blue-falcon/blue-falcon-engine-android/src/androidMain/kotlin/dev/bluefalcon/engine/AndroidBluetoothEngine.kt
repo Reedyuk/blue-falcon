@@ -9,11 +9,8 @@ import dev.bluefalcon.BluetoothDevice
 import dev.bluefalcon.BluetoothPeripheral
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.IO
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlin.uuid.ExperimentalUuidApi
 
@@ -57,9 +54,15 @@ class AndroidBluetoothEngine(
             }
             is BluetoothAction.Disconnect -> {
                 blueFalcon.disconnect(getDevice(action.device))
+                CoroutineScope(Dispatchers.IO).launch {
+                    resultFlow.emit(BluetoothActionResult.Success)
+                }
             }
             is BluetoothAction.StopScan -> {
                 blueFalcon.stopScanning()
+                CoroutineScope(Dispatchers.IO).launch {
+                    resultFlow.emit(BluetoothActionResult.Success)
+                }
             }
             is BluetoothAction.Scan -> {
                 blueFalcon.delegates.add(object : BlueFalconDelegate {
@@ -110,6 +113,15 @@ class AndroidBluetoothEngine(
                 blueFalcon.delegates.add(object : BlueFalconDelegate {
                     override fun didDiscoverCharacteristics(bluetoothPeripheral: BluetoothPeripheral) {
                         CoroutineScope(Dispatchers.IO).launch {
+                            val characteristics = bluetoothPeripheral.services.flatMap { service ->
+                                service.value.characteristics.map { characteristic ->
+                                    BTCharacteristic(
+                                        characteristic.uuid,
+                                        characteristic.name,
+                                        characteristic.value
+                                    )
+                                }
+                            }
                             resultFlow.emit(
                                 BluetoothActionResult.DiscoverCharacteristics(
                                     device = BluetoothDevice(
@@ -121,16 +133,11 @@ class AndroidBluetoothEngine(
                                             BTService(
                                                 it.key,
                                                 it.value.name,
-                                                it.value.characteristics.map { characteristic ->
-                                                    BTCharacteristic(
-                                                        characteristic.uuid,
-                                                        characteristic.name,
-                                                        characteristic.value
-                                                    )
-                                                }
+                                                characteristics
                                             )
                                         }
-                                    )
+                                    ),
+                                    characteristics = characteristics
                                 )
                             )
                         }
@@ -144,6 +151,9 @@ class AndroidBluetoothEngine(
                 blueFalcon.delegates.add(object : BlueFalconDelegate {
                     override fun didDiscoverServices(bluetoothPeripheral: BluetoothPeripheral) {
                         CoroutineScope(Dispatchers.IO).launch {
+                            val services = bluetoothPeripheral.services.map {
+                                BTService(it.key, it.value.name)
+                            }
                             resultFlow.emit(
                                 BluetoothActionResult.DiscoverServices(
                                     device = BluetoothDevice(
@@ -151,10 +161,9 @@ class AndroidBluetoothEngine(
                                         bluetoothPeripheral.name,
                                         bluetoothPeripheral.rssi,
                                         bluetoothPeripheral.mtuSize,
-                                        bluetoothPeripheral.services.map {
-                                            BTService(it.key, it.value.name)
-                                        }
-                                    )
+                                        services = services
+                                    ),
+                                    services = services
                                 )
                             )
                         }
