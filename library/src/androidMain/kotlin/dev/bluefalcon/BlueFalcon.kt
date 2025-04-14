@@ -549,14 +549,23 @@ actual class BlueFalcon actual constructor(
             if (isConnectable) 1 else 0
 
         if (Build.VERSION.SDK_INT >= 33) {
-            sharedAdvertisementData[AdvertisementDataRetrievalKeys.LocalName] =
-                scanRecord.deviceName as Any
-            sharedAdvertisementData[AdvertisementDataRetrievalKeys.ManufacturerData] =
-                scanRecord.manufacturerSpecificData
+
+            if (scanRecord.deviceName != null) {
+                sharedAdvertisementData[AdvertisementDataRetrievalKeys.LocalName] =
+                    scanRecord.deviceName as Any
+            }
+
+            if (scanRecord.manufacturerSpecificData != null) {
+                sharedAdvertisementData[AdvertisementDataRetrievalKeys.ManufacturerData] =
+                    scanRecord.manufacturerSpecificData
+            }
 
             // Map from ParcelUuid to Strings
-            sharedAdvertisementData[AdvertisementDataRetrievalKeys.ServiceUUIDsKey] =
-                scanRecord.serviceUuids.map { it.toString() }
+            if (scanRecord.serviceUuids != null) {
+                sharedAdvertisementData[AdvertisementDataRetrievalKeys.ServiceUUIDsKey] =
+                    scanRecord.serviceUuids.map { it.toString() }
+            }
+
         } else {
             val advertisementBytes = scanRecord.bytes
             var index = 0
