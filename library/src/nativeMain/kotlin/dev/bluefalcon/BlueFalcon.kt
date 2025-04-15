@@ -51,7 +51,22 @@ actual class BlueFalcon actual constructor(
         //auto connect is ignored due to not needing it in iOS
         log?.info("connect ${bluetoothPeripheral.uuid} current state ${bluetoothPeripheral.bluetoothDevice.state}")
         if (bluetoothPeripheral.bluetoothDevice.state == CBPeripheralStateConnected) {
-            bluetoothPeripheralManager.centralManager(centralManager, didConnectPeripheral = bluetoothPeripheral.bluetoothDevice)
+            // IF you decide to pass in a BluetoothPeripheral that was generated from another CBManager, then we need to retrieve and regenerate it using our CBManager.
+            val replacementDevice = centralManager.retrievePeripheralsWithIdentifiers(
+                listOf(bluetoothPeripheral.bluetoothDevice.identifier)
+            ).firstOrNull() as? CBPeripheral
+            if (replacementDevice != null) {
+                if (replacementDevice.state == CBPeripheralStateDisconnected || replacementDevice.state == CBPeripheralStateDisconnecting) {
+                    log?.info("connect: Device is disconnected, connecting to replacement device")
+                    centralManager.connectPeripheral(replacementDevice, null)
+                } else {
+                    log?.info("connect: Replacement device is connected, using it")
+                    bluetoothPeripheralManager.centralManager(centralManager, didConnectPeripheral = replacementDevice)
+                }
+            } else {
+                log?.info("connect: Device is connected, using it")
+                bluetoothPeripheralManager.centralManager(centralManager, didConnectPeripheral = bluetoothPeripheral.bluetoothDevice)
+            }
         } else {
             centralManager.connectPeripheral(bluetoothPeripheral.bluetoothDevice, null)
         }
