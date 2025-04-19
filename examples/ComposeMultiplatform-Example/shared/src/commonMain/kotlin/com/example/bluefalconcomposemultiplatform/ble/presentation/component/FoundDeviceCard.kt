@@ -13,7 +13,10 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.ArrowDownward
+import androidx.compose.material.icons.filled.ArrowForward
 import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
@@ -37,6 +40,7 @@ fun FoundDeviceCard(
     rssi: Float?,
     services: List<BTService>,
     connected: Boolean,
+    showFullDetails: Boolean,
     onEvent: (UiEvent) -> Unit
 ) {
     Row (
@@ -89,6 +93,23 @@ fun FoundDeviceCard(
                             Text("Disconnect")
                         }
                     }
+                    Button({
+                        onEvent.invoke(UiEvent.OnShowDetailsClick(macId))
+                    }) {
+                        if (showFullDetails) {
+                            Icon(
+                                modifier = Modifier.size(30.dp),
+                                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                                contentDescription = "Close"
+                            )
+                        } else {
+                            Icon(
+                                modifier = Modifier.size(30.dp),
+                                imageVector = Icons.AutoMirrored.Filled.ArrowForward,
+                                contentDescription = "Open"
+                            )
+                        }
+                    }
                 }
 
                 rssi?.let {
@@ -98,14 +119,17 @@ fun FoundDeviceCard(
                         fontSize = 10.sp
                     )
                 }
-                Column {
-                    Text(
-                        "Services",
-                        color = MaterialTheme.colorScheme.onPrimary,
-                        fontSize = 10.sp
-                    )
-                    services.forEach {
-                        ServiceRow(macId, it, onEvent)
+
+                if (showFullDetails) {
+                    Column {
+                        Text(
+                            "Services",
+                            color = MaterialTheme.colorScheme.onPrimary,
+                            fontSize = 10.sp
+                        )
+                        services.forEach {
+                            ServiceRow(macId, it, onEvent)
+                        }
                     }
                 }
             }
@@ -165,7 +189,7 @@ fun CharacteristicsRow(
         Row {
             Button(
                 onClick = {
-//                    onEvent(UiEvent.OnReadCharacteristic(macId, characteristic))
+                    onEvent(UiEvent.OnReadCharacteristic(macId, characteristic))
                 },
                 contentPadding = PaddingValues(1.dp)
             ) {
@@ -177,7 +201,7 @@ fun CharacteristicsRow(
             }
             Button(
                 onClick = {
-//                    onEvent(UiEvent.OnWriteCharacteristic(macId, characteristic, "123"))
+                    onEvent(UiEvent.OnWriteCharacteristic(macId, characteristic, "123"))
                 },
                 contentPadding = PaddingValues(1.dp)
             ) {

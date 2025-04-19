@@ -57,7 +57,8 @@ fun DeviceScanView(
                     rssi = device.peripheral.rssi,
                     services = device.peripheral.services,
                     connected = device.connected,
-                    onEvent = onEvent
+                    onEvent = onEvent,
+                    showFullDetails = device.showDetails
                 )
             }
         }

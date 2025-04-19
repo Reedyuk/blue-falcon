@@ -28,6 +28,35 @@ sealed class BluetoothAction {
         val value: ByteArray,
         val writeType: WriteType
     ) : BluetoothAction()
+
+    data class NotifyCharacteristic(
+        val device: String,
+        val characteristic: Uuid,
+        val notify: Boolean
+    ) : BluetoothAction()
+
+    data class IndicateCharacteristic(
+        val device: String,
+        val characteristic: Uuid,
+        val indicate: Boolean
+    ) : BluetoothAction()
+
+//    data class ReadDescriptor(
+//        val device: String,
+//        val characteristic: Uuid,
+//        val descriptor: Uuid
+//    ) : BluetoothAction()
+//
+//    data class WriteDescriptor(
+//        val device: String,
+//        val descriptor: Uuid,
+//        val value: ByteArray
+//    ) : BluetoothAction()
+
+    data class SetMtu(
+        val device: String,
+        val mtu: Int
+    ) : BluetoothAction()
 }
 
 enum class WriteType {

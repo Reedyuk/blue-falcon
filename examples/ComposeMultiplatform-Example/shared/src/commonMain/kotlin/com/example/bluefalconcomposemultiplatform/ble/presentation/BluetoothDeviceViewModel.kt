@@ -30,43 +30,7 @@ class BluetoothDeviceViewModel(
         delegate = delegate
     )
 
-    init {
-        delegate.setListener {event ->
-            when(event) {
-                is DeviceEvent.OnDeviceDiscovered -> {
-                    _deviceState.update {
-                        val updateDevices = it.devices.toMutableMap()
-                        updateDevices[event.macId] = EnhancedBluetoothPeripheral(false, event.device)
-                        it.copy(devices = HashMap(updateDevices))
-                    }
-                }
-                is DeviceEvent.OnDeviceConnected -> {
-                    _deviceState.update { state ->
-                        val updateDevices = state.devices.toMutableMap()
-                        updateDevices[event.macId]?.let {
-                            updateDevices[event.macId] = it.copy(connected = true)
-                        }
-                        state.copy(
-                            devices = HashMap(updateDevices)
-                        )
-                    }
-                }
-
-                is DeviceEvent.OnDeviceDisconnected -> {
-                    _deviceState.update { state ->
-                        val updateDevices = state.devices.toMutableMap()
-                        updateDevices[event.macId]?.let {
-                            updateDevices[event.macId] = it.copy(connected = false)
-                        }
-                        state.copy(
-                            devices = HashMap(updateDevices)
-                        )
-                    }
-                }
-            }
-        }
-    }
-
+    @OptIn(kotlin.uuid.ExperimentalUuidApi::class)
     fun onEvent(event: UiEvent) {
         when(event) {
             UiEvent.OnScanClick -> {
@@ -82,7 +46,8 @@ class BluetoothDeviceViewModel(
                                             val updateDevices = state.devices.toMutableMap()
                                             updateDevices[it.device.uuid] = EnhancedBluetoothPeripheral(
                                                 false,
-                                                it.device
+                                                it.device,
+                                                false
                                             )
                                             state.copy(devices = HashMap(updateDevices))
                                         }
@@ -154,13 +119,41 @@ class BluetoothDeviceViewModel(
 
             is UiEvent.OnReadCharacteristic -> {
                 CoroutineScope(Dispatchers.IO).launch {
-                    _deviceState.value.devices[event.macId]?.let {
+                    _deviceState.value.devices[event.macId]?.let { device ->
                         blueFalconEngine.execute(
                             BluetoothAction.ReadCharacteristic(
-                                it.peripheral.uuid,
+                                device.peripheral.uuid,
                                 event.characteristic.uuid
                             )
-                        )
+                        ).collect {
+                            when (it) {
+                                is BluetoothActionResult.ReadCharacteristic -> {
+                                    _deviceState.update { state ->
+                                        val updateDevices = state.devices.toMutableMap()
+                                        updateDevices[event.macId]?.let { device ->
+                                            val updatedDevice = device.copy(
+                                                peripheral = device.peripheral.copy(
+                                                    services = device.peripheral.services.map { service ->
+                                                        service.copy(
+                                                            characteristics = service.characteristics.map { characteristic ->
+                                                                if (characteristic.uuid == event.characteristic.uuid) {
+                                                                    characteristic.copy(value = it.value)
+                                                                } else {
+                                                                    characteristic
+                                                                }
+                                                            }
+                                                        )
+                                                    },
+                                                )
+                                            )
+                                            updateDevices[event.macId] = updatedDevice
+                                        }
+                                        state.copy(devices = HashMap(updateDevices))
+                                    }
+                                }
+                                else -> {}
+                            }
+                        }
                     }
                 }
             }
@@ -175,6 +168,20 @@ class BluetoothDeviceViewModel(
                                 WriteType.writeTypeDefault
                             )
                         )
+                    }
+                }
+            }
+
+            is UiEvent.OnShowDetailsClick -> {
+                CoroutineScope(Dispatchers.IO).launch {
+                    _deviceState.value.devices[event.macId]?.let { device ->
+                        _deviceState.update { state ->
+                            val updateDevices = state.devices.toMutableMap()
+                            updateDevices[event.macId]?.let {
+                                updateDevices[event.macId] = it.copy(showDetails = !it.showDetails)
+                            }
+                            state.copy(devices = HashMap(updateDevices))
+                        }
                     }
                 }
             }

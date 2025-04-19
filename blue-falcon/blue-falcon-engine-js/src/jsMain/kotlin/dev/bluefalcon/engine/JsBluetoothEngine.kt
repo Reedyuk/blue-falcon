@@ -29,6 +29,9 @@ class JsBluetoothEngine(
             is BluetoothAction.WriteCharacteristic -> TODO()
             is BluetoothAction.DiscoverCharacteristics -> TODO()
             is BluetoothAction.DiscoverServices -> TODO()
+            is BluetoothAction.IndicateCharacteristic -> TODO()
+            is BluetoothAction.NotifyCharacteristic -> TODO()
+            is BluetoothAction.SetMtu -> TODO()
         }
         return emptyFlow()
     }

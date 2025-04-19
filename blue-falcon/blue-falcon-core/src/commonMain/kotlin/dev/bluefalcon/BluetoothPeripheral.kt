@@ -39,3 +39,8 @@ data class BTCharacteristic(
     val value: ByteArray? = null,
 //    val descriptor: List<BTDescriptor> = emptyList(),
 )
+
+data class BTDescriptor(
+    val uuid: Uuid,
+    val value: ByteArray? = null
+)
