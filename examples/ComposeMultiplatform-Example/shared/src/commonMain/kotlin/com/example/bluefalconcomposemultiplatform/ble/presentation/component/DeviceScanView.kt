@@ -31,7 +31,11 @@ fun DeviceScanView(
             .width(140.dp)
             .padding(start = 20.dp, top = 20.dp)
     ) {
-        Text("Scan")
+        if(state.isScanning) {
+            Text("Stop Scanning")
+        } else {
+            Text("Scan")
+        }
     }
     Column(
         modifier = Modifier
@@ -51,7 +55,7 @@ fun DeviceScanView(
                     deviceName = if (!device.peripheral.name.isNullOrBlank()) device.peripheral.name else "No Name",
                     macId = device.peripheral.uuid,
                     rssi = device.peripheral.rssi,
-                    services = device.peripheral.services.values.toList(),
+                    services = device.peripheral.services,
                     connected = device.connected,
                     onEvent = onEvent
                 )
