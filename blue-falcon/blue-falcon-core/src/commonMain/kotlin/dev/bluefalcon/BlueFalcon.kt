@@ -4,6 +4,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 
+@Deprecated("Individual platform implementations should be used instead")
 internal expect class BlueFalcon {
     val log: Logger?
 

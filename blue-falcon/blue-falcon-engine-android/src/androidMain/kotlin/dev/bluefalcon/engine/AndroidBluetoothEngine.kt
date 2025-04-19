@@ -2,14 +2,13 @@ package dev.bluefalcon.engine
 
 import dev.bluefalcon.AdvertisementDataRetrievalKeys
 import dev.bluefalcon.BTCharacteristic
-import dev.bluefalcon.BTDescriptor
 import dev.bluefalcon.BTService
 import dev.bluefalcon.BlueFalcon
 import dev.bluefalcon.BlueFalconDelegate
 import dev.bluefalcon.BluetoothCharacteristic
-import dev.bluefalcon.BluetoothCharacteristicDescriptor
 import dev.bluefalcon.BluetoothDevice
 import dev.bluefalcon.BluetoothPeripheral
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
@@ -20,6 +19,9 @@ import kotlin.uuid.ExperimentalUuidApi
 class AndroidBluetoothEngine(
     override val config: AndroidBluetoothEngineConfig
 ) : BluetoothEngineBase("AndroidBluetoothEngine") {
+
+    override val dispatcher: CoroutineDispatcher
+        get() = Dispatchers.IO
 
     private val blueFalcon: BlueFalcon = BlueFalcon(
         config.logger,
@@ -37,7 +39,7 @@ class AndroidBluetoothEngine(
                 blueFalcon.delegates.add(
                     object : BlueFalconDelegate {
                         override fun didConnect(bluetoothPeripheral: BluetoothPeripheral) {
-                            CoroutineScope(Dispatchers.IO).launch {
+                            CoroutineScope(coroutineContext).launch {
                                 resultFlow.emit(
                                     BluetoothActionResult.Connect(
                                         device =
@@ -57,13 +59,13 @@ class AndroidBluetoothEngine(
             }
             is BluetoothAction.Disconnect -> {
                 blueFalcon.disconnect(getDevice(action.device))
-                CoroutineScope(Dispatchers.IO).launch {
+                CoroutineScope(coroutineContext).launch {
                     resultFlow.emit(BluetoothActionResult.Success)
                 }
             }
             is BluetoothAction.StopScan -> {
                 blueFalcon.stopScanning()
-                CoroutineScope(Dispatchers.IO).launch {
+                CoroutineScope(coroutineContext).launch {
                     resultFlow.emit(BluetoothActionResult.Success)
                 }
             }
@@ -73,7 +75,7 @@ class AndroidBluetoothEngine(
                         bluetoothPeripheral: BluetoothPeripheral,
                         advertisementData: Map<AdvertisementDataRetrievalKeys, Any>
                     ) {
-                        CoroutineScope(Dispatchers.IO).launch {
+                        CoroutineScope(coroutineContext).launch {
                             resultFlow.emit(
                                 BluetoothActionResult.Scan(
                                     device = BluetoothDevice(
@@ -98,7 +100,7 @@ class AndroidBluetoothEngine(
                         bluetoothCharacteristic: BluetoothCharacteristic
                     ) {
                         if (bluetoothCharacteristic.uuid != actionCharacteristic.uuid) return
-                        CoroutineScope(Dispatchers.IO).launch {
+                        CoroutineScope(coroutineContext).launch {
                             resultFlow.emit(
                                 BluetoothActionResult.ReadCharacteristic(
                                     device = BluetoothDevice(
@@ -131,7 +133,7 @@ class AndroidBluetoothEngine(
                         bluetoothCharacteristic: BluetoothCharacteristic,
                         success: Boolean
                     ) {
-                        CoroutineScope(Dispatchers.IO).launch {
+                        CoroutineScope(coroutineContext).launch {
                             resultFlow.emit(BluetoothActionResult.Success)
                         }
                     }
@@ -152,7 +154,7 @@ class AndroidBluetoothEngine(
             is BluetoothAction.DiscoverCharacteristics -> {
                 blueFalcon.delegates.add(object : BlueFalconDelegate {
                     override fun didDiscoverCharacteristics(bluetoothPeripheral: BluetoothPeripheral) {
-                        CoroutineScope(Dispatchers.IO).launch {
+                        CoroutineScope(coroutineContext).launch {
                             val characteristics = bluetoothPeripheral.services.flatMap { service ->
                                 service.value.characteristics.map { characteristic ->
                                     BTCharacteristic(
@@ -190,7 +192,7 @@ class AndroidBluetoothEngine(
             is BluetoothAction.DiscoverServices -> {
                 blueFalcon.delegates.add(object : BlueFalconDelegate {
                     override fun didDiscoverServices(bluetoothPeripheral: BluetoothPeripheral) {
-                        CoroutineScope(Dispatchers.IO).launch {
+                        CoroutineScope(coroutineContext).launch {
                             val services = bluetoothPeripheral.services.map {
                                 BTService(it.key, it.value.name)
                             }
@@ -216,7 +218,7 @@ class AndroidBluetoothEngine(
                 val device = getDevice(action.device)
                 val characteristic = device.characteristics.getValue(action.characteristic)
                 blueFalcon.indicateCharacteristic(device, characteristic, action.indicate)
-                CoroutineScope(Dispatchers.IO).launch {
+                CoroutineScope(coroutineContext).launch {
                     resultFlow.emit(BluetoothActionResult.Success)
                 }
             }
@@ -224,7 +226,7 @@ class AndroidBluetoothEngine(
                 val device = getDevice(action.device)
                 val characteristic = device.characteristics.getValue(action.characteristic)
                 blueFalcon.notifyCharacteristic(device, characteristic, action.notify)
-                CoroutineScope(Dispatchers.IO).launch {
+                CoroutineScope(coroutineContext).launch {
                     resultFlow.emit(BluetoothActionResult.Success)
                 }
             }
@@ -235,7 +237,7 @@ class AndroidBluetoothEngine(
                         bluetoothPeripheral: BluetoothPeripheral,
                         status: Int
                     ) {
-                        CoroutineScope(Dispatchers.IO).launch {
+                        CoroutineScope(coroutineContext).launch {
                             resultFlow.emit(BluetoothActionResult.MtuChanged(
                                 device = BluetoothDevice(
                                     bluetoothPeripheral.uuid,

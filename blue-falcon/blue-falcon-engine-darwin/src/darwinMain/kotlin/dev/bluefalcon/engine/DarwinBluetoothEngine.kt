@@ -8,6 +8,7 @@ import dev.bluefalcon.BlueFalconDelegate
 import dev.bluefalcon.BluetoothCharacteristic
 import dev.bluefalcon.BluetoothDevice
 import dev.bluefalcon.BluetoothPeripheral
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.IO
@@ -18,6 +19,9 @@ import kotlinx.coroutines.launch
 class DarwinBluetoothEngine(
     override val config: DarwinBluetoothEngineConfig
 ) : BluetoothEngineBase("DarwinEngine") {
+
+    override val dispatcher: CoroutineDispatcher
+        get() = Dispatchers.IO
 
     private val blueFalcon: BlueFalcon = BlueFalcon(
         config.logger,
@@ -33,7 +37,7 @@ class DarwinBluetoothEngine(
                 blueFalcon.delegates.add(
                     object : BlueFalconDelegate {
                         override fun didConnect(bluetoothPeripheral: BluetoothPeripheral) {
-                            CoroutineScope(Dispatchers.IO).launch {
+                            CoroutineScope(coroutineContext).launch {
                                 resultFlow.emit(
                                     BluetoothActionResult.Connect(
                                         device =
@@ -53,7 +57,7 @@ class DarwinBluetoothEngine(
             }
             is BluetoothAction.Disconnect -> {
                 blueFalcon.disconnect(getDevice(action.device))
-                CoroutineScope(Dispatchers.IO).launch {
+                CoroutineScope(coroutineContext).launch {
                     resultFlow.emit(BluetoothActionResult.Success)
                 }
             }
@@ -64,7 +68,7 @@ class DarwinBluetoothEngine(
                             bluetoothPeripheral: BluetoothPeripheral,
                             advertisementData: Map<AdvertisementDataRetrievalKeys, Any>
                         ) {
-                            CoroutineScope(Dispatchers.IO).launch {
+                            CoroutineScope(coroutineContext).launch {
                                 resultFlow.emit(
                                     BluetoothActionResult.Scan(
                                         device =
@@ -83,7 +87,7 @@ class DarwinBluetoothEngine(
             }
             is BluetoothAction.StopScan -> {
                 blueFalcon.stopScanning()
-                CoroutineScope(Dispatchers.IO).launch {
+                CoroutineScope(coroutineContext).launch {
                     resultFlow.emit(BluetoothActionResult.Success)
                 }
             }
@@ -97,7 +101,7 @@ class DarwinBluetoothEngine(
                         bluetoothCharacteristic: BluetoothCharacteristic
                     ) {
                         if (bluetoothCharacteristic.uuid != actionCharacteristic.uuid) return
-                        CoroutineScope(Dispatchers.IO).launch {
+                        CoroutineScope(coroutineContext).launch {
                             resultFlow.emit(
                                 BluetoothActionResult.ReadCharacteristic(
                                     device = BluetoothDevice(
@@ -130,7 +134,7 @@ class DarwinBluetoothEngine(
                         bluetoothCharacteristic: BluetoothCharacteristic,
                         success: Boolean
                     ) {
-                        CoroutineScope(Dispatchers.IO).launch {
+                        CoroutineScope(coroutineContext).launch {
                             resultFlow.emit(BluetoothActionResult.Success)
                         }
                     }
@@ -151,7 +155,7 @@ class DarwinBluetoothEngine(
             is BluetoothAction.DiscoverCharacteristics -> {
                 blueFalcon.delegates.add(object : BlueFalconDelegate {
                     override fun didDiscoverCharacteristics(bluetoothPeripheral: BluetoothPeripheral) {
-                        CoroutineScope(Dispatchers.IO).launch {
+                        CoroutineScope(coroutineContext).launch {
                             val characteristics = bluetoothPeripheral.services.flatMap { service ->
                                 service.value.characteristics.map { characteristic ->
                                     BTCharacteristic(
@@ -190,7 +194,7 @@ class DarwinBluetoothEngine(
             is BluetoothAction.DiscoverServices -> {
                 blueFalcon.delegates.add(object : BlueFalconDelegate {
                     override fun didDiscoverServices(bluetoothPeripheral: BluetoothPeripheral) {
-                        CoroutineScope(Dispatchers.IO).launch {
+                        CoroutineScope(coroutineContext).launch {
                             val services = bluetoothPeripheral.services.map {
                                 BTService(it.key, it.value.name)
                             }
@@ -216,7 +220,7 @@ class DarwinBluetoothEngine(
                 val device = getDevice(action.device)
                 val characteristic = device.characteristics.getValue(action.characteristic)
                 blueFalcon.indicateCharacteristic(device, characteristic, action.indicate)
-                CoroutineScope(Dispatchers.IO).launch {
+                CoroutineScope(coroutineContext).launch {
                     resultFlow.emit(BluetoothActionResult.Success)
                 }
             }
@@ -224,7 +228,7 @@ class DarwinBluetoothEngine(
                 val device = getDevice(action.device)
                 val characteristic = device.characteristics.getValue(action.characteristic)
                 blueFalcon.notifyCharacteristic(device, characteristic, action.notify)
-                CoroutineScope(Dispatchers.IO).launch {
+                CoroutineScope(coroutineContext).launch {
                     resultFlow.emit(BluetoothActionResult.Success)
                 }
             }
@@ -235,7 +239,7 @@ class DarwinBluetoothEngine(
                         bluetoothPeripheral: BluetoothPeripheral,
                         status: Int
                     ) {
-                        CoroutineScope(Dispatchers.IO).launch {
+                        CoroutineScope(coroutineContext).launch {
                             resultFlow.emit(BluetoothActionResult.MtuChanged(
                                 device = BluetoothDevice(
                                     bluetoothPeripheral.uuid,
