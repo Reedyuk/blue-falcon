@@ -1,10 +1,10 @@
 package com.example.bluefalconcomposemultiplatform.ble.presentation
 
-import com.example.bluefalconcomposemultiplatform.ble.data.DeviceEvent
 import dev.bluefalcon.engine.blueFalconEngine
 import dev.bluefalcon.engine.WriteType
 import dev.bluefalcon.BluetoothPeripheral
 import dev.bluefalcon.ApplicationContext
+import dev.bluefalcon.Logger
 import dev.bluefalcon.engine.BluetoothAction
 import dev.bluefalcon.engine.BluetoothActionResult
 import dev.icerock.moko.mvvm.viewmodel.ViewModel
@@ -24,7 +24,24 @@ class BluetoothDeviceViewModel(
     val deviceState: StateFlow<BluetoothDeviceState> get() = _deviceState
 
     private val blueFalconEngine = blueFalconEngine(
-        context = applicationContext
+        context = applicationContext,
+        logger = object : Logger {
+            override fun debug(message: String, cause: Throwable?) {
+                println("DEBUG: $message")
+            }
+
+            override fun error(message: String, cause: Throwable?) {
+                println("ERROR: $message")
+            }
+
+            override fun info(message: String, cause: Throwable?) {
+                println("INFO: $message")
+            }
+
+            override fun warn(message: String, cause: Throwable?) {
+                println("WARN: $message")
+            }
+        }
     )
 
     @OptIn(kotlin.uuid.ExperimentalUuidApi::class)
