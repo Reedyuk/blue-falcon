@@ -20,13 +20,10 @@ class DarwinBluetoothEngine(
     override val config: DarwinBluetoothEngineConfig
 ) : BluetoothEngineBase("DarwinEngine") {
 
-    override val dispatcher: CoroutineDispatcher
-        get() = Dispatchers.IO
-
     private val blueFalcon: BlueFalcon = BlueFalcon(
         config.logger,
         config.autoDiscoverAllServicesAndCharacteristics
-    ).also { it.delegates.add(config.bluetoothCallbackDelegate) }
+    ).also { config.bluetoothCallbackDelegate?.let { it1 -> it.delegates.add(it1) } }
 
     private fun getDevice(device: String) = blueFalcon.peripherals.value.first { peripheral -> peripheral.uuid == device }
 

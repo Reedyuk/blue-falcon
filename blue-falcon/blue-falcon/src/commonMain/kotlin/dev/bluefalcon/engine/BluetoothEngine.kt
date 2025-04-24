@@ -6,5 +6,5 @@ import dev.bluefalcon.engine.BluetoothEngine
 
 expect fun blueFalconEngine(
     context: ApplicationContext,
-    delegate: BlueFalconDelegate
+    delegate: BlueFalconDelegate? = null
 ): BluetoothEngine

@@ -6,6 +6,6 @@ import dev.bluefalcon.BlueFalconDelegate
 class AndroidBluetoothEngineConfig(
     val context: ApplicationContext,
     val autoDiscoverAllServicesAndCharacteristics: Boolean = true,
-    bluetoothCallbackDelegate: BlueFalconDelegate,
+    bluetoothCallbackDelegate: BlueFalconDelegate?,
 ) : BluetoothEngineConfig(bluetoothCallbackDelegate) {
 }

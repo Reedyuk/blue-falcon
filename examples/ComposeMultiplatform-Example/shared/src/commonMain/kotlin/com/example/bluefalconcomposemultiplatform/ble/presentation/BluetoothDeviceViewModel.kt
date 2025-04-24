@@ -1,6 +1,5 @@
 package com.example.bluefalconcomposemultiplatform.ble.presentation
 
-import com.example.bluefalconcomposemultiplatform.ble.data.BleDelegate
 import com.example.bluefalconcomposemultiplatform.ble.data.DeviceEvent
 import dev.bluefalcon.engine.blueFalconEngine
 import dev.bluefalcon.engine.WriteType
@@ -19,15 +18,13 @@ import kotlinx.coroutines.launch
 
 class BluetoothDeviceViewModel(
     applicationContext: ApplicationContext,
-    delegate: BleDelegate = BleDelegate()
 ): ViewModel() {
 
     private val _deviceState: MutableStateFlow<BluetoothDeviceState> = MutableStateFlow(BluetoothDeviceState())
     val deviceState: StateFlow<BluetoothDeviceState> get() = _deviceState
 
     private val blueFalconEngine = blueFalconEngine(
-        context = applicationContext,
-        delegate = delegate
+        context = applicationContext
     )
 
     @OptIn(kotlin.uuid.ExperimentalUuidApi::class)
@@ -184,6 +181,10 @@ class BluetoothDeviceViewModel(
                         }
                     }
                 }
+            }
+
+            is UiEvent.OnExportDetailsClick -> {
+                // TODO: Implement export functionality - export to json services and characteristics
             }
         }
     }

@@ -4,6 +4,6 @@ import dev.bluefalcon.ApplicationContext
 import dev.bluefalcon.BlueFalconDelegate
 
 class JsBluetoothEngineConfig(
-    bluetoothCallbackDelegate: BlueFalconDelegate,
+    bluetoothCallbackDelegate: BlueFalconDelegate?,
 ) : BluetoothEngineConfig(bluetoothCallbackDelegate) {
 }

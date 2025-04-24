@@ -11,7 +11,7 @@ class JsBluetoothEngine(
     private val blueFalcon: BlueFalcon = BlueFalcon(
         config.logger,
         false
-    ).also { it.delegates.add(config.bluetoothCallbackDelegate) }
+    ).also { config.bluetoothCallbackDelegate?.let { it1 -> it.delegates.add(it1) } }
 
     override suspend fun execute(action: BluetoothAction): Flow<BluetoothActionResult> {
         when (action) {

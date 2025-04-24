@@ -8,6 +8,8 @@ sealed interface UiEvent {
     data class OnDisconnectClick(val macId: String): UiEvent
     data class OnShowDetailsClick(val macId: String): UiEvent
 
+    data class OnExportDetailsClick(val macId: String): UiEvent
+
     data class OnReadCharacteristic(val macId: String, val characteristic: BTCharacteristic): UiEvent
     data class OnWriteCharacteristic(val macId: String, val characteristic: BTCharacteristic, val value: String): UiEvent
 }

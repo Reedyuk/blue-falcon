@@ -18,6 +18,8 @@ import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.ArrowDownward
 import androidx.compose.material.icons.filled.ArrowForward
 import androidx.compose.material.icons.filled.ArrowUpward
+import androidx.compose.material.icons.filled.ConnectWithoutContact
+import androidx.compose.material.icons.filled.LinkOff
 import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -28,6 +30,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.bluefalconcomposemultiplatform.ble.presentation.UiEvent
+import com.example.bluefalconcomposemultiplatform.core.presentation.IconButton
 import dev.bluefalcon.BTCharacteristic
 import dev.bluefalcon.BTService
 import dev.bluefalcon.BluetoothCharacteristic
@@ -76,38 +79,42 @@ fun FoundDeviceCard(
                         color = MaterialTheme.colorScheme.onPrimary,
                         fontSize = 12.sp
                     )
-                    if (!connected) {
-                        Button(
-                            onClick = {
-                                onEvent(UiEvent.OnConnectClick(macId))
-                            }
-                        ) {
-                            Text("Connect")
-                        }
-                    } else {
-                        Button(
-                            onClick = {
-                                onEvent(UiEvent.OnDisconnectClick(macId))
-                            }
-                        ) {
-                            Text("Disconnect")
-                        }
-                    }
-                    Button({
-                        onEvent.invoke(UiEvent.OnShowDetailsClick(macId))
-                    }) {
-                        if (showFullDetails) {
-                            Icon(
-                                modifier = Modifier.size(30.dp),
-                                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                                contentDescription = "Close"
+                    Row {
+                        if (!connected) {
+                            IconButton(
+                                icon = Icons.Default.ConnectWithoutContact,
+                                contentDescription = "Connect",
+                                onClick = {
+                                    onEvent(UiEvent.OnConnectClick(macId))
+                                }
                             )
                         } else {
-                            Icon(
-                                modifier = Modifier.size(30.dp),
-                                imageVector = Icons.AutoMirrored.Filled.ArrowForward,
-                                contentDescription = "Open"
+                            IconButton(
+                                icon = Icons.Default.LinkOff,
+                                contentDescription = "Disconnect",
+                                onClick = {
+                                    onEvent(UiEvent.OnDisconnectClick(macId))
+                                }
                             )
+                        }
+                        if (connected) {
+                            if (showFullDetails) {
+                                IconButton(
+                                    icon = Icons.AutoMirrored.Filled.ArrowBack,
+                                    contentDescription = "Close",
+                                    onClick = {
+                                        onEvent.invoke(UiEvent.OnShowDetailsClick(macId))
+                                    }
+                                )
+                            } else {
+                                IconButton(
+                                    icon = Icons.AutoMirrored.Filled.ArrowForward,
+                                    contentDescription = "Open",
+                                    onClick = {
+                                        onEvent.invoke(UiEvent.OnShowDetailsClick(macId))
+                                    }
+                                )
+                            }
                         }
                     }
                 }
@@ -121,6 +128,14 @@ fun FoundDeviceCard(
                 }
 
                 if (showFullDetails) {
+                    Row {
+                        Button({
+                            onEvent(UiEvent.OnExportDetailsClick(macId))
+                        }) {
+                            Text("Export Services & Characteristics")
+                        }
+                    }
+
                     Column {
                         Text(
                             "Services",
@@ -180,37 +195,27 @@ fun CharacteristicsRow(
                     fontSize = 10.sp
                 )
                 Text(
-                    "Value: ${characteristic.value?.decodeToString()}",
+                    "DValue: ${characteristic.value?.decodeToString()}",
                     color = MaterialTheme.colorScheme.onPrimary,
                     fontSize = 10.sp
                 )
             }
         }
         Row {
-            Button(
+            IconButton(
+                icon = Icons.Default.ArrowDownward,
+                contentDescription = "Read",
                 onClick = {
                     onEvent(UiEvent.OnReadCharacteristic(macId, characteristic))
-                },
-                contentPadding = PaddingValues(1.dp)
-            ) {
-                Icon(
-                    modifier = Modifier.size(40.dp),
-                    imageVector = Icons.Default.ArrowUpward,
-                    contentDescription = "Read"
-                )
-            }
-            Button(
+                }
+            )
+            IconButton(
+                icon = Icons.Default.ArrowUpward,
+                contentDescription = "Write",
                 onClick = {
                     onEvent(UiEvent.OnWriteCharacteristic(macId, characteristic, "123"))
-                },
-                contentPadding = PaddingValues(1.dp)
-            ) {
-                Icon(
-                    modifier = Modifier.size(40.dp),
-                    imageVector = Icons.Default.ArrowDownward,
-                    contentDescription = "Write"
-                )
-            }
+                }
+            )
         }
     }
 }
