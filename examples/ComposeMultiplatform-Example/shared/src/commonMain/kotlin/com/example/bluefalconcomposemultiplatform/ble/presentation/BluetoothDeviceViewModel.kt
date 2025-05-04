@@ -48,31 +48,37 @@ class BluetoothDeviceViewModel(
     fun onEvent(event: UiEvent) {
         when(event) {
             UiEvent.OnScanClick -> {
+                _deviceState.value.let { deviceState ->
+                    _deviceState.tryEmit(deviceState.copy(isScanning = !deviceState.isScanning))
+                }
                 CoroutineScope(Dispatchers.IO).launch {
-                    if (_deviceState.value.isScanning) {
+                    if (!_deviceState.value.isScanning) {
                         blueFalconEngine.execute(BluetoothAction.StopScan)
                     } else {
-                        CoroutineScope(Dispatchers.IO).launch {
-                            blueFalconEngine.execute(BluetoothAction.Scan()).collect {
-                                when (it) {
-                                    is BluetoothActionResult.Scan -> {
-                                        _deviceState.update { state ->
-                                            val updateDevices = state.devices.toMutableMap()
-                                            updateDevices[it.device.uuid] = EnhancedBluetoothPeripheral(
-                                                false,
-                                                it.device,
-                                                false
-                                            )
-                                            state.copy(devices = HashMap(updateDevices))
-                                        }
+                        blueFalconEngine.execute(BluetoothAction.Scan()).collect {
+                            when (it) {
+                                is BluetoothActionResult.Scan -> {
+                                    _deviceState.update { state ->
+                                        val updateDevices = state.devices.toMutableMap()
+                                        updateDevices[it.device.uuid] = EnhancedBluetoothPeripheral(
+                                            false,
+                                            it.device,
+                                            it.advertisementInfo.map { (key, value) ->
+                                                key to when (value) {
+                                                    is String -> value
+                                                    is ByteArray -> value.contentToString()
+                                                    else -> value.toString()
+                                                }
+                                            }.toMap(),
+                                            false
+                                        )
+                                        state.copy(devices = HashMap(updateDevices))
                                     }
-                                    else -> {}
                                 }
+
+                                else -> {}
                             }
                         }
-                    }
-                    _deviceState.update { state ->
-                        state.copy(isScanning = !state.isScanning)
                     }
                 }
             }
@@ -85,7 +91,10 @@ class BluetoothDeviceViewModel(
                                 _deviceState.update { state ->
                                     val updateDevices = state.devices.toMutableMap()
                                     updateDevices[event.macId]?.let {
-                                        updateDevices[event.macId] = it.copy(connected = true)
+                                        updateDevices[event.macId] = it.copy(
+                                            connected = true,
+                                            showDetails = true
+                                        )
                                     }
                                     state.copy(devices = HashMap(updateDevices))
                                 }

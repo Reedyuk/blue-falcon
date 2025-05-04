@@ -31,6 +31,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.bluefalconcomposemultiplatform.ble.presentation.UiEvent
 import com.example.bluefalconcomposemultiplatform.core.presentation.IconButton
+import dev.bluefalcon.AdvertisementDataRetrievalKeys
 import dev.bluefalcon.BTCharacteristic
 import dev.bluefalcon.BTService
 import dev.bluefalcon.BluetoothCharacteristic
@@ -40,6 +41,7 @@ import dev.bluefalcon.BluetoothService
 fun FoundDeviceCard(
     deviceName: String?,
     macId: String,
+    advertisementInfo: Map<AdvertisementDataRetrievalKeys, String>,
     rssi: Float?,
     services: List<BTService>,
     connected: Boolean,
@@ -116,6 +118,16 @@ fun FoundDeviceCard(
                                 )
                             }
                         }
+                    }
+                }
+
+                Row {
+                    advertisementInfo.forEach { (key, value) ->
+                        Text(
+                            text = "${key.name}:${value}",
+                            color = MaterialTheme.colorScheme.onPrimary,
+                            fontSize = 10.sp
+                        )
                     }
                 }
 

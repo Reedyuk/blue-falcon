@@ -27,7 +27,8 @@ class DarwinBluetoothEngine(
 
     private fun getDevice(device: String) = blueFalcon.peripherals.value.first { peripheral -> peripheral.uuid == device }
 
-    override suspend fun execute(action: BluetoothAction): Flow<BluetoothActionResult> {
+    override fun execute(action: BluetoothAction): Flow<BluetoothActionResult> {
+        config.logger?.info("Executing action: $action")
         val resultFlow: MutableSharedFlow<BluetoothActionResult> = MutableSharedFlow()
         when (action) {
             is BluetoothAction.Connect -> {
@@ -54,9 +55,7 @@ class DarwinBluetoothEngine(
             }
             is BluetoothAction.Disconnect -> {
                 blueFalcon.disconnect(getDevice(action.device))
-                CoroutineScope(coroutineContext).launch {
-                    resultFlow.emit(BluetoothActionResult.Success)
-                }
+                resultFlow.tryEmit(BluetoothActionResult.Success)
             }
             is BluetoothAction.Scan -> {
                 blueFalcon.delegates.add(
@@ -73,7 +72,8 @@ class DarwinBluetoothEngine(
                                                 bluetoothPeripheral.uuid,
                                                 bluetoothPeripheral.name,
                                                 bluetoothPeripheral.rssi
-                                            )
+                                            ),
+                                        advertisementInfo = advertisementData
                                     )
                                 )
                             }
@@ -81,15 +81,16 @@ class DarwinBluetoothEngine(
                     }
                 )
                 blueFalcon.scan(action.filters)
+                // issue is multiple scan jobs...
             }
             is BluetoothAction.StopScan -> {
                 blueFalcon.stopScanning()
-                CoroutineScope(coroutineContext).launch {
-                    resultFlow.emit(BluetoothActionResult.Success)
-                }
+                // could we cycle through all the delegates, remove ones that are subscribed to scanning.
+                resultFlow.tryEmit(BluetoothActionResult.Success)
             }
 
             is BluetoothAction.ReadCharacteristic -> {
+                // same issue here, where it will constantly get notified.
                 val device = getDevice(action.device)
                 val actionCharacteristic = device.characteristics.getValue(action.characteristic)
                 blueFalcon.delegates.add(object : BlueFalconDelegate {

@@ -1,6 +1,5 @@
 package dev.bluefalcon
 
-import dev.bluefalcon.engine.BluetoothActionResult
 import kotlinx.coroutines.flow.MutableStateFlow
 
 expect class BluetoothPeripheral(device: NativeBluetoothDevice) {
@@ -16,7 +15,7 @@ expect class BluetoothPeripheral(device: NativeBluetoothDevice) {
 
 expect class NativeBluetoothDevice
 
-// Bluetooth Peripheral replacement
+// Bluetooth Peripheral replacement -- not a fan of recreating it all the time.
 data class BluetoothDevice(
     val uuid: String,
     val name: String? = null,

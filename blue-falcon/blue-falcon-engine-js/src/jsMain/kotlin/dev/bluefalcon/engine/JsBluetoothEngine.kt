@@ -13,7 +13,7 @@ class JsBluetoothEngine(
         false
     ).also { config.bluetoothCallbackDelegate?.let { it1 -> it.delegates.add(it1) } }
 
-    override suspend fun execute(action: BluetoothAction): Flow<BluetoothActionResult> {
+    override fun execute(action: BluetoothAction): Flow<BluetoothActionResult> {
         when (action) {
             is BluetoothAction.Connect -> {
                 // blueFalcon.connect(action.device)

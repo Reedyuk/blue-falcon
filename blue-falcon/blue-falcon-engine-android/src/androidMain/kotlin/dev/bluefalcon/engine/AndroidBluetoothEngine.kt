@@ -28,7 +28,7 @@ class AndroidBluetoothEngine(
     private fun getDevice(device: String) = blueFalcon.peripherals.value.first { peripheral -> peripheral.uuid == device }
 
     @OptIn(ExperimentalUuidApi::class)
-    override suspend fun execute(action: BluetoothAction): Flow<BluetoothActionResult> {
+    override fun execute(action: BluetoothAction): Flow<BluetoothActionResult> {
         val resultFlow: MutableSharedFlow<BluetoothActionResult> = MutableSharedFlow()
         when (action) {
             is BluetoothAction.Connect -> {
@@ -79,7 +79,8 @@ class AndroidBluetoothEngine(
                                         bluetoothPeripheral.name,
                                         bluetoothPeripheral.rssi,
                                         bluetoothPeripheral.mtuSize
-                                    )
+                                    ),
+                                    advertisementInfo = advertisementData
                                 )
                             )
                         }

@@ -10,5 +10,5 @@ interface BluetoothEngine : CoroutineScope {
     // config object
 
     // this will be the bluetooth action.
-    suspend fun execute(action: BluetoothAction): Flow<BluetoothActionResult>
+    fun execute(action: BluetoothAction): Flow<BluetoothActionResult>
 }

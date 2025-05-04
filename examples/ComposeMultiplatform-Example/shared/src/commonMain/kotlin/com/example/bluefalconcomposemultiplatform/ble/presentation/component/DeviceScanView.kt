@@ -54,6 +54,7 @@ fun DeviceScanView(
                 FoundDeviceCard(
                     deviceName = if (!device.peripheral.name.isNullOrBlank()) device.peripheral.name else "No Name",
                     macId = device.peripheral.uuid,
+                    advertisementInfo = device.advertisementInfo,
                     rssi = device.peripheral.rssi,
                     services = device.peripheral.services,
                     connected = device.connected,
