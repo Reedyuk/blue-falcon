@@ -34,11 +34,11 @@ actual class BlueFalcon actual constructor(
 
     actual fun requestConnectionPriority(
         bluetoothPeripheral: BluetoothPeripheral,
-        connectionPriority: Int
+        connectionPriority: ConnectionPriority
     ) {
         log?.info("requestConnectionPriority")
         mGattClientCallback.gattsForDevice(bluetoothPeripheral.device).forEach { gatt ->
-            gatt.requestConnectionPriority(connectionPriority)
+            gatt.requestConnectionPriority(connectionPriority.toNative())
         }
     }
 
@@ -280,7 +280,7 @@ actual class BlueFalcon actual constructor(
         value: ByteArray,
         writeType: Int?
     ) {
-        log?.info("Writing value {length = ${value.size}, bytes = 0x${value.toHexString()}} with response $writeType")
+        log?.info("${bluetoothPeripheral.uuid} Writing value {length = ${value.size}, bytes = 0x${value.toHexString()}} with response $writeType")
         mGattClientCallback.gattsForDevice(bluetoothPeripheral.device).forEach { gatt ->
             fetchCharacteristic(bluetoothCharacteristic, gatt)
                 .forEach {
@@ -377,8 +377,7 @@ actual class BlueFalcon actual constructor(
             gatts.filter { it.device.address == bluetoothDevice.address }
 
         override fun onConnectionStateChange(gatt: BluetoothGatt?, status: Int, newState: Int) {
-            super.onConnectionStateChange(gatt, status, newState)
-            log?.info("onConnectionStateChange")
+            log?.info("onConnectionStateChange status: $status newState: $newState")
             gatt?.let { bluetoothGatt ->
                 bluetoothGatt.device.let {
                     //BluetoothProfile#STATE_DISCONNECTED} or {@link BluetoothProfile#STATE_CONNECTED}
@@ -522,7 +521,7 @@ actual class BlueFalcon actual constructor(
             gatt: BluetoothGatt?,
             characteristic: BluetoothGattCharacteristic?
         ) {
-            log?.info("handleCharacteristicValueChange ${characteristic?.uuid}")
+            log?.info("handleCharacteristicValueChange ${characteristic?.uuid} ${characteristic?.value.contentToString()}")
             characteristic?.let { forcedCharacteristic ->
                 val characteristic = BluetoothCharacteristic(forcedCharacteristic)
                 gatt?.device?.let { bluetoothDevice ->

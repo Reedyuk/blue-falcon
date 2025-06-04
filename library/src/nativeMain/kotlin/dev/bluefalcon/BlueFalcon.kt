@@ -35,7 +35,7 @@ actual class BlueFalcon actual constructor(
 
     actual fun requestConnectionPriority(
         bluetoothPeripheral: BluetoothPeripheral,
-        connectionPriority: Int
+        connectionPriority: ConnectionPriority
     ) { }
 
     actual fun connectionState(bluetoothPeripheral: BluetoothPeripheral): BluetoothPeripheralState =
