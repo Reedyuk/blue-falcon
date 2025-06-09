@@ -23,6 +23,8 @@ actual class BluetoothCharacteristic(val characteristic: CBCharacteristic) {
     actual val descriptors: List<BluetoothCharacteristicDescriptor>
         get() = characteristic.descriptors as List<BluetoothCharacteristicDescriptor>
 
+    actual val service: BluetoothService? get() = characteristic.service?.let { BluetoothService(it) }
+
     internal actual val _descriptorsFlow = MutableStateFlow<List<BluetoothCharacteristicDescriptor>>(emptyList())
 
     actual val uuid: Uuid

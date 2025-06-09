@@ -14,6 +14,7 @@ actual class BluetoothCharacteristic(val characteristic: BluetoothGattCharacteri
         get() = characteristic.value
     actual val descriptors: List<BluetoothCharacteristicDescriptor>
         get() = characteristic.descriptors
+    actual val service: BluetoothService? get() = BluetoothService(characteristic.service)
 
     internal actual val _descriptorsFlow = MutableStateFlow<List<BluetoothCharacteristicDescriptor>>(emptyList())
 
@@ -39,6 +40,15 @@ actual class BluetoothCharacteristic(val characteristic: BluetoothGattCharacteri
             return arrayOfNulls(size)
         }
     }
+
+    override fun equals(other: Any?): Boolean =
+        if (this === other) true
+        else if (other !is BluetoothCharacteristic) false
+        else characteristic.uuid == other.characteristic.uuid &&
+                characteristic.service.uuid == other.characteristic.service.uuid
+
+    override fun hashCode(): Int =
+        31 * characteristic.uuid.hashCode() + characteristic.service.uuid.hashCode()
 
     actual val uuid: Uuid
         get() = characteristic.uuid.toKotlinUuid()

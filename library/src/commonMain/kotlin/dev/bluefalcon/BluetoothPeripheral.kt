@@ -10,7 +10,7 @@ expect class BluetoothPeripheral(device: NativeBluetoothDevice) {
     val services: Map<Uuid, BluetoothService>
     internal val _servicesFlow: MutableStateFlow<List<BluetoothService>>
 
-    val characteristics: Map<Uuid, BluetoothCharacteristic>
+    val characteristics: Map<Uuid, List<BluetoothCharacteristic>>
 }
 
 expect class NativeBluetoothDevice

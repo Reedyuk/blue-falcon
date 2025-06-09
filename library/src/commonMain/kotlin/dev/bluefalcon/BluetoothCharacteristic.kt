@@ -9,6 +9,7 @@ expect class BluetoothCharacteristic {
     val descriptors: List<BluetoothCharacteristicDescriptor>
     val isNotifying: Boolean
     internal val _descriptorsFlow: MutableStateFlow<List<BluetoothCharacteristicDescriptor>>
+    val service: BluetoothService?
 }
 
 expect class BluetoothCharacteristicDescriptor
