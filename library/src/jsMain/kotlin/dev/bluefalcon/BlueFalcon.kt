@@ -45,7 +45,7 @@ actual class BlueFalcon actual constructor(
     @JsName("requestConnectionPriority")
     actual fun requestConnectionPriority(
         bluetoothPeripheral: BluetoothPeripheral,
-        connectionPriority: Int
+        connectionPriority: ConnectionPriority
     ) {
         // Not supported in Web Bluetooth API
     }

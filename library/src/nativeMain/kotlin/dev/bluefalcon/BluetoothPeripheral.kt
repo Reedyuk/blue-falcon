@@ -29,8 +29,9 @@ actual class BluetoothPeripheral(val bluetoothDevice: CBPeripheral, val rssiValu
             ?.associateBy { it.uuid }
             ?: emptyMap()
 
-    actual val characteristics: Map<Uuid, BluetoothCharacteristic>
+    actual val characteristics: Map<Uuid, List<BluetoothCharacteristic>>
         get() = services.values
-            .flatMap { it.characteristics }
-            .associateBy { it.uuid }
+            .flatMap { service -> service.characteristics }
+            .groupBy { characteristic -> characteristic.uuid } // Group by characteristic UUID
+            .mapValues { entry -> entry.value }
 }
