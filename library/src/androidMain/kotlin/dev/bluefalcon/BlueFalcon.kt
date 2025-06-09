@@ -282,7 +282,7 @@ actual class BlueFalcon actual constructor(
         value: ByteArray,
         writeType: Int?
     ) {
-        log?.info("${mGattClientCallback.gattsForDevice(bluetoothPeripheral.device)} ${bluetoothPeripheral.uuid} Writing value {length = ${value.size}, bytes = 0x${value.toHexString()}} with response $writeType")
+        log?.info("[${bluetoothPeripheral.uuid}] Writing value {length = ${value.size}, bytes = 0x${value.toHexString()}} with response $writeType")
         mGattClientCallback.gattsForDevice(bluetoothPeripheral.device).forEach { gatt ->
             fetchCharacteristic(bluetoothCharacteristic, gatt)
                 .forEach {

@@ -52,13 +52,7 @@ actual class BluetoothPeripheral actual constructor(val device: NativeBluetoothD
 
     actual val characteristics: Map<Uuid, List<BluetoothCharacteristic>>
         get() = services.values
-            .flatMap { service -> // Iterate through each service
-                service.characteristics.map { characteristic -> // For each characteristic in the service
-                    Pair(service.uuid, characteristic) // Create a pair of (serviceUUID, characteristic)
-                }
-            }
-            .groupBy { (_, characteristic) -> characteristic.uuid } // Group by characteristic UUID
-            .mapValues { entry -> // For each entry in the grouped map
-                entry.value.map { (_, characteristic) -> characteristic } // Extract only the characteristics
-            }
+            .flatMap { service -> service.characteristics }
+            .groupBy { characteristic -> characteristic.uuid } // Group by characteristic UUID
+            .mapValues { entry -> entry.value }
 }
