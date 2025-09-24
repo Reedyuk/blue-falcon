@@ -46,7 +46,7 @@ kotlin {
                 implementation("dev.icerock.moko:mvvm-flow-compose:0.16.1")
 
                 // BlueFalcon dependency here
-                implementation("dev.bluefalcon:blue-falcon:2.2.4")
+                implementation("dev.bluefalcon:blue-falcon:3.0.0")
             }
         }
         val commonTest by getting {
@@ -58,6 +58,8 @@ kotlin {
             dependencies {
                 implementation("androidx.appcompat:appcompat:1.6.1")
                 implementation("androidx.activity:activity-compose:1.7.2")
+
+//                implementation("dev.bluefalcon:blue-falcon-engine-android:3.0.0")
             }
         }
         val androidUnitTest by getting
@@ -67,6 +69,7 @@ kotlin {
         val iosMain by creating {
             dependencies {
                 // Add iOS dependencies here
+//                implementation("dev.bluefalcon:blue-falcon-engine-darwin:3.0.0")
             }
             dependsOn(commonMain)
             iosX64Main.dependsOn(this)

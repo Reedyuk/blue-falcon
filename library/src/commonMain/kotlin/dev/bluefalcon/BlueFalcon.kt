@@ -4,6 +4,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 
+@Deprecated("Use BlueFalconEngine instead")
 expect class BlueFalcon(
     log: Logger? = PrintLnLogger,
     context: ApplicationContext,
