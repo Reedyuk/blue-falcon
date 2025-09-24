@@ -1,5 +1,6 @@
 package dev.bluefalcon
 
+import kotlinx.cinterop.ObjCSignatureOverride
 import platform.CoreBluetooth.*
 import platform.Foundation.NSError
 import platform.darwin.NSObject
@@ -46,6 +47,28 @@ class PeripheralDelegate constructor(
         }
     }
 
+    @ObjCSignatureOverride
+    override fun peripheral(
+        peripheral: CBPeripheral,
+        didWriteValueForCharacteristic: CBCharacteristic,
+        error: NSError?
+    ) {
+        if (error != null) {
+            log?.error("Error with characteristic write $error")
+        }
+        log?.info("handleCharacteristicValueWrite ${didWriteValueForCharacteristic.UUID}")
+        val device = BluetoothPeripheral(peripheral, rssiValue = null)
+        val characteristic = BluetoothCharacteristic(didWriteValueForCharacteristic)
+        blueFalcon.delegates.forEach {
+            it.didWriteCharacteristic(
+                device,
+                characteristic,
+                error != null,
+            )
+        }
+    }
+
+    @ObjCSignatureOverride
     override fun peripheral(
         peripheral: CBPeripheral,
         didUpdateValueForCharacteristic: CBCharacteristic,
