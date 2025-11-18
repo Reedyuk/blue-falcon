@@ -84,7 +84,7 @@ actual class BlueFalcon actual constructor(
         BluetoothPermissionException::class,
         BluetoothNotEnabledException::class
     )
-    actual fun scan(filters: ServiceFilter?) {
+    actual fun scan(filters: List<ServiceFilter>) {
         isScanning = true
         when (centralManager.state) {
             CBManagerStateUnknown -> throw BluetoothUnknownException("Authorization state: ${centralManager.authorization()}")
@@ -93,13 +93,16 @@ actual class BlueFalcon actual constructor(
             CBManagerStateUnauthorized -> throw BluetoothPermissionException()
             CBManagerStatePoweredOff -> throw BluetoothNotEnabledException()
             CBManagerStatePoweredOn -> {
-                if (filters != null) {
-                    centralManager.scanForPeripheralsWithServices(
-                        filters.serviceUuids,
-                        mapOf(CBCentralManagerScanOptionAllowDuplicatesKey to true)
-                    )
-                } else {
-                    centralManager.scanForPeripheralsWithServices(null, mapOf(CBCentralManagerScanOptionAllowDuplicatesKey to true) )
+                when {
+                    filters.isEmpty() -> {
+                        centralManager.scanForPeripheralsWithServices(null, mapOf(CBCentralManagerScanOptionAllowDuplicatesKey to true) )
+                    }
+                    else -> {
+                        centralManager.scanForPeripheralsWithServices(
+                            filters.flatMap { it.serviceUuids },
+                            mapOf(CBCentralManagerScanOptionAllowDuplicatesKey to true)
+                        )
+                    }
                 }
             }
         }
