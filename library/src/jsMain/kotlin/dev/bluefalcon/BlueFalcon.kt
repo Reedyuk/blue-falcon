@@ -78,12 +78,12 @@ actual class BlueFalcon actual constructor(
     actual fun stopScanning() {}
 
     @JsName("rescan")
-    actual fun scan(filters: ServiceFilter?) {
+    actual fun scan(filters: List<ServiceFilter>) {
         window.navigator.bluetooth.requestDevice(
             BluetoothOptions(
-                false,
-                arrayOf(BluetoothOptions.Filter.Services(filters?.serviceUuids ?: emptyArray())),
-                filters?.serviceUuids ?: emptyArray()
+                acceptAllDevices = false,
+                filters = filters.map { BluetoothOptions.Filter.Services(it.serviceUuids) }.toTypedArray(),
+                optionalServices = filters.flatMap { it.optionalServices.toList() }.toTypedArray()
             )
         )
             .then { bluetoothDevice ->

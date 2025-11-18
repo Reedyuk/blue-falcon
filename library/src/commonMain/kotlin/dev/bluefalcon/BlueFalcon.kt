@@ -34,7 +34,7 @@ expect class BlueFalcon(
         BluetoothPermissionException::class,
         BluetoothNotEnabledException::class
     )
-    fun scan(filters: ServiceFilter? = null)
+    fun scan(filters: List<ServiceFilter> = emptyList())
 
     fun stopScanning()
 

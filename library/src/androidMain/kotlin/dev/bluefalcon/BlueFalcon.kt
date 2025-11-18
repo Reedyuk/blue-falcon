@@ -76,22 +76,30 @@ actual class BlueFalcon actual constructor(
         bluetoothManager.adapter?.bluetoothLeScanner?.stopScan(mBluetoothScanCallBack)
     }
 
-    actual fun scan(filters: ServiceFilter?) {
+    actual fun scan(filters: List<ServiceFilter>) {
         log?.info("BT Scan started $filters")
         isScanning = true
 
-        val filterBuilder = ScanFilter.Builder()
-        filters?.let { filters ->
-            filters.serviceUuids.forEach {
-                filterBuilder.setServiceUuid(it)
+        val formattedFilters: List<ScanFilter> = when {
+            filters.isEmpty() -> {
+                listOf(ScanFilter.Builder().build())
             }
-            filters.serviceData.forEach {
-                filterBuilder.setServiceData(it.key, it.value)
+            else -> {
+                filters.map { filter ->
+                    val filterBuilder = ScanFilter.Builder()
+                    filter.serviceUuids.forEach {
+                        filterBuilder.setServiceUuid(it)
+                    }
+                    filter.serviceData.forEach {
+                        filterBuilder.setServiceData(it.key, it.value)
+                    }
+                    filterBuilder.build()
+                }
             }
         }
         val settings = ScanSettings.Builder().build()
         val bluetoothScanner = bluetoothManager.adapter?.bluetoothLeScanner
-        bluetoothScanner?.startScan(listOf(filterBuilder.build()), settings, mBluetoothScanCallBack)
+        bluetoothScanner?.startScan(formattedFilters, settings, mBluetoothScanCallBack)
     }
 
     actual fun discoverServices(
