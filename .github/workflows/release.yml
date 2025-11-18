@@ -4,6 +4,12 @@ on:
   release:
     types: [released]
 
+env:
+  ORG_GRADLE_PROJECT_mavenCentralUsername: ${{ secrets.SONATYPEUSERNAME }}
+  ORG_GRADLE_PROJECT_mavenCentralPassword: ${{ secrets.SONATYPEPASSWORD }}
+  ORG_GRADLE_PROJECT_signingInMemoryKey: ${{ secrets.GPG_KEY }}
+  ORG_GRADLE_PROJECT_signingInMemoryKeyPassword: ${{ secrets.GPG_KEY_PASS }}
+
 jobs:
   build:
     runs-on: macos-latest
@@ -16,8 +22,3 @@ jobs:
       run: ./Library/gradlew -p ./Library build
     - name: Run publish
       run: ./Library/gradlew -p ./Library publish
-      env:
-        sonatypeUsernameEnv: ${{ secrets.SONATYPEUSERNAME }}
-        sonatypePasswordEnv: ${{ secrets.SONATYPEPASSWORD }}
-        ORG_GRADLE_PROJECT_signingKey: ${{ secrets.GPG_KEY }}
-        ORG_GRADLE_PROJECT_signingPassword: ${{ secrets.GPG_KEY_PASS }}
