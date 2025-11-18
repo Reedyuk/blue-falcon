@@ -144,7 +144,9 @@ val javadocJar by tasks.creating(Jar::class) {
 }
 
 signing {
-    setRequired { gradle.taskGraph.hasTask("publish") }
+    setRequired {
+        !gradle.taskGraph.allTasks.any { it is PublishToMavenLocal }
+    }
     val signingKey: String? by project
     val signingPassword: String? by project
     useInMemoryPgpKeys(signingKey, signingPassword)
