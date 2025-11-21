@@ -77,6 +77,7 @@ actual class BlueFalcon actual constructor(
 
     actual fun stopScanning() {}
 
+    @JsName("clearPeripherals")
     actual fun clearPeripherals() {
         _peripherals.value = emptySet()
     }
