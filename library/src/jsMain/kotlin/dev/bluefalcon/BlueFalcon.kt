@@ -77,6 +77,10 @@ actual class BlueFalcon actual constructor(
 
     actual fun stopScanning() {}
 
+    actual fun clearPeripherals() {
+        _peripherals.value = emptySet()
+    }
+
     @JsName("rescan")
     actual fun scan(filters: List<ServiceFilter>) {
         window.navigator.bluetooth.requestDevice(
