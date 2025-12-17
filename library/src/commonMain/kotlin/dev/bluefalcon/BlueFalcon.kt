@@ -23,6 +23,16 @@ expect class BlueFalcon(
     fun connect(bluetoothPeripheral: BluetoothPeripheral, autoConnect: Boolean = false)
     fun disconnect(bluetoothPeripheral: BluetoothPeripheral)
 
+    /**
+     * Retrieves a peripheral by its platform-specific identifier.
+     *
+     * @param identifier The platform-specific identifier:
+     *   - **Android**: MAC address format (e.g., "00:11:22:33:44:55")
+     *   - **iOS/Native**: UUID format (e.g., "XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX")
+     * @return The BluetoothPeripheral if found, null otherwise
+     */
+    fun retrievePeripheral(identifier: String): BluetoothPeripheral?
+
     fun requestConnectionPriority(bluetoothPeripheral: BluetoothPeripheral, connectionPriority: ConnectionPriority)
 
     fun connectionState(bluetoothPeripheral: BluetoothPeripheral): BluetoothPeripheralState

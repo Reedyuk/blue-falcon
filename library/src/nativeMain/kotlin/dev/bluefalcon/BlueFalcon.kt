@@ -77,6 +77,18 @@ actual class BlueFalcon actual constructor(
         centralManager.cancelPeripheralConnection(bluetoothPeripheral.bluetoothDevice)
     }
 
+    actual fun retrievePeripheral(identifier: String): BluetoothPeripheral? {
+        return runCatching {
+            centralManager
+                .retrievePeripheralsWithIdentifiers(listOf(NSUUID(identifier)))
+                .filterIsInstance<CBPeripheral>()
+                .firstOrNull()
+                ?.let { BluetoothPeripheral(it, it.RSSI?.floatValue) }
+        }.onFailure { e ->
+            log?.error("retrievePeripheral error: ${e.message}")
+        }.getOrNull()
+    }
+
     @Throws(
         BluetoothUnknownException::class,
         BluetoothResettingException::class,
