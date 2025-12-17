@@ -71,6 +71,18 @@ actual class BlueFalcon actual constructor(
         delegates.forEach { it.didDisconnect(bluetoothPeripheral) }
     }
 
+    actual fun retrievePeripheral(uuid: String): BluetoothPeripheral? {
+        log?.info("retrievePeripheral $uuid")
+        return try {
+            bluetoothManager.adapter
+                ?.getRemoteDevice(uuid)
+                ?.let { BluetoothPeripheral(it) }
+        } catch (e: Exception) {
+            log?.error("retrievePeripheral error: ${e.message}")
+            null
+        }
+    }
+
     actual fun stopScanning() {
         isScanning = false
         bluetoothManager.adapter?.bluetoothLeScanner?.stopScan(mBluetoothScanCallBack)

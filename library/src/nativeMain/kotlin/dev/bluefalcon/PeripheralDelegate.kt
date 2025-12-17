@@ -19,7 +19,7 @@ class PeripheralDelegate constructor(
             blueFalcon.delegates.forEach {
                 it.didDiscoverServices(device)
             }
-            if(blueFalcon.autoDiscoverAllServicesAndCharacteristics) {
+            if (blueFalcon.autoDiscoverAllServicesAndCharacteristics) {
                 peripheral.services
                     ?.mapNotNull { it as? CBService }
                     ?.forEach {
@@ -77,7 +77,6 @@ class PeripheralDelegate constructor(
         if (error != null) {
             log?.error("Error with characteristic update ${error}")
         }
-        log?.info("handleCharacteristicValueChange ${didUpdateValueForCharacteristic.UUID}")
         val device = BluetoothPeripheral(peripheral, rssiValue = null)
         val characteristic = BluetoothCharacteristic(didUpdateValueForCharacteristic)
         blueFalcon.delegates.forEach {
@@ -108,5 +107,20 @@ class PeripheralDelegate constructor(
                 )
             }
         }
+    }
+
+    @ObjCSignatureOverride
+    override fun peripheral(
+        peripheral: CBPeripheral,
+        didDiscoverDescriptorsForCharacteristic: CBCharacteristic,
+        error: NSError?
+    ) {
+        if (error != null) {
+            log?.error("Error discovering descriptors for characteristic ${didDiscoverDescriptorsForCharacteristic.UUID}: $error")
+        } else {
+            log?.info("didDiscoverDescriptorsForCharacteristic ${didDiscoverDescriptorsForCharacteristic.UUID}")
+        }
+        // Descriptors are discovered automatically by BlueFalcon
+        // This method is required by iOS to avoid API misuse warnings
     }
 }

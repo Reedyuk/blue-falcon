@@ -22,6 +22,7 @@ expect class BlueFalcon(
 
     fun connect(bluetoothPeripheral: BluetoothPeripheral, autoConnect: Boolean = false)
     fun disconnect(bluetoothPeripheral: BluetoothPeripheral)
+    fun retrievePeripheral(uuid: String): BluetoothPeripheral?
 
     fun requestConnectionPriority(bluetoothPeripheral: BluetoothPeripheral, connectionPriority: ConnectionPriority)
 
