@@ -46,6 +46,8 @@ expect class BlueFalcon(
     )
     fun scan(filters: List<ServiceFilter> = emptyList())
 
+    fun clearPeripherals()
+
     fun stopScanning()
 
     fun discoverServices(bluetoothPeripheral: BluetoothPeripheral, serviceUUIDs: List<Uuid> = emptyList())

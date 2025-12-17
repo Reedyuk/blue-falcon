@@ -86,6 +86,10 @@ actual class BlueFalcon actual constructor(
         bluetoothManager.adapter?.bluetoothLeScanner?.stopScan(mBluetoothScanCallBack)
     }
 
+    actual fun clearPeripherals() {
+        _peripherals.value = emptySet()
+    }
+
     actual fun scan(filters: List<ServiceFilter>) {
         log?.info("BT Scan started $filters")
         isScanning = true

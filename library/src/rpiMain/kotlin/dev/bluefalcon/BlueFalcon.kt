@@ -108,6 +108,10 @@ actual class BlueFalcon actual constructor(
         bluetoothManager.stopScan()
     }
 
+    actual fun clearPeripherals() {
+        _peripherals.value = emptySet()
+    }
+
     actual fun discoverServices(
         bluetoothPeripheral: BluetoothPeripheral,
         serviceUUIDs: List<Uuid>
