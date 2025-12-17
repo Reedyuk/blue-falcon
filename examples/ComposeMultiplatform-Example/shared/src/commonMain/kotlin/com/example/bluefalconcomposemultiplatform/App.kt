@@ -34,7 +34,9 @@ fun App(
         val viewModel = getViewModel(
             key = "bluetooth-device-screen",
             factory = viewModelFactory {
-                BluetoothDeviceViewModel(appModule.blueFalcon)
+                BluetoothDeviceViewModel(
+                    appModule.applicationContext
+                )
             }
         )
 
