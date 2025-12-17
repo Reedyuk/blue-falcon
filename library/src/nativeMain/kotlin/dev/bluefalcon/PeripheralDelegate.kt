@@ -56,7 +56,6 @@ class PeripheralDelegate constructor(
         if (error != null) {
             log?.error("Error with characteristic write $error")
         }
-        log?.info("handleCharacteristicValueWrite ${didWriteValueForCharacteristic.UUID}")
         val device = BluetoothPeripheral(peripheral, rssiValue = null)
         val characteristic = BluetoothCharacteristic(didWriteValueForCharacteristic)
         blueFalcon.delegates.forEach {
