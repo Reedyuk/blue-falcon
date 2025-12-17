@@ -75,6 +75,13 @@ actual class BlueFalcon actual constructor(
         bluetoothPeripheral.device.gatt?.disconnect()
     }
 
+    @JsName("retrievePeripheral")
+    actual fun retrievePeripheral(identifier: String): BluetoothPeripheral? {
+        // Not supported in Web Bluetooth API
+        log?.warn("retrievePeripheral not supported in Web Bluetooth API")
+        return null
+    }
+
     actual fun stopScanning() {}
 
     @JsName("rescan")
