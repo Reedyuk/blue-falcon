@@ -75,7 +75,7 @@ actual class BlueFalcon actual constructor(
         return runCatching {
             bluetoothManager.adapter
                 ?.getRemoteDevice(identifier)
-                ?.let { BluetoothPeripheral(it) }
+                ?.let { BluetoothPeripheralImpl(it) }
         }.onFailure { e ->
             log?.error("retrievePeripheral error: ${e.message}")
         }.getOrNull()
@@ -364,7 +364,7 @@ actual class BlueFalcon actual constructor(
                             isConnectable = isConnectable
                         )
 
-                    val bluetoothPeripheral = BluetoothPeripheral(device)
+                    val bluetoothPeripheral = BluetoothPeripheralImpl(device)
                     bluetoothPeripheral.rssi = scanResult.rssi.toFloat()
 
                     _peripherals.tryEmit(_peripherals.value + setOf(bluetoothPeripheral))
@@ -412,13 +412,13 @@ actual class BlueFalcon actual constructor(
                             bluetoothGatt.discoverServices()
                         }
                         delegates.forEach {
-                            it.didConnect(BluetoothPeripheral(bluetoothGatt.device))
+                            it.didConnect(BluetoothPeripheralImpl(bluetoothGatt.device))
                         }
                     } else if (newState == STATE_DISCONNECTED) {
                         removeGatt(bluetoothGatt)
                         bluetoothGatt.close()
                         delegates.forEach {
-                            it.didDisconnect(BluetoothPeripheral(bluetoothGatt.device))
+                            it.didDisconnect(BluetoothPeripheralImpl(bluetoothGatt.device))
                         }
                     }
                 }
@@ -432,7 +432,7 @@ actual class BlueFalcon actual constructor(
             }
             gatt?.device?.let { bluetoothDevice ->
                 gatt.services.let { services ->
-                    val bluetoothPeripheral = BluetoothPeripheral(bluetoothDevice)
+                    val bluetoothPeripheral = BluetoothPeripheralImpl(bluetoothDevice)
                     bluetoothPeripheral._servicesFlow.tryEmit(services.map {  BluetoothService(it) })
                     delegates.forEach {
                         it.didDiscoverServices(bluetoothPeripheral)
@@ -445,7 +445,7 @@ actual class BlueFalcon actual constructor(
         override fun onMtuChanged(gatt: BluetoothGatt?, mtu: Int, status: Int) {
             log?.info("onMtuChanged$mtu status:$status")
             gatt?.device?.let { bluetoothDevice ->
-                val bluetoothPeripheral = BluetoothPeripheral(bluetoothDevice)
+                val bluetoothPeripheral = BluetoothPeripheralImpl(bluetoothDevice)
                 if (status == BluetoothGatt.GATT_SUCCESS) {
                     bluetoothPeripheral.mtuSize = mtu
                 }
@@ -458,7 +458,7 @@ actual class BlueFalcon actual constructor(
         override fun onReadRemoteRssi(gatt: BluetoothGatt?, rssi: Int, status: Int) {
             log?.info("onReadRemoteRssi $rssi")
             gatt?.device?.let { bluetoothDevice ->
-                val bluetoothPeripheral = BluetoothPeripheral(bluetoothDevice)
+                val bluetoothPeripheral = BluetoothPeripheralImpl(bluetoothDevice)
                 bluetoothPeripheral.rssi = rssi.toFloat()
                 delegates.forEach {
                     it.didRssiUpdate(
@@ -494,7 +494,7 @@ actual class BlueFalcon actual constructor(
                     log?.debug("onDescriptorRead value ${forcedDescriptor.value}")
                     delegates.forEach {
                         it.didReadDescriptor(
-                            BluetoothPeripheral(bluetoothDevice),
+                            BluetoothPeripheralImpl(bluetoothDevice),
                             forcedDescriptor
                         )
                     }
@@ -513,7 +513,7 @@ actual class BlueFalcon actual constructor(
                     log?.debug("${gatt.device.address} ${descriptor.uuid} onDescriptorWrite value ${forcedDescriptor.value}")
                     delegates.forEach {
                         it.didWriteDescriptor(
-                            BluetoothPeripheral(bluetoothDevice),
+                            BluetoothPeripheralImpl(bluetoothDevice),
                             forcedDescriptor
                         )
                     }
@@ -532,7 +532,7 @@ actual class BlueFalcon actual constructor(
                 gatt?.device?.let { bluetoothDevice ->
                     delegates.forEach {
                         it.didWriteCharacteristic(
-                            BluetoothPeripheral(bluetoothDevice),
+                            BluetoothPeripheralImpl(bluetoothDevice),
                             characteristic,
                             status == BluetoothGatt.GATT_SUCCESS
                         )
@@ -551,7 +551,7 @@ actual class BlueFalcon actual constructor(
                 gatt?.device?.let { bluetoothDevice ->
                     delegates.forEach {
                         it.didCharacteristcValueChanged(
-                            BluetoothPeripheral(bluetoothDevice),
+                            BluetoothPeripheralImpl(bluetoothDevice),
                             characteristic
                         )
                     }

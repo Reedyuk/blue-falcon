@@ -6,13 +6,8 @@ plugins {
 }
 
 kotlin {
-    android {
-        compilations.all {
-            kotlinOptions {
-                jvmTarget = "17"
-            }
-        }
-    }
+    jvmToolchain(21)
+    androidTarget()
 
     targets.withType(org.jetbrains.kotlin.gradle.plugin.mpp.KotlinNativeTarget::class.java).all {
         binaries.withType(org.jetbrains.kotlin.gradle.plugin.mpp.Framework::class.java).all {
@@ -46,7 +41,7 @@ kotlin {
                 implementation("dev.icerock.moko:mvvm-flow-compose:0.16.1")
 
                 // BlueFalcon dependency here
-                implementation("dev.bluefalcon:blue-falcon:2.3.3")
+                implementation("dev.bluefalcon:blue-falcon:2.4.0")
             }
         }
         val commonTest by getting {
@@ -92,8 +87,8 @@ android {
         minSdk = 24
     }
     compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_17
-        targetCompatibility = JavaVersion.VERSION_17
+        sourceCompatibility = JavaVersion.VERSION_21
+        targetCompatibility = JavaVersion.VERSION_21
     }
 }
 

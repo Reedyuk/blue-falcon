@@ -21,7 +21,7 @@ class BluetoothPeripheralManager constructor(
 
     fun setPeripheralDelegate(peripheral: BluetoothPeripheral, unset: Boolean = false) {
         log?.debug("setPeripheralDelegate ${peripheral.uuid}")
-        peripheral.bluetoothDevice.delegate = delegate.takeUnless { unset }
+        peripheral.device.delegate = delegate.takeUnless { unset }
     }
 
     override fun centralManagerDidUpdateState(central: CBCentralManager) {
@@ -45,7 +45,7 @@ class BluetoothPeripheralManager constructor(
     ) {
         if (blueFalcon.isScanning) {
             log?.info("Discovered device ${didDiscoverPeripheral.name}:${didDiscoverPeripheral.identifier.UUIDString}")
-            val device = BluetoothPeripheral(didDiscoverPeripheral, rssiValue = RSSI.floatValue)
+            val device = BluetoothPeripheralImpl(didDiscoverPeripheral, rssiValue = RSSI.floatValue)
             val sharedAdvertisementData = mapNativeAdvertisementDataToShared(advertisementData)
             blueFalcon._peripherals.tryEmit(blueFalcon._peripherals.value.plus(device))
             blueFalcon.delegates.forEach {
@@ -59,7 +59,7 @@ class BluetoothPeripheralManager constructor(
 
     override fun centralManager(central: CBCentralManager, didConnectPeripheral: CBPeripheral) {
         log?.info("DidConnectPeripheral ${didConnectPeripheral.name}")
-        val device = BluetoothPeripheral(didConnectPeripheral, rssiValue = null)
+        val device = BluetoothPeripheralImpl(didConnectPeripheral, rssiValue = null)
         didConnectPeripheral.delegate = delegate
         blueFalcon.delegates.forEach {
             it.didConnect(device)
@@ -81,7 +81,7 @@ class BluetoothPeripheralManager constructor(
         error: NSError?
     ) {
         log?.info("DidDisconnectPeripheral ${didDisconnectPeripheral.name}")
-        val device = BluetoothPeripheral(didDisconnectPeripheral, rssiValue = null)
+        val device = BluetoothPeripheralImpl(didDisconnectPeripheral, rssiValue = null)
         blueFalcon.delegates.forEach {
             it.didDisconnect(device)
         }
