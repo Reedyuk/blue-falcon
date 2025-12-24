@@ -2,20 +2,20 @@ package dev.bluefalcon
 
 import kotlinx.coroutines.flow.MutableStateFlow
 
-actual class BluetoothPeripheral actual constructor(val device: NativeBluetoothDevice) {
-    actual val name: String?
+actual class BluetoothPeripheralImpl actual constructor(actual override val device: NativeBluetoothDevice): BluetoothPeripheral {
+    actual override val name: String?
         get() = device.name
-    actual val uuid: String
+    actual override val uuid: String
         get() = device.address
 
-    actual var rssi: Float? = null
-    actual var mtuSize: Int? = null
+    actual override var rssi: Float? = null
+    actual override var mtuSize: Int? = null
 
     internal actual val _servicesFlow = MutableStateFlow<List<BluetoothService>>(emptyList())
-    actual val services: Map<Uuid, BluetoothService>
+    actual override val services: Map<Uuid, BluetoothService>
         get() = _servicesFlow.value.associateBy { it.uuid }
 
-    actual val characteristics: Map<Uuid, BluetoothCharacteristic>
+    actual override val characteristics: Map<Uuid, BluetoothCharacteristic>
         get() = services.values
             .flatMap { service -> service.characteristics }
             .groupBy { characteristic -> characteristic.uuid } // Group by characteristic UUID

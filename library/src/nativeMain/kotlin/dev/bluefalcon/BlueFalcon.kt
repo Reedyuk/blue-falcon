@@ -39,7 +39,7 @@ actual class BlueFalcon actual constructor(
     ) { }
 
     actual fun connectionState(bluetoothPeripheral: BluetoothPeripheral): BluetoothPeripheralState =
-        when (bluetoothPeripheral.bluetoothDevice.state) {
+        when (bluetoothPeripheral.device.state) {
             CBPeripheralStateConnected -> BluetoothPeripheralState.Connected
             CBPeripheralStateConnecting -> BluetoothPeripheralState.Connecting
             CBPeripheralStateDisconnected -> BluetoothPeripheralState.Disconnected
@@ -49,11 +49,11 @@ actual class BlueFalcon actual constructor(
 
     actual fun connect(bluetoothPeripheral: BluetoothPeripheral, autoConnect: Boolean) {
         //auto connect is ignored due to not needing it in iOS
-        log?.info("connect ${bluetoothPeripheral.uuid} current state ${bluetoothPeripheral.bluetoothDevice.state}")
-        if (bluetoothPeripheral.bluetoothDevice.state == CBPeripheralStateConnected) {
+        log?.info("connect ${bluetoothPeripheral.uuid} current state ${bluetoothPeripheral.device.state}")
+        if (bluetoothPeripheral.device.state == CBPeripheralStateConnected) {
             // IF you decide to pass in a BluetoothPeripheral that was generated from another CBManager, then we need to retrieve and regenerate it using our CBManager.
             val replacementDevice = centralManager.retrievePeripheralsWithIdentifiers(
-                listOf(bluetoothPeripheral.bluetoothDevice.identifier)
+                listOf(bluetoothPeripheral.device.identifier)
             ).firstOrNull() as? CBPeripheral
             if (replacementDevice != null) {
                 if (replacementDevice.state == CBPeripheralStateDisconnected || replacementDevice.state == CBPeripheralStateDisconnecting) {
@@ -65,16 +65,16 @@ actual class BlueFalcon actual constructor(
                 }
             } else {
                 log?.info("connect: Device is connected, using it")
-                bluetoothPeripheralManager.centralManager(centralManager, didConnectPeripheral = bluetoothPeripheral.bluetoothDevice)
+                bluetoothPeripheralManager.centralManager(centralManager, didConnectPeripheral = bluetoothPeripheral.device)
             }
         } else {
-            centralManager.connectPeripheral(bluetoothPeripheral.bluetoothDevice, null)
+            centralManager.connectPeripheral(bluetoothPeripheral.device, null)
         }
     }
 
     actual fun disconnect(bluetoothPeripheral: BluetoothPeripheral) {
         log?.info("disconnect ${bluetoothPeripheral.uuid}")
-        centralManager.cancelPeripheralConnection(bluetoothPeripheral.bluetoothDevice)
+        centralManager.cancelPeripheralConnection(bluetoothPeripheral.device)
     }
 
     actual fun retrievePeripheral(identifier: String): BluetoothPeripheral? {
@@ -83,7 +83,7 @@ actual class BlueFalcon actual constructor(
                 .retrievePeripheralsWithIdentifiers(listOf(NSUUID(identifier)))
                 .filterIsInstance<CBPeripheral>()
                 .firstOrNull()
-                ?.let { BluetoothPeripheral(it, it.RSSI?.floatValue) }
+                ?.let { BluetoothPeripheralImpl(it, it.RSSI?.floatValue) }
         }.onFailure { e ->
             log?.error("retrievePeripheral error: ${e.message}")
         }.getOrNull()
@@ -134,7 +134,7 @@ actual class BlueFalcon actual constructor(
         serviceUUIDs: List<Uuid>
     ) {
         log?.info("discoverServices ${bluetoothPeripheral.uuid} services: $serviceUUIDs")
-        bluetoothPeripheral.bluetoothDevice.discoverServices(
+        bluetoothPeripheral.device.discoverServices(
             serviceUUIDs.map { CBUUID.UUIDWithString(it.toString()) }
         )
     }
@@ -143,8 +143,8 @@ actual class BlueFalcon actual constructor(
         bluetoothService: BluetoothService,
         characteristicUUIDs: List<Uuid>
     ) {
-        log?.info("discoverCharacteristics ${bluetoothPeripheral.uuid} services: ${bluetoothService.uuid} chars: $characteristicUUIDs ${bluetoothPeripheral.bluetoothDevice.delegate}")
-        bluetoothPeripheral.bluetoothDevice.discoverCharacteristics(
+        log?.info("discoverCharacteristics ${bluetoothPeripheral.uuid} services: ${bluetoothService.uuid} chars: $characteristicUUIDs ${bluetoothPeripheral.device.delegate}")
+        bluetoothPeripheral.device.discoverCharacteristics(
             characteristicUUIDs.map { CBUUID.UUIDWithString(it.toString()) }, bluetoothService.service
         )
     }
@@ -153,7 +153,7 @@ actual class BlueFalcon actual constructor(
         bluetoothPeripheral: BluetoothPeripheral,
         bluetoothCharacteristic: BluetoothCharacteristic
     ) {
-        bluetoothPeripheral.bluetoothDevice.readValueForCharacteristic(bluetoothCharacteristic.characteristic)
+        bluetoothPeripheral.device.readValueForCharacteristic(bluetoothCharacteristic.characteristic)
     }
 
     actual fun notifyCharacteristic(
@@ -163,7 +163,7 @@ actual class BlueFalcon actual constructor(
     ) {
         bluetoothPeripheralManager.setPeripheralDelegate(bluetoothPeripheral)
         log?.info("notifyCharacteristic setNotify for ${bluetoothCharacteristic.uuid} notify: $notify")
-        bluetoothPeripheral.bluetoothDevice.setNotifyValue(notify, bluetoothCharacteristic.characteristic)
+        bluetoothPeripheral.device.setNotifyValue(notify, bluetoothCharacteristic.characteristic)
     }
 
     actual fun indicateCharacteristic(
@@ -247,7 +247,7 @@ actual class BlueFalcon actual constructor(
         writeType: Int?
     ) {
         log?.info("Writing value $value with response $writeType")
-        bluetoothPeripheral.bluetoothDevice.writeValue(
+        bluetoothPeripheral.device.writeValue(
             value,
             bluetoothCharacteristic.characteristic,
             when (writeType) {
@@ -262,7 +262,7 @@ actual class BlueFalcon actual constructor(
         bluetoothCharacteristic: BluetoothCharacteristic,
         bluetoothCharacteristicDescriptor: BluetoothCharacteristicDescriptor
     ) {
-        bluetoothPeripheral.bluetoothDevice.discoverDescriptorsForCharacteristic(bluetoothCharacteristic.characteristic)
+        bluetoothPeripheral.device.discoverDescriptorsForCharacteristic(bluetoothCharacteristic.characteristic)
     }
 
     actual fun writeDescriptor(
@@ -270,11 +270,11 @@ actual class BlueFalcon actual constructor(
         bluetoothCharacteristicDescriptor: BluetoothCharacteristicDescriptor,
         value: ByteArray
     ) {
-        bluetoothPeripheral.bluetoothDevice.writeValue(data = value.toData(), bluetoothCharacteristicDescriptor)
+        bluetoothPeripheral.device.writeValue(data = value.toData(), bluetoothCharacteristicDescriptor)
     }
 
     actual fun changeMTU(bluetoothPeripheral: BluetoothPeripheral, mtuSize: Int) {
-        val mtu = bluetoothPeripheral.bluetoothDevice.maximumWriteValueLengthForType(CBCharacteristicWriteWithResponse)
+        val mtu = bluetoothPeripheral.device.maximumWriteValueLengthForType(CBCharacteristicWriteWithResponse)
         log?.debug("Change MTU size called but not needed for darwin platforms: $mtuSize:$mtu")
         bluetoothPeripheral.mtuSize = mtu.toInt()
         delegates.forEach {

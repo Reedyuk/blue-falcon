@@ -15,7 +15,7 @@ class PeripheralDelegate constructor(
             log?.error("Error with service discovery ${didDiscoverServices}")
         } else {
             log?.info("didDiscoverServices")
-            val device = BluetoothPeripheral(peripheral, rssiValue = null)
+            val device = BluetoothPeripheralImpl(peripheral, rssiValue = null)
             blueFalcon.delegates.forEach {
                 it.didDiscoverServices(device)
             }
@@ -38,7 +38,7 @@ class PeripheralDelegate constructor(
             log?.error("Error with characteristic discovery ${didDiscoverCharacteristicsForService}")
         }
         log?.info("didDiscoverCharacteristicsForService")
-        val device = BluetoothPeripheral(peripheral, rssiValue = null)
+        val device = BluetoothPeripheralImpl(peripheral, rssiValue = null)
         blueFalcon.delegates.forEach {
             it.didDiscoverCharacteristics(device)
         }
@@ -56,7 +56,7 @@ class PeripheralDelegate constructor(
         if (error != null) {
             log?.error("Error with characteristic write $error")
         }
-        val device = BluetoothPeripheral(peripheral, rssiValue = null)
+        val device = BluetoothPeripheralImpl(peripheral, rssiValue = null)
         val characteristic = BluetoothCharacteristic(didWriteValueForCharacteristic)
         blueFalcon.delegates.forEach {
             it.didWriteCharacteristic(
@@ -76,7 +76,7 @@ class PeripheralDelegate constructor(
         if (error != null) {
             log?.error("Error with characteristic update ${error}")
         }
-        val device = BluetoothPeripheral(peripheral, rssiValue = null)
+        val device = BluetoothPeripheralImpl(peripheral, rssiValue = null)
         val characteristic = BluetoothCharacteristic(didUpdateValueForCharacteristic)
         blueFalcon.delegates.forEach {
             it.didCharacteristcValueChanged(
@@ -95,7 +95,7 @@ class PeripheralDelegate constructor(
         }
 
         log?.info("didWriteValueForCharacteristic")
-        val device = BluetoothPeripheral(peripheral, rssiValue = null)
+        val device = BluetoothPeripheralImpl(peripheral, rssiValue = null)
         didWriteValueForDescriptor.characteristic?.let { characteristic ->
             val characteristic = BluetoothCharacteristic(characteristic)
             blueFalcon.delegates.forEach {

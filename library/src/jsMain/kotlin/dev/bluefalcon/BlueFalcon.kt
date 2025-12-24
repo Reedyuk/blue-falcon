@@ -99,7 +99,7 @@ actual class BlueFalcon actual constructor(
             )
         )
             .then { bluetoothDevice ->
-                val device = BluetoothPeripheral(bluetoothDevice)
+                val device = BluetoothPeripheralImpl(bluetoothDevice)
 
                 val sharedAdvertisementData = mapOf(
                     AdvertisementDataRetrievalKeys.IsConnectable to 1,
