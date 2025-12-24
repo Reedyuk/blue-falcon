@@ -46,7 +46,7 @@ kotlin {
                 implementation("dev.icerock.moko:mvvm-flow-compose:0.16.1")
 
                 // BlueFalcon dependency here
-                implementation("dev.bluefalcon:blue-falcon:2.2.4")
+                implementation("dev.bluefalcon:blue-falcon:2.3.3")
             }
         }
         val commonTest by getting {
