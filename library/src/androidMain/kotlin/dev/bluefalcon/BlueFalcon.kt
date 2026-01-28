@@ -24,7 +24,7 @@ actual class BlueFalcon actual constructor(
         context.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
     private val mBluetoothScanCallBack = BluetoothScanCallBack()
     private val mGattClientCallback = GattClientCallback()
-    var transportMethod: Int = BluetoothDevice.TRANSPORT_AUTO
+    var transportMethod: Int = BluetoothDevice.TRANSPORT_LE
     actual var isScanning: Boolean = false
 
     actual val scope = CoroutineScope(Dispatchers.Default)
