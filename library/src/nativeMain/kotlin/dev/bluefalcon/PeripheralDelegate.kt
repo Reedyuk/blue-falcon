@@ -14,7 +14,7 @@ class PeripheralDelegate constructor(
         if (didDiscoverServices != null) {
             log?.error("Error with service discovery ${didDiscoverServices}")
         } else {
-            log?.info("didDiscoverServices")
+            log?.info("Services discovered")
             val device = BluetoothPeripheralImpl(peripheral, rssiValue = null)
             blueFalcon.delegates.forEach {
                 it.didDiscoverServices(device)
@@ -37,7 +37,7 @@ class PeripheralDelegate constructor(
         if (error != null) {
             log?.error("Error with characteristic discovery ${didDiscoverCharacteristicsForService}")
         }
-        log?.info("didDiscoverCharacteristicsForService")
+        log?.debug("didDiscoverCharacteristicsForService")
         val device = BluetoothPeripheralImpl(peripheral, rssiValue = null)
         blueFalcon.delegates.forEach {
             it.didDiscoverCharacteristics(device)
@@ -94,7 +94,7 @@ class PeripheralDelegate constructor(
             log?.error("Error during characteristic write $error")
         }
 
-        log?.info("didWriteValueForCharacteristic")
+        log?.debug("didWriteValueForDescriptor")
         val device = BluetoothPeripheralImpl(peripheral, rssiValue = null)
         didWriteValueForDescriptor.characteristic?.let { characteristic ->
             val characteristic = BluetoothCharacteristic(characteristic)
@@ -117,7 +117,7 @@ class PeripheralDelegate constructor(
         if (error != null) {
             log?.error("Error discovering descriptors for characteristic ${didDiscoverDescriptorsForCharacteristic.UUID}: $error")
         } else {
-            log?.info("didDiscoverDescriptorsForCharacteristic ${didDiscoverDescriptorsForCharacteristic.UUID}")
+            log?.debug("didDiscoverDescriptorsForCharacteristic ${didDiscoverDescriptorsForCharacteristic.UUID}")
         }
         // Descriptors are discovered automatically by BlueFalcon
         // This method is required by iOS to avoid API misuse warnings

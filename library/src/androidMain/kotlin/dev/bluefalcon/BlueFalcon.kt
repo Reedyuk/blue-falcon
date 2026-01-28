@@ -36,7 +36,7 @@ actual class BlueFalcon actual constructor(
         bluetoothPeripheral: BluetoothPeripheral,
         connectionPriority: ConnectionPriority
     ) {
-        log?.info("requestConnectionPriority")
+        log?.debug("requestConnectionPriority")
         mGattClientCallback.gattsForDevice(bluetoothPeripheral.device).forEach { gatt ->
             gatt.requestConnectionPriority(connectionPriority.toNative())
         }
@@ -52,7 +52,7 @@ actual class BlueFalcon actual constructor(
         }
 
     actual fun connect(bluetoothPeripheral: BluetoothPeripheral, autoConnect: Boolean) {
-        log?.info("connect")
+        log?.debug("connect ${bluetoothPeripheral.uuid}")
         bluetoothPeripheral.device.connectGatt(
             context,
             autoConnect,
@@ -62,7 +62,7 @@ actual class BlueFalcon actual constructor(
     }
 
     actual fun disconnect(bluetoothPeripheral: BluetoothPeripheral) {
-        log?.info("disconnect ${bluetoothPeripheral.device.address}")
+        log?.debug("disconnect ${bluetoothPeripheral.device.address}")
         mGattClientCallback.gattsForDevice(bluetoothPeripheral.device).forEach { gatt ->
             gatt.disconnect()
             gatt.close()
@@ -82,6 +82,7 @@ actual class BlueFalcon actual constructor(
     }
 
     actual fun stopScanning() {
+        log?.info("Scan stopped")
         isScanning = false
         bluetoothManager.adapter?.bluetoothLeScanner?.stopScan(mBluetoothScanCallBack)
     }
@@ -91,7 +92,7 @@ actual class BlueFalcon actual constructor(
     }
 
     actual fun scan(filters: List<ServiceFilter>) {
-        log?.info("BT Scan started $filters")
+        log?.info("Scan started with filters: $filters")
         isScanning = true
 
         val formattedFilters: List<ScanFilter> = when {
@@ -148,8 +149,7 @@ actual class BlueFalcon actual constructor(
                     val notify = (bluetoothCharacteristic.characteristic.properties and BluetoothGattCharacteristic.PROPERTY_NOTIFY) == BluetoothGattCharacteristic.PROPERTY_NOTIFY
                     val indicate = (bluetoothCharacteristic.characteristic.properties and BluetoothGattCharacteristic.PROPERTY_INDICATE) == BluetoothGattCharacteristic.PROPERTY_INDICATE
 
-                    log?.info(
-                    "${gatt.device.address} characteristic: ${bluetoothCharacteristic.characteristic.uuid} read=${read} notify=$notify indicate=$indicate")
+                    log?.debug("${gatt.device.address} characteristic: ${bluetoothCharacteristic.characteristic.uuid} read=$read notify=$notify indicate=$indicate")
 
                     BluetoothCharacteristic(it)
                 }
@@ -171,7 +171,7 @@ actual class BlueFalcon actual constructor(
         enable: Boolean,
         descriptorValue: ByteArray?
     ) {
-        log?.info("${bluetoothPeripheral.uuid} notifyCharacteristic setNotify for ${bluetoothCharacteristic.uuid} notify: $enable $bluetoothCharacteristic")
+        log?.debug("${bluetoothPeripheral.uuid} notifyCharacteristic setNotify for ${bluetoothCharacteristic.uuid} notify: $enable $bluetoothCharacteristic")
         mGattClientCallback.gattsForDevice(bluetoothPeripheral.device).forEach { gatt ->
             fetchCharacteristic(bluetoothCharacteristic, gatt).forEach {
                 gatt.setCharacteristicNotification(it.characteristic, enable)
@@ -186,8 +186,7 @@ actual class BlueFalcon actual constructor(
                 val notify = (bluetoothCharacteristic.characteristic.properties and BluetoothGattCharacteristic.PROPERTY_NOTIFY) == BluetoothGattCharacteristic.PROPERTY_NOTIFY
                 val indicate = (bluetoothCharacteristic.characteristic.properties and BluetoothGattCharacteristic.PROPERTY_INDICATE) == BluetoothGattCharacteristic.PROPERTY_INDICATE
 
-                log?.info(
-                    "characteristic: ${bluetoothCharacteristic.characteristic.uuid} read=${read} notify=$notify indicate=$indicate")
+                log?.debug("characteristic: ${bluetoothCharacteristic.characteristic.uuid} read=$read notify=$notify indicate=$indicate")
             }
         }
     }
@@ -197,7 +196,7 @@ actual class BlueFalcon actual constructor(
         bluetoothCharacteristicDescriptor: BluetoothCharacteristicDescriptor,
         value: ByteArray
     ) {
-        log?.info("writeDescriptor ${bluetoothCharacteristicDescriptor.uuid} value $value")
+        log?.debug("writeDescriptor ${bluetoothCharacteristicDescriptor.uuid} value: $value")
         mGattClientCallback.gattsForDevice(bluetoothPeripheral.device).forEach { gatt ->
             bluetoothCharacteristicDescriptor.value = value
             gatt.writeDescriptor(bluetoothCharacteristicDescriptor)
@@ -279,7 +278,7 @@ actual class BlueFalcon actual constructor(
         value: ByteArray,
         writeType: Int?
     ) {
-        log?.info("writeCharacteristic ${bluetoothCharacteristic.uuid} value: $value")
+        log?.debug("writeCharacteristic ${bluetoothCharacteristic.uuid} value: $value")
         sharedWriteCharacteristic(bluetoothPeripheral, bluetoothCharacteristic, value.toString(Charset.defaultCharset()), writeType)
     }
 
@@ -304,7 +303,7 @@ actual class BlueFalcon actual constructor(
         value: ByteArray,
         writeType: Int?
     ) {
-        log?.info("[${bluetoothPeripheral.uuid}] Writing value {length = ${value.size}, bytes = 0x${value.toHexString()}} with response $writeType")
+        log?.debug("[${bluetoothPeripheral.uuid}] Writing value {length = ${value.size}, bytes = 0x${value.toHexString()}} with response $writeType")
         mGattClientCallback.gattsForDevice(bluetoothPeripheral.device).forEach { gatt ->
             fetchCharacteristic(bluetoothCharacteristic, gatt)
                 .forEach {
@@ -401,11 +400,12 @@ actual class BlueFalcon actual constructor(
             gatts.filter { it.device.address == bluetoothDevice.address }
 
         override fun onConnectionStateChange(gatt: BluetoothGatt?, status: Int, newState: Int) {
-            log?.info("onConnectionStateChange status: $status newState: $newState")
+            log?.debug("onConnectionStateChange status: $status newState: $newState")
             gatt?.let { bluetoothGatt ->
                 bluetoothGatt.device.let {
                     //BluetoothProfile#STATE_DISCONNECTED} or {@link BluetoothProfile#STATE_CONNECTED}
                     if (newState == STATE_CONNECTED) {
+                        log?.info("Connected to ${bluetoothGatt.device.address}")
                         addGatt(bluetoothGatt)
                         if (autoDiscoverAllServicesAndCharacteristics) {
                             bluetoothGatt.readRemoteRssi()
@@ -415,6 +415,7 @@ actual class BlueFalcon actual constructor(
                             it.didConnect(BluetoothPeripheralImpl(bluetoothGatt.device))
                         }
                     } else if (newState == STATE_DISCONNECTED) {
+                        log?.info("Disconnected from ${bluetoothGatt.device.address}")
                         removeGatt(bluetoothGatt)
                         bluetoothGatt.close()
                         delegates.forEach {
@@ -426,7 +427,7 @@ actual class BlueFalcon actual constructor(
         }
 
         override fun onServicesDiscovered(gatt: BluetoothGatt?, status: Int) {
-            log?.info("onServicesDiscovered")
+            log?.info("Services discovered")
             if (status != BluetoothGatt.GATT_SUCCESS) {
                 return
             }
@@ -443,7 +444,7 @@ actual class BlueFalcon actual constructor(
         }
 
         override fun onMtuChanged(gatt: BluetoothGatt?, mtu: Int, status: Int) {
-            log?.info("onMtuChanged$mtu status:$status")
+            log?.debug("onMtuChanged mtu=$mtu status=$status")
             gatt?.device?.let { bluetoothDevice ->
                 val bluetoothPeripheral = BluetoothPeripheralImpl(bluetoothDevice)
                 if (status == BluetoothGatt.GATT_SUCCESS) {
@@ -456,7 +457,7 @@ actual class BlueFalcon actual constructor(
         }
 
         override fun onReadRemoteRssi(gatt: BluetoothGatt?, rssi: Int, status: Int) {
-            log?.info("onReadRemoteRssi $rssi")
+            log?.debug("onReadRemoteRssi $rssi")
             gatt?.device?.let { bluetoothDevice ->
                 val bluetoothPeripheral = BluetoothPeripheralImpl(bluetoothDevice)
                 bluetoothPeripheral.rssi = rssi.toFloat()
@@ -488,7 +489,7 @@ actual class BlueFalcon actual constructor(
             descriptor: BluetoothGattDescriptor?,
             status: Int
         ) {
-            log?.info("onDescriptorRead $descriptor")
+            log?.debug("onDescriptorRead ${descriptor?.uuid}")
             descriptor?.let { forcedDescriptor ->
                 gatt?.device?.let { bluetoothDevice ->
                     log?.debug("onDescriptorRead value ${forcedDescriptor.value}")
@@ -507,7 +508,7 @@ actual class BlueFalcon actual constructor(
             descriptor: BluetoothGattDescriptor?,
             status: Int
         ) {
-            log?.info("onDescriptorWrite ${descriptor?.uuid}")
+            log?.debug("onDescriptorWrite ${descriptor?.uuid}")
             descriptor?.let { forcedDescriptor ->
                 gatt?.device?.let { bluetoothDevice ->
                     log?.debug("${gatt.device.address} ${descriptor.uuid} onDescriptorWrite value ${forcedDescriptor.value}")
@@ -526,7 +527,7 @@ actual class BlueFalcon actual constructor(
             characteristic: BluetoothGattCharacteristic?,
             status: Int
         ) {
-            log?.info("onCharacteristicWrite ${characteristic?.uuid} $gatt")
+            log?.debug("onCharacteristicWrite ${characteristic?.uuid}")
             characteristic?.let { forcedCharacteristic ->
                 val characteristic = BluetoothCharacteristic(forcedCharacteristic)
                 gatt?.device?.let { bluetoothDevice ->
@@ -545,7 +546,7 @@ actual class BlueFalcon actual constructor(
             gatt: BluetoothGatt?,
             characteristic: BluetoothGattCharacteristic?
         ) {
-            log?.info("[${gatt?.device?.address}] handleCharacteristicValueChange ${characteristic?.uuid} ${characteristic?.value.contentToString()}")
+            log?.debug("[${gatt?.device?.address}] handleCharacteristicValueChange ${characteristic?.uuid} ${characteristic?.value.contentToString()}")
             characteristic?.let { forcedCharacteristic ->
                 val characteristic = BluetoothCharacteristic(forcedCharacteristic)
                 gatt?.device?.let { bluetoothDevice ->
