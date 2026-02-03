@@ -7,7 +7,7 @@ import platform.darwin.NSObject
 
 class PeripheralDelegate constructor(
     private val log: Logger?,
-    private val blueFalcon: BlueFalcon
+    private val blueFalcon: NativeBlueFalconEngine
 ) : NSObject(), CBPeripheralDelegateProtocol {
 
     override fun peripheral(peripheral: CBPeripheral, didDiscoverServices: NSError?) {
