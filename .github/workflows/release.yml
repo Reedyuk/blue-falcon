@@ -4,6 +4,9 @@ on:
   release:
     types: [released]
 
+permissions:
+  contents: read
+
 env:
   ORG_GRADLE_PROJECT_mavenCentralUsername: ${{ secrets.SONATYPEUSERNAME }}
   ORG_GRADLE_PROJECT_mavenCentralPassword: ${{ secrets.SONATYPEPASSWORD }}
