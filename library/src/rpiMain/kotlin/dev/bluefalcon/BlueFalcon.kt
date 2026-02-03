@@ -210,6 +210,28 @@ actual class BlueFalcon actual constructor(
         TODO()
     }
 
+    actual fun bondState(bluetoothPeripheral: BluetoothPeripheral): BondState {
+        // The blessed library for Raspberry Pi doesn't expose bond state directly
+        // We'll check if the peripheral is connected as a proxy
+        return if (bluetoothPeripheral.peripheral != null) {
+            BondState.Bonded
+        } else {
+            BondState.NotBonded
+        }
+    }
+
+    actual fun createBond(bluetoothPeripheral: BluetoothPeripheral) {
+        // The blessed library handles bonding automatically during connection
+        // Similar to iOS, bonding happens when accessing encrypted characteristics
+        println("createBond called but blessed library handles bonding automatically")
+    }
+
+    actual fun removeBond(bluetoothPeripheral: BluetoothPeripheral) {
+        // The blessed library doesn't provide a direct API to remove bonds
+        println("removeBond called but blessed library does not support programmatic unpairing")
+        disconnect(bluetoothPeripheral)
+    }
+
     //Helper
     fun mapNativeAdvertisementDataToShared(
         scanResult: ScanResult,

@@ -4,7 +4,10 @@ import android.bluetooth.*
 import android.bluetooth.BluetoothAdapter.STATE_CONNECTED
 import android.bluetooth.BluetoothAdapter.STATE_DISCONNECTED
 import android.bluetooth.le.*
+import android.content.BroadcastReceiver
 import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
 import android.os.Build
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -24,8 +27,15 @@ actual class BlueFalcon actual constructor(
         context.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
     private val mBluetoothScanCallBack = BluetoothScanCallBack()
     private val mGattClientCallback = GattClientCallback()
+    private val bondStateReceiver = BondStateReceiver()
     var transportMethod: Int = BluetoothDevice.TRANSPORT_LE
     actual var isScanning: Boolean = false
+
+    init {
+        // Register BroadcastReceiver to listen for bonding state changes
+        val filter = IntentFilter(BluetoothDevice.ACTION_BOND_STATE_CHANGED)
+        context.registerReceiver(bondStateReceiver, filter)
+    }
 
     actual val scope = CoroutineScope(Dispatchers.Default)
     internal actual val _peripherals = MutableStateFlow<Set<BluetoothPeripheral>>(emptySet())
@@ -330,6 +340,56 @@ actual class BlueFalcon actual constructor(
         log?.debug("changeMTU -> ${bluetoothPeripheral.uuid} mtuSize: $mtuSize")
         mGattClientCallback.gattsForDevice(bluetoothPeripheral.device).forEach { gatt ->
             gatt.requestMtu(mtuSize)
+        }
+    }
+
+    actual fun bondState(bluetoothPeripheral: BluetoothPeripheral): BondState {
+        return when (bluetoothPeripheral.device.bondState) {
+            BluetoothDevice.BOND_NONE -> BondState.NotBonded
+            BluetoothDevice.BOND_BONDING -> BondState.Bonding
+            BluetoothDevice.BOND_BONDED -> BondState.Bonded
+            else -> BondState.NotBonded
+        }
+    }
+
+    actual fun createBond(bluetoothPeripheral: BluetoothPeripheral) {
+        log?.debug("createBond ${bluetoothPeripheral.device.address}")
+        try {
+            bluetoothPeripheral.device.createBond()
+        } catch (e: SecurityException) {
+            log?.error("createBond SecurityException: ${e.message}")
+        }
+    }
+
+    actual fun removeBond(bluetoothPeripheral: BluetoothPeripheral) {
+        log?.debug("removeBond ${bluetoothPeripheral.device.address}")
+        try {
+            val removeBondMethod = bluetoothPeripheral.device.javaClass.getMethod("removeBond")
+            removeBondMethod.invoke(bluetoothPeripheral.device)
+        } catch (e: Exception) {
+            log?.error("removeBond error: ${e.message}")
+        }
+    }
+
+    inner class BondStateReceiver : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            if (intent?.action == BluetoothDevice.ACTION_BOND_STATE_CHANGED) {
+                val device = intent.getParcelableExtra<BluetoothDevice>(BluetoothDevice.EXTRA_DEVICE)
+                val bondState = intent.getIntExtra(BluetoothDevice.EXTRA_BOND_STATE, BluetoothDevice.BOND_NONE)
+                
+                device?.let { btDevice ->
+                    val bluetoothPeripheral = BluetoothPeripheralImpl(btDevice)
+                    val state = when (bondState) {
+                        BluetoothDevice.BOND_NONE -> BondState.NotBonded
+                        BluetoothDevice.BOND_BONDING -> BondState.Bonding
+                        BluetoothDevice.BOND_BONDED -> BondState.Bonded
+                        else -> BondState.NotBonded
+                    }
+                    
+                    log?.debug("Bond state changed for ${btDevice.address}: $state")
+                    delegates.forEach { it.didBondStateChanged(bluetoothPeripheral, state) }
+                }
+            }
         }
     }
 

@@ -253,4 +253,30 @@ actual class BlueFalcon actual constructor(
         TODO("not implemented")
     }
 
+    @JsName("bondState")
+    actual fun bondState(bluetoothPeripheral: BluetoothPeripheral): BondState {
+        // Web Bluetooth API handles pairing automatically at the browser level
+        // There is no API to check bond state
+        // We assume bonded if the device is connected
+        return when (bluetoothPeripheral.device.gatt?.connected) {
+            true -> BondState.Bonded
+            else -> BondState.NotBonded
+        }
+    }
+
+    @JsName("createBond")
+    actual fun createBond(bluetoothPeripheral: BluetoothPeripheral) {
+        // Web Bluetooth API handles pairing automatically during connection
+        // There is no explicit API to trigger bonding
+        log?.debug("createBond called but Web Bluetooth handles pairing automatically")
+    }
+
+    @JsName("removeBond")
+    actual fun removeBond(bluetoothPeripheral: BluetoothPeripheral) {
+        // Web Bluetooth API does not provide a way to remove pairing programmatically
+        // Users must remove pairing through browser settings
+        log?.debug("removeBond called but Web Bluetooth does not support programmatic unpairing")
+        disconnect(bluetoothPeripheral)
+    }
+
 }
