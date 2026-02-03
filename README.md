@@ -10,6 +10,16 @@ The idea is to have a common api for BLE devices as the principle of BLE is the 
 
 What this library isn't? It is not a cross platform library, this is a multiplatform library. The difference? each platform is compiled down to the native code, so when you use the library in iOS, you are consuming an obj-c library and same principle for Android and so on.
 
+## Architecture
+
+Blue Falcon uses a **pluggable engine architecture** inspired by Ktor, where each platform has its own Bluetooth engine implementation. This design makes it easy to:
+- Add support for new platforms
+- Create custom engines for specialized use cases
+- Mock Bluetooth functionality for testing
+- Swap implementations without changing your application code
+
+For more information on creating custom engines, see [CUSTOM_ENGINES.md](CUSTOM_ENGINES.md).
+
 ## Basic Usage
 
 Include the library in your own KMP project as a dependency on your common target.
@@ -127,6 +137,33 @@ Open the index.html file in a web browser.
 BlueFalcon has a constructor that takes a Logger, you can implement your own logger, to handle and reduce or add to the noise generated.
 
 Look at the PrintLnLogger object of an example of how to do this.
+
+## Custom Engines
+
+Blue Falcon supports custom engine implementations, allowing you to:
+- Add support for new platforms
+- Create mock engines for testing
+- Implement custom behavior or optimizations
+
+### Using a Custom Engine
+
+```kotlin
+// Create your custom engine
+val customEngine = MyCustomBlueFalconEngine(
+    log = PrintLnLogger,
+    context = ApplicationContext(),
+    autoDiscoverAllServicesAndCharacteristics = true
+)
+
+// Use it with BlueFalcon
+val blueFalcon = BlueFalcon(engine = customEngine)
+
+// Use BlueFalcon normally
+blueFalcon.delegates.add(myDelegate)
+blueFalcon.scan()
+```
+
+For detailed information on creating custom engines, see [CUSTOM_ENGINES.md](CUSTOM_ENGINES.md).
 
 ## Support
 

@@ -11,7 +11,7 @@ import platform.darwin.NSObject
 
 class BluetoothPeripheralManager constructor(
     private val log: Logger?,
-    private val blueFalcon: BlueFalcon
+    private val blueFalcon: NativeBlueFalconEngine
 ) : NSObject(), CBCentralManagerDelegateProtocol {
 
     private val _managerState: MutableStateFlow<CBManagerState> = MutableStateFlow(CBManagerStateUnknown)

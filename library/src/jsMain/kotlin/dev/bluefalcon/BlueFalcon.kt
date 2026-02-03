@@ -1,13 +1,8 @@
 package dev.bluefalcon
 
-import dev.bluefalcon.external.Bluetooth
-import dev.bluefalcon.external.BluetoothOptions
-import kotlinx.browser.window
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
-import org.w3c.dom.Navigator
 
 @JsName("blueFalcon")
 val blueFalcon = BlueFalcon(
@@ -20,17 +15,34 @@ actual class BlueFalcon actual constructor(
     context: ApplicationContext,
     private val autoDiscoverAllServicesAndCharacteristics: Boolean
 ) {
+    
+    // Engine-based constructor - allows custom engine injection
+    constructor(
+        engine: BlueFalconEngine
+    ) : this(null, ApplicationContext(), true) {
+        this.engine = engine
+    }
+    
+    private var engine: BlueFalconEngine = createDefaultBlueFalconEngine(log, context, autoDiscoverAllServicesAndCharacteristics)
+    
+    actual val delegates: MutableSet<BlueFalconDelegate>
+        get() = engine.delegates
+    
+    actual var isScanning: Boolean
+        get() = engine.isScanning
+        set(value) { engine.isScanning = value }
 
-    actual val delegates: MutableSet<BlueFalconDelegate> = mutableSetOf()
-    actual var isScanning: Boolean = false
-
-    actual val scope = CoroutineScope(Dispatchers.Default)
-    internal actual val _peripherals = MutableStateFlow<Set<BluetoothPeripheral>>(emptySet())
-    actual val peripherals: NativeFlow<Set<BluetoothPeripheral>> = _peripherals.toNativeType(scope)
-
-    private inline val Navigator.bluetooth: Bluetooth get() = asDynamic().bluetooth as Bluetooth
-
-    actual val managerState: StateFlow<BluetoothManagerState> = MutableStateFlow(BluetoothManagerState.Ready)
+    actual val scope: CoroutineScope
+        get() = engine.scope
+    
+    internal actual val _peripherals: MutableStateFlow<Set<BluetoothPeripheral>>
+        get() = engine._peripherals
+    
+    actual val peripherals: NativeFlow<Set<BluetoothPeripheral>>
+        get() = engine.peripherals
+    
+    actual val managerState: StateFlow<BluetoothManagerState>
+        get() = engine.managerState
 
     @JsName("addDelegate")
     fun addDelegate(blueFalconDelegate: BlueFalconDelegate) {
@@ -46,143 +58,55 @@ actual class BlueFalcon actual constructor(
     actual fun requestConnectionPriority(
         bluetoothPeripheral: BluetoothPeripheral,
         connectionPriority: ConnectionPriority
-    ) {
-        // Not supported in Web Bluetooth API
-    }
+    ) = engine.requestConnectionPriority(bluetoothPeripheral, connectionPriority)
 
     @JsName("connectionState")
     actual fun connectionState(bluetoothPeripheral: BluetoothPeripheral): BluetoothPeripheralState =
-        if (bluetoothPeripheral.device.gatt?.connected == true) {
-            BluetoothPeripheralState.Connected
-        } else {
-            BluetoothPeripheralState.Disconnected
-        }
+        engine.connectionState(bluetoothPeripheral)
 
     @JsName("connect")
-    actual fun connect(bluetoothPeripheral: BluetoothPeripheral, autoConnect: Boolean) {
-        log?.info("connect -> ${bluetoothPeripheral.device}:${bluetoothPeripheral.device.gatt} gatt connected? ${bluetoothPeripheral.device.gatt?.connected}")
-        if (bluetoothPeripheral.device.gatt?.connected == true) {
-            delegates.forEach { it.didConnect(bluetoothPeripheral) }
-        } else {
-            bluetoothPeripheral.device.gatt?.connect()?.then { gatt ->
-                connect(bluetoothPeripheral, autoConnect)
-            }
-        }
-    }
+    actual fun connect(bluetoothPeripheral: BluetoothPeripheral, autoConnect: Boolean) =
+        engine.connect(bluetoothPeripheral, autoConnect)
 
     @JsName("disconnect")
-    actual fun disconnect(bluetoothPeripheral: BluetoothPeripheral) {
-        bluetoothPeripheral.device.gatt?.disconnect()
-    }
+    actual fun disconnect(bluetoothPeripheral: BluetoothPeripheral) =
+        engine.disconnect(bluetoothPeripheral)
 
     @JsName("retrievePeripheral")
-    actual fun retrievePeripheral(identifier: String): BluetoothPeripheral? {
-        // Not supported in Web Bluetooth API
-        log?.warn("retrievePeripheral not supported in Web Bluetooth API")
-        return null
-    }
+    actual fun retrievePeripheral(identifier: String): BluetoothPeripheral? =
+        engine.retrievePeripheral(identifier)
 
-    actual fun stopScanning() {}
+    actual fun stopScanning() = engine.stopScanning()
 
     @JsName("clearPeripherals")
-    actual fun clearPeripherals() {
-        _peripherals.value = emptySet()
-    }
+    actual fun clearPeripherals() = engine.clearPeripherals()
 
     @JsName("rescan")
-    actual fun scan(filters: List<ServiceFilter>) {
-        window.navigator.bluetooth.requestDevice(
-            BluetoothOptions(
-                acceptAllDevices = false,
-                filters = filters.map { BluetoothOptions.Filter.Services(it.serviceUuids) }.toTypedArray(),
-                optionalServices = filters.flatMap { it.optionalServices.toList() }.toTypedArray()
-            )
-        )
-            .then { bluetoothDevice ->
-                val device = BluetoothPeripheralImpl(bluetoothDevice)
-
-                val sharedAdvertisementData = mapOf(
-                    AdvertisementDataRetrievalKeys.IsConnectable to 1,
-                    AdvertisementDataRetrievalKeys.LocalName to "TODO",
-                    AdvertisementDataRetrievalKeys.ServiceUUIDsKey to listOf<String>()
-                ) //TODO Get real data
-
-                delegates.forEach {
-                    it.didDiscoverDevice(device, sharedAdvertisementData)
-                }
-            }
-    }
+    actual fun scan(filters: List<ServiceFilter>) = engine.scan(filters)
 
     actual fun discoverServices(
         bluetoothPeripheral: BluetoothPeripheral,
         serviceUUIDs: List<Uuid>
-    ) {
-        readService(
-            bluetoothPeripheral,
-            serviceUUIDs.joinToString(",")
-        )
-    }
+    ) = engine.discoverServices(bluetoothPeripheral, serviceUUIDs)
+    
     actual fun discoverCharacteristics(
         bluetoothPeripheral: BluetoothPeripheral,
         bluetoothService: BluetoothService,
         characteristicUUIDs: List<Uuid>
-    ) {
-        if (!bluetoothPeripheral.services.containsKey(bluetoothService.uuid)) {
-            readService(
-                bluetoothPeripheral,
-                bluetoothService.uuid.toString()
-            )
-        }
-        // no need to do anything.
-    }
-
-    @JsName("readService")
-    fun readService(
-        bluetoothPeripheral: BluetoothPeripheral,
-        serviceUUID: String?
-    ) {
-        bluetoothPeripheral.device.gatt?.getPrimaryServices(serviceUUID)?.then { services ->
-            bluetoothPeripheral._servicesFlow.tryEmit(
-                (bluetoothPeripheral._servicesFlow.value + services.map { BluetoothService(it) })
-                    .toSet()
-                    .toList()
-            )
-            delegates.forEach {
-                it.didDiscoverServices(bluetoothPeripheral)
-            }
-            if (autoDiscoverAllServicesAndCharacteristics) {
-                bluetoothPeripheral.services.values.forEach { service ->
-                    service.service.getCharacteristics(undefined).then { characteristics ->
-                        service._characteristicsFlow.tryEmit(characteristics.map { BluetoothCharacteristic(it) }.toSet().toList())
-                        delegates.forEach {
-                            it.didDiscoverCharacteristics(bluetoothPeripheral)
-                        }
-                    }
-                }
-            }
-        }
-    }
+    ) = engine.discoverCharacteristics(bluetoothPeripheral, bluetoothService, characteristicUUIDs)
 
     @JsName("readCharacteristic")
     actual fun readCharacteristic(
         bluetoothPeripheral: BluetoothPeripheral,
         bluetoothCharacteristic: BluetoothCharacteristic
-    ) {
-        bluetoothCharacteristic.characteristic.readValue().then { _ ->
-            delegates.forEach {
-                it.didCharacteristcValueChanged(bluetoothPeripheral, bluetoothCharacteristic)
-            }
-        }
-    }
-
+    ) = engine.readCharacteristic(bluetoothPeripheral, bluetoothCharacteristic)
 
     actual fun writeCharacteristic(
         bluetoothPeripheral: BluetoothPeripheral,
         bluetoothCharacteristic: BluetoothCharacteristic,
         value: String,
         writeType: Int?
-    ) {
-    }
+    ) = engine.writeCharacteristic(bluetoothPeripheral, bluetoothCharacteristic, value, writeType)
 
     @JsName("writeCharacteristic")
     actual fun writeCharacteristic(
@@ -190,67 +114,51 @@ actual class BlueFalcon actual constructor(
         bluetoothCharacteristic: BluetoothCharacteristic,
         value: ByteArray,
         writeType: Int?
-    ) {
-        bluetoothCharacteristic.characteristic.writeValue(value)
-    }
+    ) = engine.writeCharacteristic(bluetoothPeripheral, bluetoothCharacteristic, value, writeType)
 
     actual fun writeCharacteristicWithoutEncoding(
         bluetoothPeripheral: BluetoothPeripheral,
         bluetoothCharacteristic: BluetoothCharacteristic,
         value: ByteArray,
         writeType: Int?
-    ) {
-        bluetoothCharacteristic.characteristic.writeValue(value)
-    }
+    ) = engine.writeCharacteristicWithoutEncoding(bluetoothPeripheral, bluetoothCharacteristic, value, writeType)
 
     @JsName("notifyCharacteristic")
     actual fun notifyCharacteristic(
         bluetoothPeripheral: BluetoothPeripheral,
         bluetoothCharacteristic: BluetoothCharacteristic,
         notify: Boolean
-    ) {
-        TODO("not implemented")
-    }
+    ) = engine.notifyCharacteristic(bluetoothPeripheral, bluetoothCharacteristic, notify)
 
     @JsName("indicateCharacteristic")
     actual fun indicateCharacteristic(
         bluetoothPeripheral: BluetoothPeripheral,
         bluetoothCharacteristic: BluetoothCharacteristic,
         indicate: Boolean
-    ) {
-        TODO("not implemented")
-    }
+    ) = engine.indicateCharacteristic(bluetoothPeripheral, bluetoothCharacteristic, indicate)
 
     @JsName("notifyAndIndicateCharacteristic")
     actual fun notifyAndIndicateCharacteristic(
         bluetoothPeripheral: BluetoothPeripheral,
         bluetoothCharacteristic: BluetoothCharacteristic,
         enable: Boolean
-    ) {
-        TODO("not implemented")
-    }
+    ) = engine.notifyAndIndicateCharacteristic(bluetoothPeripheral, bluetoothCharacteristic, enable)
 
     @JsName("readDescriptor")
     actual fun readDescriptor(
         bluetoothPeripheral: BluetoothPeripheral,
         bluetoothCharacteristic: BluetoothCharacteristic,
         bluetoothCharacteristicDescriptor: BluetoothCharacteristicDescriptor
-    ) {
-        TODO("not implemented")
-    }
+    ) = engine.readDescriptor(bluetoothPeripheral, bluetoothCharacteristic, bluetoothCharacteristicDescriptor)
 
     @JsName("writeDescriptor")
     actual fun writeDescriptor(
         bluetoothPeripheral: BluetoothPeripheral,
         bluetoothCharacteristicDescriptor: BluetoothCharacteristicDescriptor,
         value: ByteArray
-    ) {
-        TODO("not implemented")
-    }
+    ) = engine.writeDescriptor(bluetoothPeripheral, bluetoothCharacteristicDescriptor, value)
 
     @JsName("changeMTU")
-    actual fun changeMTU(bluetoothPeripheral: BluetoothPeripheral, mtuSize: Int) {
-        TODO("not implemented")
-    }
-
+    actual fun changeMTU(bluetoothPeripheral: BluetoothPeripheral, mtuSize: Int) =
+        engine.changeMTU(bluetoothPeripheral, mtuSize)
 }
