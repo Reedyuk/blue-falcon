@@ -54,6 +54,10 @@ public:
     void writeDescriptor(uint64_t address, const std::wstring& descriptorUuid, 
                         const uint8_t* data, size_t length);
     void changeMTU(uint64_t address, int mtu);
+    
+    // Public helper methods for JNI bridge
+    static std::wstring stringToWString(const std::string& str);
+    static std::string wstringToString(const std::wstring& wstr);
 
 private:
     BluetoothLEManager() = default;
@@ -61,8 +65,6 @@ private:
     
     // Helper methods
     void callJavaMethod(const char* methodName, const char* signature, ...);
-    std::wstring stringToWString(const std::string& str);
-    std::string wstringToString(const std::wstring& wstr);
     uint64_t bluetoothAddressToUint64(uint64_t address);
     
     // Advertisement watcher

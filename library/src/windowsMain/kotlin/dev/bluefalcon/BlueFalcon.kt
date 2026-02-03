@@ -481,7 +481,7 @@ actual class BlueFalcon actual constructor(
     private fun onMtuChanged(address: Long, mtu: Int) {
         val peripheral = connections[address] ?: return
         peripheral.mtuSize = mtu
-        delegates.forEach { it.didUpdateMTU(peripheral, 0) }
+        delegates.forEach { it.didUpdateMTU(peripheral, mtu) }
     }
     
     @Suppress("unused")

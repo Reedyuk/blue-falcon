@@ -45,8 +45,7 @@ JNIEXPORT void JNICALL
 Java_dev_bluefalcon_BlueFalcon_nativeDiscoverCharacteristics(JNIEnv* env, jobject thiz, 
                                                              jlong address, jstring serviceUuid) {
     const char* uuidStr = env->GetStringUTFChars(serviceUuid, nullptr);
-    std::wstring_convert<std::codecvt_utf8_utf16<wchar_t>> converter;
-    std::wstring wUuid = converter.from_bytes(uuidStr);
+    std::wstring wUuid = BluetoothLEManager::stringToWString(std::string(uuidStr));
     
     BluetoothLEManager::getInstance().discoverCharacteristics(static_cast<uint64_t>(address), wUuid);
     
@@ -57,8 +56,7 @@ JNIEXPORT void JNICALL
 Java_dev_bluefalcon_BlueFalcon_nativeReadCharacteristic(JNIEnv* env, jobject thiz, 
                                                         jlong address, jstring characteristicUuid) {
     const char* uuidStr = env->GetStringUTFChars(characteristicUuid, nullptr);
-    std::wstring_convert<std::codecvt_utf8_utf16<wchar_t>> converter;
-    std::wstring wUuid = converter.from_bytes(uuidStr);
+    std::wstring wUuid = BluetoothLEManager::stringToWString(std::string(uuidStr));
     
     BluetoothLEManager::getInstance().readCharacteristic(static_cast<uint64_t>(address), wUuid);
     
@@ -70,8 +68,7 @@ Java_dev_bluefalcon_BlueFalcon_nativeWriteCharacteristic(JNIEnv* env, jobject th
                                                          jlong address, jstring characteristicUuid,
                                                          jbyteArray value, jboolean withResponse) {
     const char* uuidStr = env->GetStringUTFChars(characteristicUuid, nullptr);
-    std::wstring_convert<std::codecvt_utf8_utf16<wchar_t>> converter;
-    std::wstring wUuid = converter.from_bytes(uuidStr);
+    std::wstring wUuid = BluetoothLEManager::stringToWString(std::string(uuidStr));
     
     jsize length = env->GetArrayLength(value);
     jbyte* data = env->GetByteArrayElements(value, nullptr);
@@ -88,8 +85,7 @@ JNIEXPORT void JNICALL
 Java_dev_bluefalcon_BlueFalcon_nativeSetNotify(JNIEnv* env, jobject thiz, 
                                                jlong address, jstring characteristicUuid, jboolean enable) {
     const char* uuidStr = env->GetStringUTFChars(characteristicUuid, nullptr);
-    std::wstring_convert<std::codecvt_utf8_utf16<wchar_t>> converter;
-    std::wstring wUuid = converter.from_bytes(uuidStr);
+    std::wstring wUuid = BluetoothLEManager::stringToWString(std::string(uuidStr));
     
     BluetoothLEManager::getInstance().setNotify(static_cast<uint64_t>(address), wUuid, enable);
     
@@ -100,8 +96,7 @@ JNIEXPORT void JNICALL
 Java_dev_bluefalcon_BlueFalcon_nativeSetIndicate(JNIEnv* env, jobject thiz, 
                                                  jlong address, jstring characteristicUuid, jboolean enable) {
     const char* uuidStr = env->GetStringUTFChars(characteristicUuid, nullptr);
-    std::wstring_convert<std::codecvt_utf8_utf16<wchar_t>> converter;
-    std::wstring wUuid = converter.from_bytes(uuidStr);
+    std::wstring wUuid = BluetoothLEManager::stringToWString(std::string(uuidStr));
     
     BluetoothLEManager::getInstance().setIndicate(static_cast<uint64_t>(address), wUuid, enable);
     
@@ -112,8 +107,7 @@ JNIEXPORT void JNICALL
 Java_dev_bluefalcon_BlueFalcon_nativeReadDescriptor(JNIEnv* env, jobject thiz, 
                                                     jlong address, jstring descriptorUuid) {
     const char* uuidStr = env->GetStringUTFChars(descriptorUuid, nullptr);
-    std::wstring_convert<std::codecvt_utf8_utf16<wchar_t>> converter;
-    std::wstring wUuid = converter.from_bytes(uuidStr);
+    std::wstring wUuid = BluetoothLEManager::stringToWString(std::string(uuidStr));
     
     BluetoothLEManager::getInstance().readDescriptor(static_cast<uint64_t>(address), wUuid);
     
@@ -124,8 +118,7 @@ JNIEXPORT void JNICALL
 Java_dev_bluefalcon_BlueFalcon_nativeWriteDescriptor(JNIEnv* env, jobject thiz, 
                                                      jlong address, jstring descriptorUuid, jbyteArray value) {
     const char* uuidStr = env->GetStringUTFChars(descriptorUuid, nullptr);
-    std::wstring_convert<std::codecvt_utf8_utf16<wchar_t>> converter;
-    std::wstring wUuid = converter.from_bytes(uuidStr);
+    std::wstring wUuid = BluetoothLEManager::stringToWString(std::string(uuidStr));
     
     jsize length = env->GetArrayLength(value);
     jbyte* data = env->GetByteArrayElements(value, nullptr);
