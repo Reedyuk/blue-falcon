@@ -256,12 +256,11 @@ actual class BlueFalcon actual constructor(
     @JsName("bondState")
     actual fun bondState(bluetoothPeripheral: BluetoothPeripheral): BondState {
         // Web Bluetooth API handles pairing automatically at the browser level
-        // There is no API to check bond state
-        // We assume bonded if the device is connected
-        return when (bluetoothPeripheral.device.gatt?.connected) {
-            true -> BondState.Bonded
-            else -> BondState.NotBonded
-        }
+        // The API doesn't expose bond state or pairing status
+        // Pairing occurs automatically when GATT operations require it
+        // This is a limitation of the Web Bluetooth API - we return NotBonded
+        // as the default since we cannot query the actual bond state
+        return BondState.NotBonded
     }
 
     @JsName("createBond")

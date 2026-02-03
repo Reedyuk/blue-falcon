@@ -286,13 +286,13 @@ actual class BlueFalcon actual constructor(
 
     actual fun bondState(bluetoothPeripheral: BluetoothPeripheral): BondState {
         // iOS/macOS handles bonding automatically at the system level
-        // We can check if the peripheral is paired by checking the system's paired devices
-        // However, Core Bluetooth doesn't expose bond state directly
-        // We'll return Bonded if connected, as iOS pairs automatically when needed
-        return when (bluetoothPeripheral.device.state) {
-            CBPeripheralStateConnected -> BondState.Bonded
-            else -> BondState.NotBonded
-        }
+        // Core Bluetooth doesn't expose bond state directly through its API
+        // This is a best-effort approximation: we return NotBonded as default since
+        // iOS manages pairing transparently and doesn't distinguish between
+        // connected-but-not-bonded and connected-and-bonded states in the API
+        // Note: In practice, iOS will prompt for pairing when accessing encrypted
+        // characteristics, and the pairing state is managed at the OS level
+        return BondState.NotBonded
     }
 
     actual fun createBond(bluetoothPeripheral: BluetoothPeripheral) {

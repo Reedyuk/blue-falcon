@@ -33,6 +33,10 @@ actual class BlueFalcon actual constructor(
 
     init {
         // Register BroadcastReceiver to listen for bonding state changes
+        // Note: This receiver is not unregistered as BlueFalcon instances are typically
+        // long-lived throughout the application lifecycle. If cleanup is needed,
+        // consider calling context.unregisterReceiver(bondStateReceiver) when disposing
+        // of the BlueFalcon instance.
         val filter = IntentFilter(BluetoothDevice.ACTION_BOND_STATE_CHANGED)
         context.registerReceiver(bondStateReceiver, filter)
     }
@@ -378,7 +382,11 @@ actual class BlueFalcon actual constructor(
                 val bondState = intent.getIntExtra(BluetoothDevice.EXTRA_BOND_STATE, BluetoothDevice.BOND_NONE)
                 
                 device?.let { btDevice ->
-                    val bluetoothPeripheral = BluetoothPeripheralImpl(btDevice)
+                    // Try to find the existing peripheral instance from our tracked peripherals
+                    val bluetoothPeripheral = _peripherals.value.find { 
+                        it.device.address == btDevice.address 
+                    } ?: BluetoothPeripheralImpl(btDevice)
+                    
                     val state = when (bondState) {
                         BluetoothDevice.BOND_NONE -> BondState.NotBonded
                         BluetoothDevice.BOND_BONDING -> BondState.Bonding

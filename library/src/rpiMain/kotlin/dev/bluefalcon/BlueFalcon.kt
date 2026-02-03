@@ -212,12 +212,10 @@ actual class BlueFalcon actual constructor(
 
     actual fun bondState(bluetoothPeripheral: BluetoothPeripheral): BondState {
         // The blessed library for Raspberry Pi doesn't expose bond state directly
-        // We'll check if the peripheral is connected as a proxy
-        return if (bluetoothPeripheral.peripheral != null) {
-            BondState.Bonded
-        } else {
-            BondState.NotBonded
-        }
+        // Bonding is handled automatically by the library when accessing encrypted characteristics
+        // This is a limitation of the blessed library API - we return NotBonded as default
+        // since we cannot query the actual bond state from the underlying BlueZ stack
+        return BondState.NotBonded
     }
 
     actual fun createBond(bluetoothPeripheral: BluetoothPeripheral) {

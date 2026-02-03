@@ -88,20 +88,21 @@ Blue-Falcon now supports BLE bonding (pairing) functionality across all platform
 - **`createBond()`**: Explicitly initiates the bonding process using `BluetoothDevice.createBond()`
 - **`removeBond()`**: Removes the bond using reflection to call the hidden `removeBond()` method
 - **Delegate callback**: `didBondStateChanged()` is called when the bond state changes, monitored via `BroadcastReceiver`
+- **Note**: Android provides the most complete bonding API with full state tracking
 
 #### iOS / macOS
-- **`bondState()`**: Returns Bonded if connected (iOS handles pairing automatically at the system level)
-- **`createBond()`**: No explicit action; iOS automatically handles bonding when accessing encrypted characteristics
+- **`bondState()`**: Always returns NotBonded (Core Bluetooth doesn't expose bond state in its API)
+- **`createBond()`**: Triggers connection; iOS automatically handles bonding when accessing encrypted characteristics
 - **`removeBond()`**: Disconnects the device (iOS requires manual unpairing through System Settings)
-- **Note**: Core Bluetooth handles pairing transparently when security is required
+- **Note**: Core Bluetooth handles pairing transparently at the OS level when security is required
 
 #### JavaScript / Web Bluetooth
-- **`bondState()`**: Returns Bonded if connected (browser handles pairing automatically)
-- **`createBond()`**: No explicit action; Web Bluetooth API handles pairing during GATT operations
+- **`bondState()`**: Always returns NotBonded (Web Bluetooth API doesn't expose bond state)
+- **`createBond()`**: No explicit action; browser handles pairing during GATT operations automatically
 - **`removeBond()`**: Disconnects the device (browser requires manual unpairing through settings)
 
 #### Raspberry Pi
-- **`bondState()`**: Returns Bonded if peripheral is connected
+- **`bondState()`**: Always returns NotBonded (Blessed library doesn't expose bond state)
 - **`createBond()`**: No explicit action; Blessed library handles bonding automatically
 - **`removeBond()`**: Disconnects the device
 
@@ -110,27 +111,36 @@ Blue-Falcon now supports BLE bonding (pairing) functionality across all platform
 ```kotlin
 val blueFalcon = BlueFalcon(log = null, ApplicationContext())
 
-// Implement delegate to receive bond state changes
+// Implement delegate to receive bond state changes (primarily on Android)
 blueFalcon.delegates.add(object : BlueFalconDelegate {
     override fun didBondStateChanged(
         bluetoothPeripheral: BluetoothPeripheral,
         bondState: BondState
     ) {
+        // Note: This callback is primarily triggered on Android
+        // Other platforms handle bonding automatically without explicit callbacks
         when (bondState) {
             BondState.NotBonded -> println("Device is not bonded")
             BondState.Bonding -> println("Bonding in progress...")
-            BondState.Bonded -> println("Device is bonded")
+            BondState.Bonded -> println("Device is bonded successfully")
         }
     }
 })
 
-// Check current bond state
+// Check current bond state (returns accurate state on Android, NotBonded on other platforms)
 val currentState = blueFalcon.bondState(peripheral)
+println("Current bond state: $currentState")
 
-// Initiate bonding (most relevant on Android)
+// Initiate bonding
+// - Android: Explicitly triggers bonding dialog
+// - iOS/macOS: No-op (bonding happens automatically when needed)
+// - JavaScript: No-op (browser handles automatically)
+// - Raspberry Pi: No-op (blessed library handles automatically)
 blueFalcon.createBond(peripheral)
 
-// Remove bond (most relevant on Android)
+// Remove bond
+// - Android: Removes the bond programmatically
+// - Other platforms: Disconnects the device (manual unpairing required through system settings)
 blueFalcon.removeBond(peripheral)
 ```
 
