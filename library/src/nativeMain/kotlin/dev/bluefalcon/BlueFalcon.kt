@@ -283,4 +283,33 @@ actual class BlueFalcon actual constructor(
             it.didUpdateMTU(bluetoothPeripheral, 1)
         }
     }
+
+    actual fun bondState(bluetoothPeripheral: BluetoothPeripheral): BondState {
+        // iOS/macOS handles bonding automatically at the system level
+        // Core Bluetooth doesn't expose bond state directly through its API
+        // This is a best-effort approximation: we return NotBonded as default since
+        // iOS manages pairing transparently and doesn't distinguish between
+        // connected-but-not-bonded and connected-and-bonded states in the API
+        // Note: In practice, iOS will prompt for pairing when accessing encrypted
+        // characteristics, and the pairing state is managed at the OS level
+        return BondState.NotBonded
+    }
+
+    actual fun createBond(bluetoothPeripheral: BluetoothPeripheral) {
+        // iOS/macOS handles bonding automatically when accessing encrypted characteristics
+        // There is no explicit API to trigger bonding, it happens automatically when needed
+        log?.debug("createBond called but iOS handles bonding automatically")
+        // Trigger connection if not connected, which may trigger pairing if needed
+        if (bluetoothPeripheral.device.state != CBPeripheralStateConnected) {
+            connect(bluetoothPeripheral)
+        }
+    }
+
+    actual fun removeBond(bluetoothPeripheral: BluetoothPeripheral) {
+        // iOS/macOS does not provide a programmatic way to remove pairing
+        // Users must remove pairing through Settings app
+        log?.debug("removeBond called but iOS does not support programmatic unpairing")
+        // We'll just disconnect the device
+        disconnect(bluetoothPeripheral)
+    }
 }

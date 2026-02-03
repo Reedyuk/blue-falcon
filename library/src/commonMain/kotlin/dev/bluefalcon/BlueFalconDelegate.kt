@@ -45,4 +45,9 @@ interface BlueFalconDelegate {
         bluetoothPeripheral: BluetoothPeripheral,
         bluetoothCharacteristic: BluetoothCharacteristic
     ) {}
+    @JsName("didBondStateChanged")
+    fun didBondStateChanged(
+        bluetoothPeripheral: BluetoothPeripheral,
+        bondState: BondState
+    ) {}
 }
