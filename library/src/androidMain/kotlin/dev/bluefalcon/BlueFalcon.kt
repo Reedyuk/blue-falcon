@@ -518,6 +518,19 @@ actual class BlueFalcon actual constructor(
                             forcedDescriptor
                         )
                     }
+                    // Check if this is a Client Characteristic Configuration Descriptor (CCCD) for notifications
+                    val cccdUuid = java.util.UUID.fromString("00002902-0000-1000-8000-00805f9b34fb")
+                    if (forcedDescriptor.uuid == cccdUuid && status == BluetoothGatt.GATT_SUCCESS) {
+                        forcedDescriptor.characteristic?.let { characteristic ->
+                            log?.debug("Notification state updated for ${characteristic.uuid}")
+                            delegates.forEach {
+                                it.didUpdateNotificationStateFor(
+                                    BluetoothPeripheralImpl(bluetoothDevice),
+                                    BluetoothCharacteristic(characteristic)
+                                )
+                            }
+                        }
+                    }
                 }
             }
         }
