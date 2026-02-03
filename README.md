@@ -1,6 +1,6 @@
-# ![Blue Falcon](bluefalcon.png) Blue-Falcon ![CI](https://github.com/Reedyuk/blue-falcon/actions/workflows/release.yml/badge.svg) [![Kotlin](https://img.shields.io/badge/kotlin-2.0.0-blue.svg)](http://kotlinlang.org) ![badge][badge-android] ![badge][badge-native] ![badge][badge-mac] ![badge][badge-rpi] ![badge][badge-js] <a href="https://git.live"><img src="https://img.shields.io/endpoint?url=https%3A%2F%2Fteamhub-dev.web.app%2Fbadge%3Forg%3DReedyuk%26repo%3Dblue-falcon"></a>
+# ![Blue Falcon](bluefalcon.png) Blue-Falcon ![CI](https://github.com/Reedyuk/blue-falcon/actions/workflows/release.yml/badge.svg) [![Kotlin](https://img.shields.io/badge/kotlin-2.0.0-blue.svg)](http://kotlinlang.org) ![badge][badge-android] ![badge][badge-native] ![badge][badge-mac] ![badge][badge-rpi] ![badge][badge-js] ![badge][badge-windows] <a href="https://git.live"><img src="https://img.shields.io/endpoint?url=https%3A%2F%2Fteamhub-dev.web.app%2Fbadge%3Forg%3DReedyuk%26repo%3Dblue-falcon"></a>
 
-A Bluetooth BLE "Cross Platform" Kotlin Multiplatform library for iOS, Android, MacOS, Raspberry Pi and Javascript.
+A Bluetooth BLE "Cross Platform" Kotlin Multiplatform library for iOS, Android, MacOS, Raspberry Pi, Windows and Javascript.
 
 BLE in general has the same functionality for all platforms, e.g. connect to device, fetch services, fetch characteristics.
 
@@ -52,6 +52,34 @@ try {
 Simply copy the compiled javascript file (blue-falcon.js) to your web directory.
 
 See the JS-Example for details on how to use.
+
+### Windows
+
+#### Requirements
+
+- Windows 10 version 1803 (April 2018 Update) or later
+- Java Development Kit (JDK) 11 or later
+
+#### Building Native Library
+
+The Windows implementation uses native Windows Bluetooth LE APIs through JNI (Java Native Interface). To build the native library:
+
+1. Install Visual Studio 2019 or later with C++ development tools
+2. Install Windows 10 SDK (version 10.0.17763.0 or later)
+3. Navigate to `library/src/windowsMain/cpp`
+4. Follow the build instructions in the README.md file in that directory
+
+The implementation uses Windows Runtime (WinRT) APIs which are built into Windows 10, so no third-party dependencies are required.
+
+#### Usage
+
+```kotlin
+// On Windows, ApplicationContext is empty but still required
+val blueFalcon = BlueFalcon(log = null, ApplicationContext())
+blueFalcon.scan()
+```
+
+Make sure the `bluefalcon-windows.dll` is in your Java library path or in the application's working directory.
 
 ### BlueFalcon API
 
@@ -153,3 +181,4 @@ Many thanks to everyone so far who has contributed to the project, it really mea
 [badge-js]: http://img.shields.io/badge/platform-js-yellow.svg?style=flat
 [badge-mac]: http://img.shields.io/badge/platform-macos-lightgrey.svg?style=flat
 [badge-rpi]: http://img.shields.io/badge/platform-rpi-lightgrey.svg?style=flat
+[badge-windows]: http://img.shields.io/badge/platform-windows-blue.svg?style=flat
