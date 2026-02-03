@@ -77,7 +77,11 @@ class BleDelegate: BlueFalconDelegate {
         bluetoothPeripheral: BluetoothPeripheral,
         bluetoothCharacteristic: BluetoothCharacteristic
     ) {
-        // Called when notification state changes for a characteristic
-        // You can check bluetoothCharacteristic.isNotifying to verify the current state
+        // Example: Log or handle notification state changes
+        if (bluetoothCharacteristic.isNotifying) {
+            println("Notifications enabled for ${bluetoothCharacteristic.uuid} on ${bluetoothPeripheral.uuid}")
+        } else {
+            println("Notifications disabled for ${bluetoothCharacteristic.uuid} on ${bluetoothPeripheral.uuid}")
+        }
     }
 }
