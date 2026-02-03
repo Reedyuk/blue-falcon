@@ -59,6 +59,11 @@ kotlin {
     androidTarget {
         publishAllLibraryVariants()
     }
+    jvm("windows") {
+        compilations.all {
+            kotlinOptions.jvmTarget = "17"
+        }
+    }
 //    jvm("rpi") {
 //        compilations.all {
 //            kotlinOptions.jvmTarget = "1.8"
@@ -88,6 +93,11 @@ kotlin {
             }
         }
         val androidMain by getting
+        val windowsMain by getting {
+            dependencies {
+                // No third-party dependencies - uses native Windows Bluetooth APIs via JNI
+            }
+        }
 //        val rpiMain by getting {
 //            dependencies {
 //                implementation("com.github.weliem:blessed-bluez:0.38")
