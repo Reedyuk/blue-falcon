@@ -72,4 +72,16 @@ class BleDelegate: BlueFalconDelegate {
     ) {
 
     }
+
+    override fun didUpdateNotificationStateFor(
+        bluetoothPeripheral: BluetoothPeripheral,
+        bluetoothCharacteristic: BluetoothCharacteristic
+    ) {
+        // Example: Log or handle notification state changes
+        if (bluetoothCharacteristic.isNotifying) {
+            println("Notifications enabled for ${bluetoothCharacteristic.uuid} on ${bluetoothPeripheral.uuid}")
+        } else {
+            println("Notifications disabled for ${bluetoothCharacteristic.uuid} on ${bluetoothPeripheral.uuid}")
+        }
+    }
 }

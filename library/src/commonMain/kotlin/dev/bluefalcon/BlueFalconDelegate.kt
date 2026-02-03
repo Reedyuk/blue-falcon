@@ -40,4 +40,9 @@ interface BlueFalconDelegate {
         bluetoothCharacteristic: BluetoothCharacteristic,
         success: Boolean
     ) {}
+    @JsName("didUpdateNotificationStateFor")
+    fun didUpdateNotificationStateFor(
+        bluetoothPeripheral: BluetoothPeripheral,
+        bluetoothCharacteristic: BluetoothCharacteristic
+    ) {}
 }
