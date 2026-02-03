@@ -72,4 +72,12 @@ class BleDelegate: BlueFalconDelegate {
     ) {
 
     }
+
+    override fun didUpdateNotificationStateFor(
+        bluetoothPeripheral: BluetoothPeripheral,
+        bluetoothCharacteristic: BluetoothCharacteristic
+    ) {
+        // Called when notification state changes for a characteristic
+        // You can check bluetoothCharacteristic.isNotifying to verify the current state
+    }
 }
