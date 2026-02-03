@@ -111,6 +111,13 @@ actual class BlueFalcon actual constructor(
         }
     }
     
+    @Throws(
+        BluetoothUnknownException::class,
+        BluetoothResettingException::class,
+        BluetoothUnsupportedException::class,
+        BluetoothPermissionException::class,
+        BluetoothNotEnabledException::class
+    )
     actual fun scan(filters: List<ServiceFilter>) {
         log?.info("Scan started with filters: $filters")
         isScanning = true

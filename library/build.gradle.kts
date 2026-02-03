@@ -60,9 +60,7 @@ kotlin {
         publishAllLibraryVariants()
     }
     jvm("windows") {
-        compilations.all {
-            kotlinOptions.jvmTarget = "17"
-        }
+        // compilerOptions is set via jvmToolchain(17)
     }
 //    jvm("rpi") {
 //        compilations.all {
