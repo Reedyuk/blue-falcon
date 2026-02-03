@@ -518,9 +518,10 @@ actual class BlueFalcon actual constructor(
                             forcedDescriptor
                         )
                     }
-                    // Check if this is a Client Characteristic Configuration Descriptor (CCCD) for notifications
-                    val cccdUuid = java.util.UUID.fromString("00002902-0000-1000-8000-00805f9b34fb")
-                    if (forcedDescriptor.uuid == cccdUuid && status == BluetoothGatt.GATT_SUCCESS) {
+                    // Check if this is a Client Characteristic Configuration Descriptor (CCCD) write
+                    // The CCCD is used for both notifications and indications, so we report the state
+                    // change for any successful CCCD write, allowing the caller to check isNotifying
+                    if (forcedDescriptor.uuid == CCCD_UUID && status == BluetoothGatt.GATT_SUCCESS) {
                         forcedDescriptor.characteristic?.let { characteristic ->
                             log?.debug("Notification state updated for ${characteristic.uuid}")
                             delegates.forEach {
@@ -667,5 +668,10 @@ actual class BlueFalcon actual constructor(
         }
 
         return sharedAdvertisementData
+    }
+
+    companion object {
+        // Client Characteristic Configuration Descriptor UUID
+        private val CCCD_UUID = java.util.UUID.fromString("00002902-0000-1000-8000-00805f9b34fb")
     }
 }
