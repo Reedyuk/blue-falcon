@@ -7,7 +7,7 @@ import platform.CoreBluetooth.CBService
 actual class BluetoothPeripheralImpl(actual override val device: CBPeripheral, val rssiValue: Float?): BluetoothPeripheral {
     actual constructor(device: NativeBluetoothDevice): this(device, null)
 
-    actual override val name: String? = device.name
+    actual override val name: String? get() = device.name
     actual override var rssi: Float? = rssiValue
     actual override var mtuSize: Int? = null
     actual override val uuid: String = device.identifier.UUIDString
