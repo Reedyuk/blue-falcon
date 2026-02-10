@@ -122,4 +122,22 @@ class PeripheralDelegate constructor(
         // Descriptors are discovered automatically by BlueFalcon
         // This method is required by iOS to avoid API misuse warnings
     }
+
+    @ObjCSignatureOverride
+    override fun peripheral(
+        peripheral: CBPeripheral,
+        didUpdateNotificationStateForCharacteristic: CBCharacteristic,
+        error: NSError?
+    ) {
+        if (error != null) {
+            log?.error("Error updating notification state for characteristic ${didUpdateNotificationStateForCharacteristic.UUID}: $error")
+        } else {
+            log?.debug("didUpdateNotificationStateForCharacteristic ${didUpdateNotificationStateForCharacteristic.UUID} isNotifying: ${didUpdateNotificationStateForCharacteristic.isNotifying}")
+        }
+        val device = BluetoothPeripheralImpl(peripheral, rssiValue = null)
+        val characteristic = BluetoothCharacteristic(didUpdateNotificationStateForCharacteristic)
+        blueFalcon.delegates.forEach {
+            it.didUpdateNotificationStateFor(device, characteristic)
+        }
+    }
 }
