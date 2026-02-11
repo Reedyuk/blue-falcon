@@ -116,6 +116,40 @@ expect class BlueFalcon(
 
     fun changeMTU(bluetoothPeripheral: BluetoothPeripheral, mtuSize: Int)
 
+    /**
+     * Gets the current bond state of the Bluetooth peripheral.
+     *
+     * @param bluetoothPeripheral The peripheral to check the bond state for
+     * @return The current bond state (NotBonded, Bonding, or Bonded)
+     */
+    fun bondState(bluetoothPeripheral: BluetoothPeripheral): BondState
+
+    /**
+     * Initiates bonding (pairing) with the Bluetooth peripheral.
+     *
+     * This will start the bonding process with the peripheral. The result will be reported
+     * through the BlueFalconDelegate's didBondStateChanged callback.
+     *
+     * On iOS/Native platforms, bonding is typically handled automatically by the system when
+     * accessing encrypted characteristics. This method will trigger bonding if supported.
+     *
+     * On Android, this method calls BluetoothDevice.createBond() to explicitly initiate pairing.
+     *
+     * On Web (JavaScript), bonding is handled automatically by the browser during GATT operations.
+     *
+     * @param bluetoothPeripheral The peripheral to bond with
+     */
+    fun createBond(bluetoothPeripheral: BluetoothPeripheral)
+
+    /**
+     * Removes bonding (unpairing) with the Bluetooth peripheral.
+     *
+     * This will remove the bond with the peripheral.
+     *
+     * @param bluetoothPeripheral The peripheral to remove the bond from
+     */
+    fun removeBond(bluetoothPeripheral: BluetoothPeripheral)
+
 }
 
 enum class BluetoothManagerState {
