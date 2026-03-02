@@ -116,6 +116,8 @@ expect class BlueFalcon(
 
     fun changeMTU(bluetoothPeripheral: BluetoothPeripheral, mtuSize: Int)
 
+    fun openL2capChannel(bluetoothPeripheral: BluetoothPeripheral, psm: Int)
+
 }
 
 enum class BluetoothManagerState {

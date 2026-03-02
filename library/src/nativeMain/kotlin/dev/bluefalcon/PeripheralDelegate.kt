@@ -140,4 +140,20 @@ class PeripheralDelegate constructor(
             it.didUpdateNotificationStateFor(device, characteristic)
         }
     }
+
+    @ObjCSignatureOverride
+    override fun peripheral(
+        peripheral: CBPeripheral,
+        didOpenL2CAPChannel: CBL2CAPChannel?,
+        error: NSError?
+    ) {
+        if (error != null) {
+            log?.error("Error opening L2Cap channel: $error")
+        }
+        val device = BluetoothPeripheralImpl(peripheral, rssiValue = null)
+        val socket = didOpenL2CAPChannel?.let { L2CapChannel(it) }
+        blueFalcon.delegates.forEach {
+            it.didOpenL2capChannel(device, socket)
+        }
+    }
 }

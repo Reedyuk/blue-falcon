@@ -283,4 +283,10 @@ actual class BlueFalcon actual constructor(
             it.didUpdateMTU(bluetoothPeripheral, 1)
         }
     }
+
+    actual fun openL2capChannel(bluetoothPeripheral: BluetoothPeripheral, psm: Int) {
+        log?.debug("openL2capChannel ${bluetoothPeripheral.uuid} psm: $psm")
+        bluetoothPeripheralManager.setPeripheralDelegate(bluetoothPeripheral)
+        bluetoothPeripheral.device.openL2CAPChannel(psm.toUShort())
+    }
 }
