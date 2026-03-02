@@ -10,6 +10,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.launch
 import java.nio.ByteBuffer
 import java.nio.charset.Charset
 import java.util.*
@@ -330,6 +331,25 @@ actual class BlueFalcon actual constructor(
         log?.debug("changeMTU -> ${bluetoothPeripheral.uuid} mtuSize: $mtuSize")
         mGattClientCallback.gattsForDevice(bluetoothPeripheral.device).forEach { gatt ->
             gatt.requestMtu(mtuSize)
+        }
+    }
+
+    actual fun openL2capChannel(bluetoothPeripheral: BluetoothPeripheral, psm: Int) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+            log?.error("L2Cap channels require Android 10 (API 29) or higher")
+            delegates.forEach { it.didOpenL2capChannel(bluetoothPeripheral, null) }
+            return
+        }
+        scope.launch(Dispatchers.IO) {
+            try {
+                val socket = bluetoothPeripheral.device.createL2capChannel(psm)
+                socket.connect()
+                val l2capSocket = L2CapSocket(socket)
+                delegates.forEach { it.didOpenL2capChannel(bluetoothPeripheral, l2capSocket) }
+            } catch (e: Exception) {
+                log?.error("Failed to open L2Cap channel: ${e.message}")
+                delegates.forEach { it.didOpenL2capChannel(bluetoothPeripheral, null) }
+            }
         }
     }
 

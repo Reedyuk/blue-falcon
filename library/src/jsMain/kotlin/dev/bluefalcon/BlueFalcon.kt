@@ -253,4 +253,9 @@ actual class BlueFalcon actual constructor(
         TODO("not implemented")
     }
 
+    @JsName("openL2capChannel")
+    actual fun openL2capChannel(bluetoothPeripheral: BluetoothPeripheral, psm: Int) {
+        throw UnsupportedOperationException("L2Cap is not supported on this platform")
+    }
+
 }

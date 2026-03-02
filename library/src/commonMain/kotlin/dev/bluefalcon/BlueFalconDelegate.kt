@@ -45,4 +45,6 @@ interface BlueFalconDelegate {
         bluetoothPeripheral: BluetoothPeripheral,
         bluetoothCharacteristic: BluetoothCharacteristic
     ) {}
+    @JsName("didOpenL2capChannel")
+    fun didOpenL2capChannel(bluetoothPeripheral: BluetoothPeripheral, bluetoothSocket: BluetoothSocket?) {}
 }
