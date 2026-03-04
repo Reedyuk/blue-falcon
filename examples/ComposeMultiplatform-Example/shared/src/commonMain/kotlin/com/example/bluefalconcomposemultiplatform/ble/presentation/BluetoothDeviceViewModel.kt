@@ -105,7 +105,9 @@ class BluetoothDeviceViewModel(
                 is DeviceEvent.OnDescriptorRead -> {
                     _deviceState.update { state ->
                         val updateDevices = state.devices.toMutableMap()
-                        // Trigger a UI refresh so the descriptor value is displayed
+                        updateDevices[event.macId]?.let { device ->
+                            updateDevices[event.macId] = device.copy(updateCount = device.updateCount + 1)
+                        }
                         state.copy(devices = HashMap(updateDevices))
                     }
                 }
