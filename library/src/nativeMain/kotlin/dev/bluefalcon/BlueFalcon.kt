@@ -289,4 +289,13 @@ actual class BlueFalcon actual constructor(
         bluetoothPeripheralManager.setPeripheralDelegate(bluetoothPeripheral)
         bluetoothPeripheral.device.openL2CAPChannel(psm.toUShort())
     }
+
+    actual fun createBond(bluetoothPeripheral: BluetoothPeripheral) {
+        log?.info("createBond is not required on Apple platforms. Bonding is handled automatically by CoreBluetooth when accessing encrypted characteristics.")
+        delegates.forEach { it.didBondStateChanged(bluetoothPeripheral, BlueFalconBondState.Bonded) }
+    }
+
+    actual fun removeBond(bluetoothPeripheral: BluetoothPeripheral) {
+        log?.info("removeBond is not supported on Apple platforms. Bond removal must be done through system Bluetooth settings.")
+    }
 }

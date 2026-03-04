@@ -349,6 +349,14 @@ actual class BlueFalcon actual constructor(
     actual fun openL2capChannel(bluetoothPeripheral: BluetoothPeripheral, psm: Int) {
         throw UnsupportedOperationException("L2Cap is not supported on this platform")
     }
+
+    actual fun createBond(bluetoothPeripheral: BluetoothPeripheral) {
+        throw UnsupportedOperationException("Bonding is not supported on this platform")
+    }
+
+    actual fun removeBond(bluetoothPeripheral: BluetoothPeripheral) {
+        throw UnsupportedOperationException("Bonding is not supported on this platform")
+    }
     
     // Callbacks from native code
     @Suppress("unused")
