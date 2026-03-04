@@ -1,23 +1,19 @@
 package com.example.bluefalconcomposemultiplatform
 
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.unit.dp
 import com.example.bluefalconcomposemultiplatform.ble.presentation.BluetoothDeviceViewModel
+import com.example.bluefalconcomposemultiplatform.ble.presentation.component.DeviceDetailScreen
 import com.example.bluefalconcomposemultiplatform.ble.presentation.component.DeviceScanView
 import com.example.bluefalconcomposemultiplatform.core.presentation.BlueFalconTheme
 import com.example.bluefalconcomposemultiplatform.di.AppModule
-import com.example.bluefalconcomposemultiplatform.ui.theme.Typography
 import dev.icerock.moko.mvvm.compose.getViewModel
 import dev.icerock.moko.mvvm.compose.viewModelFactory
 
@@ -40,27 +36,33 @@ fun App(
 
         val state by viewModel.deviceState.collectAsState()
 
-        Surface(
-            modifier = Modifier
-                .fillMaxSize(),
-            color = MaterialTheme.colorScheme.background
-        ) {
-            Column {
-                Text(
-                    "BlueFalcon Compose App",
-                    fontStyle = Typography.titleLarge.fontStyle,
-                    fontSize = Typography.titleLarge.fontSize,
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier.padding(top = 20.dp).fillMaxWidth()
-                )
+        val selectedDevice = state.selectedDeviceId?.let { id ->
+            state.devices[id]?.takeIf { it.connected }
+        }
 
+        AnimatedContent(
+            targetState = selectedDevice,
+            transitionSpec = {
+                if (targetState != null) {
+                    (slideInHorizontally { it } + fadeIn()) togetherWith
+                            (slideOutHorizontally { -it } + fadeOut())
+                } else {
+                    (slideInHorizontally { -it } + fadeIn()) togetherWith
+                            (slideOutHorizontally { it } + fadeOut())
+                }
+            }
+        ) { device ->
+            if (device != null) {
+                DeviceDetailScreen(
+                    device = device,
+                    onEvent = viewModel::onEvent
+                )
+            } else {
                 DeviceScanView(
                     state = state,
                     onEvent = viewModel::onEvent
                 )
             }
-
-
         }
     }
 }
