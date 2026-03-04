@@ -63,7 +63,7 @@ class BluetoothDeviceViewModel(
                     _deviceState.update { state ->
                         val updateDevices = state.devices.toMutableMap()
                         updateDevices[event.macId]?.let { device ->
-                            updateDevices[event.macId] = device.copy(peripheral = device.peripheral)
+                            updateDevices[event.macId] = device.copy(updateCount = device.updateCount + 1)
                         }
                         state.copy(devices = HashMap(updateDevices))
                     }
@@ -73,7 +73,7 @@ class BluetoothDeviceViewModel(
                     _deviceState.update { state ->
                         val updateDevices = state.devices.toMutableMap()
                         updateDevices[event.macId]?.let { device ->
-                            updateDevices[event.macId] = device.copy(peripheral = device.peripheral)
+                            updateDevices[event.macId] = device.copy(updateCount = device.updateCount + 1)
                         }
                         state.copy(devices = HashMap(updateDevices))
                     }

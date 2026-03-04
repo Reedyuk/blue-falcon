@@ -269,7 +269,7 @@ fun CharacteristicItem(
                 val hex = bytes.joinToString(" ") { byte ->
                     (byte.toInt() and 0xFF).toString(16).padStart(2, '0').uppercase()
                 }
-                val utf8 = bytes.decodeToString()
+                val utf8 = runCatching { bytes.decodeToString() }.getOrDefault("(invalid UTF-8)")
                 "Value: (0x) $hex | \"$utf8\""
             }
         } ?: "Value: —"
