@@ -21,7 +21,7 @@ class BluetoothDeviceViewModel(
     val deviceState: StateFlow<BluetoothDeviceState> get() = _deviceState
 
     init {
-        delegate.setListener {event ->
+        delegate.setListener { event ->
             when(event) {
                 is DeviceEvent.OnDeviceConnected -> {
                     _deviceState.update { state ->
@@ -30,7 +30,8 @@ class BluetoothDeviceViewModel(
                             updateDevices[event.macId] = it.copy(connected = true)
                         }
                         state.copy(
-                            devices = HashMap(updateDevices)
+                            devices = HashMap(updateDevices),
+                            selectedDeviceId = event.macId
                         )
                     }
                 }
@@ -42,8 +43,39 @@ class BluetoothDeviceViewModel(
                             updateDevices[event.macId] = it.copy(connected = false)
                         }
                         state.copy(
-                            devices = HashMap(updateDevices)
+                            devices = HashMap(updateDevices),
+                            selectedDeviceId = if (state.selectedDeviceId == event.macId) null else state.selectedDeviceId
                         )
+                    }
+                }
+
+                is DeviceEvent.OnServicesDiscovered -> {
+                    _deviceState.update { state ->
+                        val updateDevices = state.devices.toMutableMap()
+                        updateDevices[event.macId]?.let {
+                            updateDevices[event.macId] = it.copy(peripheral = event.peripheral)
+                        }
+                        state.copy(devices = HashMap(updateDevices))
+                    }
+                }
+
+                is DeviceEvent.OnCharacteristicValueChanged -> {
+                    _deviceState.update { state ->
+                        val updateDevices = state.devices.toMutableMap()
+                        updateDevices[event.macId]?.let { device ->
+                            updateDevices[event.macId] = device.copy(peripheral = device.peripheral)
+                        }
+                        state.copy(devices = HashMap(updateDevices))
+                    }
+                }
+
+                is DeviceEvent.OnNotificationStateChanged -> {
+                    _deviceState.update { state ->
+                        val updateDevices = state.devices.toMutableMap()
+                        updateDevices[event.macId]?.let { device ->
+                            updateDevices[event.macId] = device.copy(peripheral = device.peripheral)
+                        }
+                        state.copy(devices = HashMap(updateDevices))
                     }
                 }
             }
@@ -70,6 +102,12 @@ class BluetoothDeviceViewModel(
         when(event) {
             UiEvent.OnScanClick -> {
                 blueFalcon.scan()
+                _deviceState.update { it.copy(isScanning = true) }
+            }
+
+            UiEvent.OnStopScanClick -> {
+                blueFalcon.stopScanning()
+                _deviceState.update { it.copy(isScanning = false) }
             }
 
             is UiEvent.OnConnectClick -> {
@@ -84,6 +122,14 @@ class BluetoothDeviceViewModel(
                 }
             }
 
+            is UiEvent.OnDeviceSelected -> {
+                _deviceState.update { it.copy(selectedDeviceId = event.macId) }
+            }
+
+            UiEvent.OnNavigateBack -> {
+                _deviceState.update { it.copy(selectedDeviceId = null) }
+            }
+
             is UiEvent.OnReadCharacteristic -> {
                 _deviceState.value.devices[event.macId]?.let {
                     blueFalcon.readCharacteristic(it.peripheral, event.characteristic)
@@ -92,6 +138,11 @@ class BluetoothDeviceViewModel(
             is UiEvent.OnWriteCharacteristic -> {
                 _deviceState.value.devices[event.macId]?.let {
                     blueFalcon.writeCharacteristic(it.peripheral, event.characteristic, event.value, null)
+                }
+            }
+            is UiEvent.OnToggleNotify -> {
+                _deviceState.value.devices[event.macId]?.let {
+                    blueFalcon.notifyCharacteristic(it.peripheral, event.characteristic, !event.characteristic.isNotifying)
                 }
             }
         }
