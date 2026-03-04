@@ -78,6 +78,47 @@ class BluetoothDeviceViewModel(
                         state.copy(devices = HashMap(updateDevices))
                     }
                 }
+
+                is DeviceEvent.OnRssiUpdated -> {
+                    _deviceState.update { state ->
+                        val updateDevices = state.devices.toMutableMap()
+                        updateDevices[event.macId]?.let { device ->
+                            updateDevices[event.macId] = device.copy(updateCount = device.updateCount + 1)
+                        }
+                        state.copy(devices = HashMap(updateDevices))
+                    }
+                }
+
+                is DeviceEvent.OnMtuUpdated -> {
+                    _deviceState.update { state ->
+                        val updateDevices = state.devices.toMutableMap()
+                        updateDevices[event.macId]?.let { device ->
+                            updateDevices[event.macId] = device.copy(
+                                mtuStatus = if (event.status == 0) "MTU updated" else "MTU update failed (status: ${event.status})",
+                                updateCount = device.updateCount + 1
+                            )
+                        }
+                        state.copy(devices = HashMap(updateDevices))
+                    }
+                }
+
+                is DeviceEvent.OnDescriptorRead -> {
+                    _deviceState.update { state ->
+                        val updateDevices = state.devices.toMutableMap()
+                        // Trigger a UI refresh so the descriptor value is displayed
+                        state.copy(devices = HashMap(updateDevices))
+                    }
+                }
+
+                is DeviceEvent.OnWriteCharacteristicResult -> {
+                    _deviceState.update { state ->
+                        val updateDevices = state.devices.toMutableMap()
+                        updateDevices[event.macId]?.let { device ->
+                            updateDevices[event.macId] = device.copy(updateCount = device.updateCount + 1)
+                        }
+                        state.copy(devices = HashMap(updateDevices))
+                    }
+                }
             }
         }
         blueFalcon.delegates.add(delegate)
@@ -143,6 +184,16 @@ class BluetoothDeviceViewModel(
             is UiEvent.OnToggleNotify -> {
                 _deviceState.value.devices[event.macId]?.let {
                     blueFalcon.notifyCharacteristic(it.peripheral, event.characteristic, !event.characteristic.isNotifying)
+                }
+            }
+            is UiEvent.OnChangeMtu -> {
+                _deviceState.value.devices[event.macId]?.let {
+                    blueFalcon.changeMTU(it.peripheral, event.mtuSize)
+                }
+            }
+            is UiEvent.OnReadDescriptor -> {
+                _deviceState.value.devices[event.macId]?.let {
+                    blueFalcon.readDescriptor(it.peripheral, event.characteristic, event.descriptor)
                 }
             }
         }

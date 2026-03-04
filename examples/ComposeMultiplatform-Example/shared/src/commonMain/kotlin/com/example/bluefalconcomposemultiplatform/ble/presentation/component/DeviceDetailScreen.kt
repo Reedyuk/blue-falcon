@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.ArrowDropDown
@@ -47,6 +48,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.bluefalconcomposemultiplatform.ble.presentation.EnhancedBluetoothPeripheral
@@ -61,6 +63,7 @@ fun DeviceDetailScreen(
     onEvent: (UiEvent) -> Unit
 ) {
     val macId = device.peripheral.uuid
+    var showMtuDialog by remember { mutableStateOf(false) }
 
     Scaffold(
         topBar = {
@@ -138,8 +141,11 @@ fun DeviceDetailScreen(
                     .padding(paddingValues)
             ) {
                 item {
+                    DeviceInfoCard(device = device, onRequestMtu = { showMtuDialog = true })
+                }
+                item {
                     Text(
-                        text = "CLIENT",
+                        text = "SERVICES",
                         modifier = Modifier.padding(start = 16.dp, top = 12.dp, bottom = 8.dp),
                         fontSize = 12.sp,
                         fontWeight = FontWeight.Bold,
@@ -154,6 +160,110 @@ fun DeviceDetailScreen(
                         onEvent = onEvent
                     )
                 }
+            }
+        }
+    }
+
+    if (showMtuDialog) {
+        MtuDialog(
+            onDismiss = { showMtuDialog = false },
+            onRequest = { mtuSize ->
+                onEvent(UiEvent.OnChangeMtu(macId, mtuSize))
+                showMtuDialog = false
+            }
+        )
+    }
+}
+
+@Composable
+fun DeviceInfoCard(
+    device: EnhancedBluetoothPeripheral,
+    onRequestMtu: () -> Unit
+) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 12.dp, vertical = 8.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+    ) {
+        Column(
+            modifier = Modifier.padding(12.dp)
+        ) {
+            Text(
+                text = "DEVICE INFO",
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.primary,
+                letterSpacing = 1.sp
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Column {
+                    Text(
+                        text = "RSSI",
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Text(
+                        text = device.peripheral.rssi?.let { "${it.toInt()} dBm" } ?: "—",
+                        fontSize = 14.sp,
+                        fontFamily = FontFamily.Monospace,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                }
+                Column {
+                    Text(
+                        text = "MTU",
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Text(
+                        text = device.peripheral.mtuSize?.toString() ?: "—",
+                        fontSize = 14.sp,
+                        fontFamily = FontFamily.Monospace,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                }
+                Column {
+                    Text(
+                        text = "SERVICES",
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Text(
+                        text = "${device.peripheral.services.size}",
+                        fontSize = 14.sp,
+                        fontFamily = FontFamily.Monospace,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                }
+            }
+
+            device.mtuStatus?.let { status ->
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = status,
+                    fontSize = 11.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            OutlinedButton(
+                onClick = onRequestMtu
+            ) {
+                Text("REQUEST MTU", fontSize = 12.sp)
             }
         }
     }
@@ -240,6 +350,7 @@ fun CharacteristicItem(
     onEvent: (UiEvent) -> Unit
 ) {
     var showWriteDialog by remember { mutableStateOf(false) }
+    var showDescriptors by remember { mutableStateOf(false) }
 
     Column(
         modifier = Modifier
@@ -367,6 +478,50 @@ fun CharacteristicItem(
                 )
             }
         }
+
+        // Descriptors section
+        if (characteristic.descriptors.isNotEmpty()) {
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(
+                text = if (showDescriptors) "▾ Descriptors (${characteristic.descriptors.size})"
+                       else "▸ Descriptors (${characteristic.descriptors.size})",
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Medium,
+                color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier
+                    .clickable { showDescriptors = !showDescriptors }
+                    .padding(vertical = 4.dp)
+            )
+            AnimatedVisibility(visible = showDescriptors) {
+                Column(
+                    modifier = Modifier.padding(start = 8.dp)
+                ) {
+                    characteristic.descriptors.forEach { descriptor ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 2.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "Descriptor: $descriptor",
+                                fontSize = 10.sp,
+                                fontFamily = FontFamily.Monospace,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.weight(1f)
+                            )
+                            TextButton(
+                                onClick = {
+                                    onEvent(UiEvent.OnReadDescriptor(macId, characteristic, descriptor))
+                                }
+                            ) {
+                                Text("READ", fontSize = 10.sp)
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 
     // Write dialog
@@ -419,6 +574,55 @@ fun WriteCharacteristicDialog(
                 enabled = text.isNotEmpty()
             ) {
                 Text("WRITE")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("CANCEL")
+            }
+        }
+    )
+}
+
+@Composable
+fun MtuDialog(
+    onDismiss: () -> Unit,
+    onRequest: (Int) -> Unit
+) {
+    var mtuText by remember { mutableStateOf("512") }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Text(
+                text = "Request MTU",
+                fontWeight = FontWeight.Bold
+            )
+        },
+        text = {
+            Column {
+                Text(
+                    text = "Enter desired MTU size (23-517):",
+                    fontSize = 14.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                OutlinedTextField(
+                    value = mtuText,
+                    onValueChange = { mtuText = it.filter { c -> c.isDigit() } },
+                    modifier = Modifier.fillMaxWidth(),
+                    placeholder = { Text("512") },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = { mtuText.toIntOrNull()?.let { onRequest(it) } },
+                enabled = mtuText.isNotEmpty() && mtuText.toIntOrNull() != null
+            ) {
+                Text("REQUEST")
             }
         },
         dismissButton = {
