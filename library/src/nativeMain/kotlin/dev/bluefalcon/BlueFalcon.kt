@@ -292,7 +292,6 @@ actual class BlueFalcon actual constructor(
 
     actual fun createBond(bluetoothPeripheral: BluetoothPeripheral) {
         log?.info("createBond is not required on Apple platforms. Bonding is handled automatically by CoreBluetooth when accessing encrypted characteristics.")
-        delegates.forEach { it.didBondStateChanged(bluetoothPeripheral, BlueFalconBondState.Bonded) }
     }
 
     actual fun removeBond(bluetoothPeripheral: BluetoothPeripheral) {

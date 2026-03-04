@@ -36,10 +36,16 @@ actual class BlueFalcon actual constructor(
     actual val peripherals: NativeFlow<Set<BluetoothPeripheral>> = _peripherals.toNativeType(scope)
     actual val managerState: StateFlow<BluetoothManagerState> = MutableStateFlow(BluetoothManagerState.Ready)
 
+    private var isBondReceiverRegistered = false
     private val bondStateReceiver = object : BroadcastReceiver() {
         override fun onReceive(ctx: Context?, intent: Intent?) {
             if (intent?.action == BluetoothDevice.ACTION_BOND_STATE_CHANGED) {
-                val device = intent.getParcelableExtra<BluetoothDevice>(BluetoothDevice.EXTRA_DEVICE) ?: return
+                val device = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE, BluetoothDevice::class.java)
+                } else {
+                    @Suppress("DEPRECATION")
+                    intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE)
+                } ?: return
                 val bondState = intent.getIntExtra(BluetoothDevice.EXTRA_BOND_STATE, BluetoothDevice.BOND_NONE)
                 val state = when (bondState) {
                     BluetoothDevice.BOND_BONDING -> BlueFalconBondState.Bonding
@@ -52,8 +58,11 @@ actual class BlueFalcon actual constructor(
         }
     }
 
-    init {
-        context.registerReceiver(bondStateReceiver, IntentFilter(BluetoothDevice.ACTION_BOND_STATE_CHANGED))
+    private fun ensureBondReceiverRegistered() {
+        if (!isBondReceiverRegistered) {
+            context.registerReceiver(bondStateReceiver, IntentFilter(BluetoothDevice.ACTION_BOND_STATE_CHANGED))
+            isBondReceiverRegistered = true
+        }
     }
 
     actual fun requestConnectionPriority(
@@ -378,13 +387,17 @@ actual class BlueFalcon actual constructor(
 
     actual fun createBond(bluetoothPeripheral: BluetoothPeripheral) {
         log?.debug("createBond ${bluetoothPeripheral.uuid}")
+        ensureBondReceiverRegistered()
         bluetoothPeripheral.device.createBond()
     }
 
     actual fun removeBond(bluetoothPeripheral: BluetoothPeripheral) {
         log?.debug("removeBond ${bluetoothPeripheral.uuid}")
+        ensureBondReceiverRegistered()
         try {
             bluetoothPeripheral.device::class.java.getMethod("removeBond").invoke(bluetoothPeripheral.device)
+        } catch (e: NoSuchMethodException) {
+            log?.error("removeBond method not available on this device: ${e.message}")
         } catch (e: Exception) {
             log?.error("Failed to remove bond: ${e.message}")
         }
