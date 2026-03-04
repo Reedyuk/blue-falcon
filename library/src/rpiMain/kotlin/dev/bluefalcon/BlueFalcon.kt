@@ -233,4 +233,12 @@ actual class BlueFalcon actual constructor(
 
         return sharedAdvertisementData
     }
+
+    actual fun createBond(bluetoothPeripheral: BluetoothPeripheral) {
+        bluetoothPeripheral.device.createBond()
+    }
+
+    actual fun removeBond(bluetoothPeripheral: BluetoothPeripheral) {
+        throw UnsupportedOperationException("removeBond is not supported on this platform")
+    }
 }

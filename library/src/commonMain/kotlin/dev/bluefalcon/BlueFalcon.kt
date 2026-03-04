@@ -118,6 +118,10 @@ expect class BlueFalcon(
 
     fun openL2capChannel(bluetoothPeripheral: BluetoothPeripheral, psm: Int)
 
+    fun createBond(bluetoothPeripheral: BluetoothPeripheral)
+
+    fun removeBond(bluetoothPeripheral: BluetoothPeripheral)
+
 }
 
 enum class BluetoothManagerState {
