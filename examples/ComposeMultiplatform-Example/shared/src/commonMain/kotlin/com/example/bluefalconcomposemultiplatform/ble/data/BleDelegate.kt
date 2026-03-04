@@ -51,14 +51,20 @@ class BleDelegate: BlueFalconDelegate {
         bluetoothPeripheral: BluetoothPeripheral,
         bluetoothCharacteristicDescriptor: BluetoothCharacteristicDescriptor
     ) {
-
+        onDeviceEvent?.invoke(
+            DeviceEvent.OnDescriptorRead(
+                bluetoothPeripheral.uuid,
+                bluetoothCharacteristicDescriptor
+            )
+        )
     }
 
     override fun didRssiUpdate(bluetoothPeripheral: BluetoothPeripheral) {
+        onDeviceEvent?.invoke(DeviceEvent.OnRssiUpdated(bluetoothPeripheral.uuid))
     }
 
     override fun didUpdateMTU(bluetoothPeripheral: BluetoothPeripheral, status: Int) {
-
+        onDeviceEvent?.invoke(DeviceEvent.OnMtuUpdated(bluetoothPeripheral.uuid, status))
     }
 
     override fun didWriteCharacteristic(
@@ -66,7 +72,13 @@ class BleDelegate: BlueFalconDelegate {
         bluetoothCharacteristic: BluetoothCharacteristic,
         success: Boolean
     ) {
-
+        onDeviceEvent?.invoke(
+            DeviceEvent.OnWriteCharacteristicResult(
+                bluetoothPeripheral.uuid,
+                bluetoothCharacteristic,
+                success
+            )
+        )
     }
 
     override fun didWriteDescriptor(
