@@ -537,6 +537,10 @@ actual class BlueFalcon actual constructor(
     private external fun nativeWriteDescriptor(address: Long, descriptorUuid: String, value: ByteArray)
     private external fun nativeChangeMTU(address: Long, mtu: Int)
     
+    actual fun destroy() {
+        connections.clear()
+    }
+
     companion object {
         const val WRITE_TYPE_DEFAULT = 0x02
         const val WRITE_TYPE_NO_RESPONSE = 0x01

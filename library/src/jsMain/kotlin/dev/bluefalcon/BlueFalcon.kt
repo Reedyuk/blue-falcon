@@ -268,4 +268,6 @@ actual class BlueFalcon actual constructor(
         throw UnsupportedOperationException("Bonding is not supported in Web Bluetooth API")
     }
 
+    actual fun destroy() {}
+
 }

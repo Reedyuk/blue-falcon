@@ -210,6 +210,8 @@ actual class BlueFalcon actual constructor(
         TODO()
     }
 
+    actual fun destroy() {}
+
     //Helper
     fun mapNativeAdvertisementDataToShared(
         scanResult: ScanResult,
