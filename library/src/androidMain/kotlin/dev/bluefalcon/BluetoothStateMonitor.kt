@@ -43,7 +43,7 @@ internal object BluetoothStateMonitor {
                     context.applicationContext.registerReceiver(
                         receiver,
                         filter,
-                        Context.RECEIVER_EXPORTED,
+                        Context.RECEIVER_NOT_EXPORTED,
                     )
                 } else {
                     context.applicationContext.registerReceiver(receiver, filter)
