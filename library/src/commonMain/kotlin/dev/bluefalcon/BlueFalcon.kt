@@ -122,6 +122,8 @@ expect class BlueFalcon(
 
     fun removeBond(bluetoothPeripheral: BluetoothPeripheral)
 
+    fun destroy()
+
 }
 
 enum class BluetoothManagerState {

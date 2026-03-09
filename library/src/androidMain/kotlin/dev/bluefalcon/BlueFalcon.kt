@@ -34,7 +34,28 @@ actual class BlueFalcon actual constructor(
     actual val scope = CoroutineScope(Dispatchers.Default)
     internal actual val _peripherals = MutableStateFlow<Set<BluetoothPeripheral>>(emptySet())
     actual val peripherals: NativeFlow<Set<BluetoothPeripheral>> = _peripherals.toNativeType(scope)
-    actual val managerState: StateFlow<BluetoothManagerState> = MutableStateFlow(BluetoothManagerState.Ready)
+    private val _managerState = MutableStateFlow(
+        try {
+            if (bluetoothManager.adapter?.isEnabled == true) BluetoothManagerState.Ready
+            else BluetoothManagerState.NotReady
+        } catch (_: SecurityException) {
+            BluetoothManagerState.NotReady
+        }
+    )
+    actual val managerState: StateFlow<BluetoothManagerState> = _managerState
+
+    init {
+        BluetoothStateMonitor.register(context, this)
+    }
+
+    internal fun onAdapterStateChanged(adapterOn: Boolean) {
+        if (adapterOn) {
+            _managerState.tryEmit(BluetoothManagerState.Ready)
+        } else {
+            _managerState.tryEmit(BluetoothManagerState.NotReady)
+            mGattClientCallback.disconnectAllOnAdapterOff()
+        }
+    }
 
     private var isBondReceiverRegistered = false
     private val bondStateReceiver = object : BroadcastReceiver() {
@@ -469,6 +490,18 @@ actual class BlueFalcon actual constructor(
         fun gattsForDevice(bluetoothDevice: BluetoothDevice): List<BluetoothGatt> =
             gatts.filter { it.device.address == bluetoothDevice.address }
 
+        fun disconnectAllOnAdapterOff() {
+            val connectedGatts = gatts.toList()
+            gatts.clear()
+            connectedGatts.forEach { gatt ->
+                log?.info("Adapter off - forcing disconnect for ${gatt.device.address}")
+                gatt.close()
+                delegates.forEach {
+                    it.didDisconnect(BluetoothPeripheralImpl(gatt.device))
+                }
+            }
+        }
+
         override fun onConnectionStateChange(gatt: BluetoothGatt?, status: Int, newState: Int) {
             log?.debug("onConnectionStateChange status: $status newState: $newState")
             gatt?.let { bluetoothGatt ->
@@ -738,6 +771,10 @@ actual class BlueFalcon actual constructor(
         }
 
         return sharedAdvertisementData
+    }
+
+    actual fun destroy() {
+        BluetoothStateMonitor.unregister(context, this)
     }
 
     companion object {

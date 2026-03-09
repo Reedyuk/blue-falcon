@@ -297,4 +297,6 @@ actual class BlueFalcon actual constructor(
     actual fun removeBond(bluetoothPeripheral: BluetoothPeripheral) {
         log?.info("removeBond is not supported on Apple platforms. Bond removal must be done through system Bluetooth settings.")
     }
+
+    actual fun destroy() {}
 }
