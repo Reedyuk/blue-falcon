@@ -779,9 +779,7 @@ actual class BlueFalcon actual constructor(
 
     actual fun destroy() {
         if (isBondReceiverRegistered) {
-            try {
-                context.unregisterReceiver(bondStateReceiver)
-            } catch (_: IllegalArgumentException) {}
+            context.unregisterReceiver(bondStateReceiver)
             isBondReceiverRegistered = false
         }
         BluetoothStateMonitor.unregister(context, this)
