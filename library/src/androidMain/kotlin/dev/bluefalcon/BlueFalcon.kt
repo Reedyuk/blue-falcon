@@ -496,7 +496,6 @@ actual class BlueFalcon actual constructor(
             gatts.clear()
             connectedGatts.forEach { gatt ->
                 log?.info("Adapter off - forcing disconnect for ${gatt.device.address}")
-                gatt.disconnect()
                 gatt.close()
                 delegates.forEach {
                     it.didDisconnect(BluetoothPeripheralImpl(gatt.device))
