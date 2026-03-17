@@ -50,6 +50,8 @@ expect class BlueFalcon(
 
     fun stopScanning()
 
+    fun refreshGattCache(bluetoothPeripheral: BluetoothPeripheral): Boolean
+
     fun discoverServices(bluetoothPeripheral: BluetoothPeripheral, serviceUUIDs: List<Uuid> = emptyList())
 
     fun discoverCharacteristics(

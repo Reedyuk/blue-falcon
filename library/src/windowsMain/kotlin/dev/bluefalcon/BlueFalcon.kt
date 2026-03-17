@@ -153,6 +153,8 @@ actual class BlueFalcon actual constructor(
         _peripherals.value = emptySet()
     }
     
+    actual fun refreshGattCache(bluetoothPeripheral: BluetoothPeripheral): Boolean = false
+
     actual fun discoverServices(
         bluetoothPeripheral: BluetoothPeripheral,
         serviceUUIDs: List<Uuid>
