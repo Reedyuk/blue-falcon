@@ -182,7 +182,7 @@ actual class BlueFalcon actual constructor(
                 log?.debug("GATT cache refresh: $refreshed")
                 result = result || refreshed
             } catch (e: Exception) {
-                log?.error("Failed to refresh GATT cache: ${e.message}")
+                log?.error("Failed to refresh GATT cache: ${e.message}", e)
             }
         }
         return result
@@ -488,7 +488,7 @@ actual class BlueFalcon actual constructor(
 
         internal val gatts: MutableList<BluetoothGatt> = CopyOnWriteArrayList()
         private val disconnectHandler = Handler(Looper.getMainLooper())
-        private val pendingTimeouts = mutableMapOf<String, Runnable>()
+        private val pendingTimeouts = java.util.concurrent.ConcurrentHashMap<String, Runnable>()
 
         private fun addGatt(gatt: BluetoothGatt) {
             if (gatts.firstOrNull { it.device.address == gatt.device.address } == null) {
@@ -514,12 +514,13 @@ actual class BlueFalcon actual constructor(
             cancelDisconnectTimeout(address)
             val timeoutRunnable = Runnable {
                 pendingTimeouts.remove(address)
-                if (gatts.remove(gatt)) {
+                if (gatts.contains(gatt)) {
                     log?.warn("Disconnect timeout for $address — forcing close")
-                    gatt.close()
                     delegates.forEach {
                         it.didDisconnect(BluetoothPeripheralImpl(gatt.device))
                     }
+                    gatts.remove(gatt)
+                    gatt.close()
                 }
             }
             pendingTimeouts[address] = timeoutRunnable
@@ -561,12 +562,13 @@ actual class BlueFalcon actual constructor(
                     } else if (newState == STATE_DISCONNECTED) {
                         log?.info("Disconnected from ${bluetoothGatt.device.address}")
                         cancelDisconnectTimeout(bluetoothGatt.device.address)
-                        val wasTracked = gatts.remove(bluetoothGatt)
+                        val wasTracked = gatts.contains(bluetoothGatt)
                         if (wasTracked) {
                             delegates.forEach {
                                 it.didDisconnect(BluetoothPeripheralImpl(bluetoothGatt.device))
                             }
                         }
+                        gatts.remove(bluetoothGatt)
                         bluetoothGatt.close()
                     }
                 }
