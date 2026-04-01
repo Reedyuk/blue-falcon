@@ -9,6 +9,8 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -120,10 +122,8 @@ actual class BlueFalcon actual constructor(
         log?.debug("disconnect ${bluetoothPeripheral.device.address}")
         mGattClientCallback.gattsForDevice(bluetoothPeripheral.device).forEach { gatt ->
             gatt.disconnect()
-            gatt.close()
-            mGattClientCallback.removeGattsForDevice(bluetoothPeripheral.device)
+            mGattClientCallback.scheduleDisconnectTimeout(gatt)
         }
-        delegates.forEach { it.didDisconnect(bluetoothPeripheral) }
     }
 
     actual fun retrievePeripheral(identifier: String): BluetoothPeripheral? {
@@ -170,6 +170,22 @@ actual class BlueFalcon actual constructor(
         val settings = ScanSettings.Builder().build()
         val bluetoothScanner = bluetoothManager.adapter?.bluetoothLeScanner
         bluetoothScanner?.startScan(formattedFilters, settings, mBluetoothScanCallBack)
+    }
+
+    actual fun refreshGattCache(bluetoothPeripheral: BluetoothPeripheral): Boolean {
+        log?.debug("refreshGattCache for ${bluetoothPeripheral.uuid}")
+        var result = false
+        mGattClientCallback.gattsForDevice(bluetoothPeripheral.device).forEach { gatt ->
+            try {
+                val refreshMethod = gatt.javaClass.getMethod("refresh")
+                val refreshed = refreshMethod.invoke(gatt) as Boolean
+                log?.debug("GATT cache refresh: $refreshed")
+                result = result || refreshed
+            } catch (e: Exception) {
+                log?.error("Failed to refresh GATT cache: ${e.message}", e)
+            }
+        }
+        return result
     }
 
     actual fun discoverServices(
@@ -471,6 +487,8 @@ actual class BlueFalcon actual constructor(
     inner class GattClientCallback : BluetoothGattCallback() {
 
         internal val gatts: MutableList<BluetoothGatt> = CopyOnWriteArrayList()
+        private val disconnectHandler = Handler(Looper.getMainLooper())
+        private val pendingTimeouts = java.util.concurrent.ConcurrentHashMap<String, Runnable>()
 
         private fun addGatt(gatt: BluetoothGatt) {
             if (gatts.firstOrNull { it.device.address == gatt.device.address } == null) {
@@ -491,7 +509,30 @@ actual class BlueFalcon actual constructor(
         fun gattsForDevice(bluetoothDevice: BluetoothDevice): List<BluetoothGatt> =
             gatts.filter { it.device.address == bluetoothDevice.address }
 
+        fun scheduleDisconnectTimeout(gatt: BluetoothGatt) {
+            val address = gatt.device.address
+            cancelDisconnectTimeout(address)
+            val timeoutRunnable = Runnable {
+                pendingTimeouts.remove(address)
+                if (gatts.contains(gatt)) {
+                    log?.warn("Disconnect timeout for $address — forcing close")
+                    delegates.forEach {
+                        it.didDisconnect(BluetoothPeripheralImpl(gatt.device))
+                    }
+                    gatts.remove(gatt)
+                    gatt.close()
+                }
+            }
+            pendingTimeouts[address] = timeoutRunnable
+            disconnectHandler.postDelayed(timeoutRunnable, DISCONNECT_TIMEOUT_MS)
+        }
+
+        private fun cancelDisconnectTimeout(address: String) {
+            pendingTimeouts.remove(address)?.let { disconnectHandler.removeCallbacks(it) }
+        }
+
         fun disconnectAllOnAdapterOff() {
+            pendingTimeouts.keys.toList().forEach { cancelDisconnectTimeout(it) }
             val connectedGatts = gatts.toList()
             gatts.clear()
             connectedGatts.forEach { gatt ->
@@ -520,21 +561,29 @@ actual class BlueFalcon actual constructor(
                         }
                     } else if (newState == STATE_DISCONNECTED) {
                         log?.info("Disconnected from ${bluetoothGatt.device.address}")
-                        val wasTracked = gatts.remove(bluetoothGatt)
-                        bluetoothGatt.close()
+                        cancelDisconnectTimeout(bluetoothGatt.device.address)
+                        val wasTracked = gatts.contains(bluetoothGatt)
                         if (wasTracked) {
                             delegates.forEach {
                                 it.didDisconnect(BluetoothPeripheralImpl(bluetoothGatt.device))
                             }
                         }
+                        gatts.remove(bluetoothGatt)
+                        bluetoothGatt.close()
                     }
                 }
             }
         }
 
         override fun onServicesDiscovered(gatt: BluetoothGatt?, status: Int) {
-            log?.info("Services discovered")
+            log?.info("onServicesDiscovered status=$status")
             if (status != BluetoothGatt.GATT_SUCCESS) {
+                log?.error("Service discovery failed with status $status")
+                gatt?.device?.let { bluetoothDevice ->
+                    delegates.forEach {
+                        it.didFailToDiscoverServices(BluetoothPeripheralImpl(bluetoothDevice), status)
+                    }
+                }
                 return
             }
             gatt?.device?.let { bluetoothDevice ->
@@ -580,6 +629,7 @@ actual class BlueFalcon actual constructor(
             characteristic: BluetoothGattCharacteristic?,
             status: Int
         ) {
+            log?.debug("onCharacteristicRead ${characteristic?.uuid} status=$status")
             handleCharacteristicValueChange(gatt, characteristic)
         }
 
@@ -614,7 +664,7 @@ actual class BlueFalcon actual constructor(
             descriptor: BluetoothGattDescriptor?,
             status: Int
         ) {
-            log?.debug("onDescriptorWrite ${descriptor?.uuid}")
+            log?.debug("onDescriptorWrite ${descriptor?.uuid} status=$status")
             descriptor?.let { forcedDescriptor ->
                 gatt?.device?.let { bluetoothDevice ->
                     log?.debug("${gatt.device.address} ${descriptor.uuid} onDescriptorWrite value ${forcedDescriptor.value}")
@@ -647,7 +697,7 @@ actual class BlueFalcon actual constructor(
             characteristic: BluetoothGattCharacteristic?,
             status: Int
         ) {
-            log?.debug("onCharacteristicWrite ${characteristic?.uuid}")
+            log?.debug("onCharacteristicWrite ${characteristic?.uuid} status=$status")
             characteristic?.let { forcedCharacteristic ->
                 val characteristic = BluetoothCharacteristic(forcedCharacteristic)
                 gatt?.device?.let { bluetoothDevice ->
@@ -785,7 +835,7 @@ actual class BlueFalcon actual constructor(
     }
 
     companion object {
-        // Client Characteristic Configuration Descriptor UUID
         private val CCCD_UUID = java.util.UUID.fromString("00002902-0000-1000-8000-00805f9b34fb")
+        private const val DISCONNECT_TIMEOUT_MS = 5_000L
     }
 }

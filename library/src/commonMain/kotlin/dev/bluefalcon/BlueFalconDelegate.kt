@@ -13,6 +13,8 @@ interface BlueFalconDelegate {
     fun didDisconnect(bluetoothPeripheral: BluetoothPeripheral) {}
     @JsName("didDiscoverServices")
     fun didDiscoverServices(bluetoothPeripheral: BluetoothPeripheral) {}
+    @JsName("didFailToDiscoverServices")
+    fun didFailToDiscoverServices(bluetoothPeripheral: BluetoothPeripheral, status: Int) {}
     @JsName("didDiscoverCharacteristics")
     fun didDiscoverCharacteristics(bluetoothPeripheral: BluetoothPeripheral) {}
     @JsName("didCharacteristcValueChanged")

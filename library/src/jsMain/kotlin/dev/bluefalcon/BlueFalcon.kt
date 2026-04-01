@@ -113,6 +113,9 @@ actual class BlueFalcon actual constructor(
             }
     }
 
+    @JsName("refreshGattCache")
+    actual fun refreshGattCache(bluetoothPeripheral: BluetoothPeripheral): Boolean = false
+
     actual fun discoverServices(
         bluetoothPeripheral: BluetoothPeripheral,
         serviceUUIDs: List<Uuid>
