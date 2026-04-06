@@ -3,9 +3,11 @@ import org.jetbrains.kotlin.gradle.plugin.mpp.apple.XCFramework
 
 plugins {
     kotlin("multiplatform") version "2.3.0"
+    kotlin("plugin.serialization") version "2.3.0"
     id("com.android.library")
     id("com.vanniktech.maven.publish") version "0.34.0"
     id("signing")
+    id("com.monkopedia.sdbus.plugin") version "0.4.2"
 }
 
 repositories {
@@ -77,6 +79,8 @@ kotlin {
     iosArm64()
     macosArm64()
     macosX64()
+    linuxX64()
+    linuxArm64()
 
     sourceSets {
         val commonMain by getting {
@@ -102,7 +106,25 @@ kotlin {
 //            }
 //        }
         val jsMain by getting
+        val linuxX64Main by getting
+        val linuxArm64Main by getting
+        val linuxMain by creating {
+            dependsOn(commonMain)
+            linuxX64Main.dependsOn(this)
+            linuxArm64Main.dependsOn(this)
+            dependencies {
+                implementation("com.monkopedia:sdbus-kotlin:0.4.2")
+            }
+        }
     }
+}
+
+sdbus {
+    sources.srcDirs("src/dbusMain")
+    outputs.add("linuxMain")
+    generateProxies = true
+    generateAdapters = true
+    outputPackage = "dev.bluefalcon.bluez"
 }
 
 mavenPublishing {
