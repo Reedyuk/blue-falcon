@@ -94,7 +94,7 @@ fun BlueFalcon(
 
 ### 2. Platform Engines (Separate Artifacts)
 
-Each platform becomes an independent module:
+Each platform becomes an independent module published as separate artifacts:
 
 - `blue-falcon-engine-android` - Android BLE implementation
 - `blue-falcon-engine-ios` - iOS CoreBluetooth implementation  
@@ -103,6 +103,59 @@ Each platform becomes an independent module:
 - `blue-falcon-engine-windows` - Windows WinRT implementation
 - `blue-falcon-engine-rpi` - Raspberry Pi implementation
 - Community can add: `blue-falcon-engine-linux`, `blue-falcon-engine-custom`, etc.
+
+**Monorepo Structure**: All modules remain under `library/` directory with dedicated folders for engines and plugins:
+```
+library/
+├── settings.gradle.kts            # Include all modules
+├── core/                          # blue-falcon-core
+│   ├── build.gradle.kts          # Publishes: dev.bluefalcon:blue-falcon-core
+│   └── src/
+│       └── commonMain/
+├── engines/
+│   ├── android/                   # blue-falcon-engine-android
+│   │   ├── build.gradle.kts      # Publishes: dev.bluefalcon:blue-falcon-engine-android
+│   │   └── src/
+│   │       └── androidMain/
+│   ├── ios/                       # blue-falcon-engine-ios
+│   │   ├── build.gradle.kts      # Publishes: dev.bluefalcon:blue-falcon-engine-ios
+│   │   └── src/
+│   │       ├── iosMain/
+│   │       └── nativeMain/
+│   ├── macos/                     # blue-falcon-engine-macos
+│   │   ├── build.gradle.kts
+│   │   └── src/macosMain/
+│   ├── js/                        # blue-falcon-engine-js
+│   │   ├── build.gradle.kts
+│   │   └── src/jsMain/
+│   ├── windows/                   # blue-falcon-engine-windows
+│   │   ├── build.gradle.kts
+│   │   └── src/
+│   │       ├── windowsMain/
+│   │       └── cpp/               # Native Windows code
+│   └── rpi/                       # blue-falcon-engine-rpi
+│       ├── build.gradle.kts
+│       └── src/rpiMain/
+├── plugins/
+│   ├── logging/                   # blue-falcon-plugin-logging
+│   │   ├── build.gradle.kts      # Publishes: dev.bluefalcon:blue-falcon-plugin-logging
+│   │   └── src/commonMain/
+│   ├── retry/                     # blue-falcon-plugin-retry
+│   │   ├── build.gradle.kts
+│   │   └── src/commonMain/
+│   └── caching/                   # blue-falcon-plugin-caching
+│       ├── build.gradle.kts
+│       └── src/commonMain/
+└── legacy/                        # blue-falcon-legacy (compatibility layer)
+    ├── build.gradle.kts
+    └── src/
+```
+
+Each subfolder is a Gradle module with its own `build.gradle.kts` and can be:
+- Developed together in the monorepo
+- Tested together with shared test utilities
+- Published independently to Maven Central
+- Versioned independently (or synchronized)
 
 **Usage Example**:
 ```kotlin
@@ -123,18 +176,21 @@ val blueFalcon = BlueFalcon {
 
 ### 3. Plugin System
 
-Plugins provide cross-cutting functionality:
+Plugins provide cross-cutting functionality and are published as separate artifacts from `library/plugins/`:
 
-**Core Plugins**:
-- `LoggingPlugin` - Structured logging
-- `RetryPlugin` - Automatic retry on transient failures
-- `CachingPlugin` - Cache GATT service/characteristic metadata
-- `MetricsPlugin` - Performance and usage metrics
+**Core Plugins** (maintained in monorepo):
+- `blue-falcon-plugin-logging` (`library/plugins/logging/`) - Structured logging
+- `blue-falcon-plugin-retry` (`library/plugins/retry/`) - Automatic retry on transient failures
+- `blue-falcon-plugin-caching` (`library/plugins/caching/`) - Cache GATT service/characteristic metadata
+- `blue-falcon-plugin-metrics` (`library/plugins/metrics/`) - Performance and usage metrics
 
-**Community Plugins** (examples):
-- `DeviceProfilePlugin` - High-level abstractions for common device types (heart rate monitors, etc.)
-- `SecurityPlugin` - Additional encryption/authentication layers
-- `SimulatorPlugin` - Mock BLE devices for testing
+**Community Plugins** (examples, external repositories):
+- `blue-falcon-plugin-device-profiles` - High-level abstractions for common device types (heart rate monitors, thermometers, glucose meters)
+- `blue-falcon-plugin-security` - Additional encryption/authentication layers
+- `blue-falcon-plugin-simulator` - Mock BLE devices for testing
+- `blue-falcon-plugin-nordic-ota` - Over-the-air firmware updates for Nordic chipsets (nRF52, nRF53, etc.)
+- `blue-falcon-plugin-texas-instruments-ota` - OTA updates for Texas Instruments BLE devices
+- `blue-falcon-plugin-analytics` - Usage analytics and telemetry
 
 **Plugin API**:
 ```kotlin
@@ -142,7 +198,43 @@ interface BlueFalconPlugin {
     fun install(client: BlueFalcon, config: PluginConfig)
     suspend fun onScan(call: ScanCall, next: suspend (ScanCall) -> Unit)
     suspend fun onConnect(call: ConnectCall, next: suspend (ConnectCall) -> Unit)
+    suspend fun onRead(call: ReadCall, next: suspend (ReadCall) -> Unit)
+    suspend fun onWrite(call: WriteCall, next: suspend (WriteCall) -> Unit)
     // ... interceptors for all operations
+}
+
+// Example: Nordic OTA Plugin
+class NordicOTAPlugin(
+    private val config: NordicOTAConfig
+) : BlueFalconPlugin {
+    
+    suspend fun updateFirmware(
+        peripheral: BluetoothPeripheral,
+        firmwareData: ByteArray,
+        onProgress: (Int) -> Unit
+    ) {
+        // Nordic DFU protocol implementation
+        // - Enter bootloader mode
+        // - Send firmware packets
+        // - Verify and reboot
+    }
+    
+    override suspend fun onConnect(call: ConnectCall, next: suspend (ConnectCall) -> Unit) {
+        next(call)
+        // Detect Nordic bootloader service UUID if present
+        if (call.peripheral.hasService(NORDIC_DFU_SERVICE_UUID)) {
+            // Mark peripheral as OTA-capable
+        }
+    }
+}
+
+// Usage
+val blueFalcon = BlueFalcon {
+    engine = AndroidEngine(context)
+    install(NordicOTAPlugin) {
+        enableAutoBootloaderDetection = true
+        packetSize = 20
+    }
 }
 ```
 
@@ -180,6 +272,8 @@ The deprecated API internally delegates to the new engine system, ensuring exist
 - **Custom implementations**: Organizations can create proprietary engines
 - **Better separation of concerns**: Clear boundaries between core and platform code
 - **Future-proof**: Easier to add new platforms (Linux, embedded systems, etc.)
+- **Monorepo benefits**: All core code in one repository under `library/` for easier development and testing
+- **Flexible publishing**: Each module publishes independently despite shared repository
 
 ### Negative
 
@@ -285,36 +379,103 @@ expect class BlueFalcon {
 
 ## Implementation Notes
 
+### Repository Structure
+
+All modules remain under the `library/` directory as a monorepo:
+
+```
+library/
+├── settings.gradle.kts           # Include all modules
+├── core/
+│   ├── build.gradle.kts         # Publishes as blue-falcon-core
+│   └── src/commonMain/
+├── engines/
+│   ├── android/
+│   │   ├── build.gradle.kts     # Publishes as blue-falcon-engine-android
+│   │   └── src/androidMain/
+│   ├── ios/
+│   │   ├── build.gradle.kts     # Publishes as blue-falcon-engine-ios
+│   │   └── src/{iosMain,nativeMain}/
+│   ├── macos/
+│   │   └── src/macosMain/
+│   ├── js/
+│   │   └── src/jsMain/
+│   ├── windows/
+│   │   └── src/{windowsMain,cpp}/
+│   └── rpi/
+│       └── src/rpiMain/
+├── plugins/
+│   ├── logging/
+│   │   └── src/commonMain/
+│   ├── retry/
+│   └── caching/
+└── legacy/                       # Compatibility layer
+    └── src/
+```
+
+**Gradle Configuration**:
+```kotlin
+// library/settings.gradle.kts
+include(
+    ":core",
+    ":engines:android",
+    ":engines:ios",
+    ":engines:macos",
+    ":engines:js",
+    ":engines:windows",
+    ":engines:rpi",
+    ":plugins:logging",
+    ":plugins:retry",
+    ":plugins:caching",
+    ":legacy"
+)
+```
+
+Each module has its own `build.gradle.kts` with independent:
+- Version management (can version independently or sync)
+- Publishing configuration (to Maven Central)
+- Dependencies (engines depend on core, plugins depend on core)
+
 ### Phase 1: Core Extraction (Months 1-2)
 
-1. Create `blue-falcon-core` module
-2. Define `BlueFalconEngine` interface
+1. Create `library/core/` module structure
+2. Define `BlueFalconEngine` interface in `core/src/commonMain/`
 3. Extract common types (BluetoothPeripheral, BluetoothService, etc.) to core
-4. Implement plugin infrastructure
-5. Create DSL API
+4. Implement plugin infrastructure in core
+5. Create DSL API in core
+6. Update `library/settings.gradle.kts` to include `:core`
 
 ### Phase 2: Engine Migration (Months 2-4)
 
-1. Create engine modules for each platform:
-   - `blue-falcon-engine-android`
-   - `blue-falcon-engine-ios`
-   - `blue-falcon-engine-macos`
-   - `blue-falcon-engine-js`
-   - `blue-falcon-engine-windows`
-2. Migrate platform implementations to engine pattern
-3. Ensure feature parity with 2.x API
+1. Create `library/engines/` directory and engine module directories:
+   - `library/engines/android/`
+   - `library/engines/ios/`
+   - `library/engines/macos/`
+   - `library/engines/js/`
+   - `library/engines/windows/`
+2. Migrate platform implementations from `library/src/*Main/` to respective engine modules
+3. Configure each engine's `build.gradle.kts` for independent publishing
+4. Update `library/settings.gradle.kts` to include all engines (`:engines:android`, `:engines:ios`, etc.)
+5. Ensure feature parity with 2.x API
 
 ### Phase 3: Backward Compatibility (Month 4)
 
-1. Create compatibility layer that wraps new engine API
-2. Mark old API as deprecated with migration hints
-3. Ensure all examples work with both APIs
+1. Create `library/legacy/` module
+2. Implement compatibility layer that wraps new engine API
+3. Mark old API as deprecated with migration hints
+4. Configure legacy module to publish as separate artifact (optional)
+5. Ensure all examples work with both APIs
 
 ### Phase 4: Plugin Development (Months 4-5)
 
-1. Implement core plugins (Logging, Retry, Caching)
-2. Create plugin development guide
-3. Example third-party plugins
+1. Create `library/plugins/` directory structure
+2. Implement core plugins under `library/plugins/`:
+   - `library/plugins/logging/`
+   - `library/plugins/retry/`
+   - `library/plugins/caching/`
+3. Configure each plugin's `build.gradle.kts` for independent publishing
+4. Create plugin development guide for community plugins (external repos)
+5. Develop example community plugin (e.g., Nordic OTA proof-of-concept)
 
 ### Phase 5: Testing & Documentation (Month 5-6)
 
@@ -375,7 +536,21 @@ blueFalcon.scan()
 - Package restructuring: `dev.bluefalcon` → `dev.bluefalcon.core`, `dev.bluefalcon.engine.*`
 - Initialization API change (unless using compatibility layer)
 - Dependency changes (one artifact → core + engine)
+- File structure: Code moves from `library/src/*Main/` to `library/engines/*/src/*Main/`
 - Some internal APIs may be removed or moved
+
+### Repository Structure Benefits
+
+Keeping all modules under `library/` with dedicated `engines/` and `plugins/` folders provides:
+- **Clear organization**: Engines grouped together, plugins grouped together
+- **Unified development**: All code in one place for local development
+- **Shared build logic**: Common Gradle scripts and conventions
+- **Atomic changes**: Cross-module refactoring in single commits
+- **Easier testing**: Can test engine changes against core in same repo
+- **Independent publishing**: Each module still publishes separately to Maven Central
+- **Familiar structure**: Maintains existing `library/` organization
+- **CI/CD efficiency**: Single repository for builds and releases
+- **Discoverability**: Easy to find all engines in `library/engines/` directory
 
 ### Versioning Strategy
 
