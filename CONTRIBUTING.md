@@ -26,6 +26,71 @@ If there is alot of questions then i will consider setting up a slack chat.
 
 ## How Can I Contribute?
 
+### Proposing Major Changes
+
+For significant architectural changes, new platform support, or API modifications, we use Architecture Decision Records (ADRs):
+
+#### 1. Create an ADR First
+
+Before writing code, create an ADR to document your proposed change:
+
+**Using AI (Recommended):**
+```
+# Use GitHub Copilot, Cursor, or your preferred AI assistant:
+"Create a new ADR for adding Linux desktop support"
+"Create ADR for migrating from delegates to Kotlin Flow"
+```
+
+**Manually:**
+```bash
+# Find the next ADR number
+ls docs/adr/ | grep -E '^[0-9]{4}' | sort | tail -1
+
+# Copy the template
+cp docs/adr/ADR-TEMPLATE.md docs/adr/NNNN-your-title.md
+
+# Fill in:
+# - Context: What problem are you solving?
+# - Decision: What approach will you take?
+# - Consequences: What are the tradeoffs?
+# - Alternatives: What else did you consider?
+```
+
+#### 2. Submit ADR for Review
+
+Open a pull request with just the ADR. This allows discussion before implementation begins.
+
+#### 3. Implement with AI Assistance
+
+Once the ADR is approved, use AI to implement:
+
+```
+# Example prompts:
+"Implement the changes described in ADR 0003"
+"Add macOS support following the pattern in ADR 0001"
+"Refactor the delegate system according to ADR 0005"
+```
+
+Our repository includes AI instructions (`.github/copilot-instructions.md`) to guide assistants through our codebase conventions, architecture, and build process.
+
+#### When to Create an ADR
+
+✅ **Do create an ADR for:**
+- Adding new platform support (Windows, Linux, etc.)
+- Changing public APIs
+- Adopting new architectural patterns
+- Making technology choices (dependencies, frameworks)
+- Changes affecting multiple platforms
+
+❌ **Don't create an ADR for:**
+- Bug fixes
+- Documentation updates
+- Minor refactoring
+- Performance optimizations
+- Test improvements
+
+See existing ADRs in [`/docs/adr/`](docs/adr/) for examples.
+
 ### Reporting Bugs
 
 This section guides you through submitting a bug report for Blue Falcon. Following these guidelines helps maintainers and the community understand your report :pencil:, reproduce the behavior :computer: :computer:, and find related reports :mag_right:.
