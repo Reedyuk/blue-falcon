@@ -11,6 +11,10 @@ interface BlueFalconDelegate {
     fun didConnect(bluetoothPeripheral: BluetoothPeripheral) {}
     @JsName("didDisconnect")
     fun didDisconnect(bluetoothPeripheral: BluetoothPeripheral) {}
+    @JsName("didDisconnectWithReason")
+    fun didDisconnect(bluetoothPeripheral: BluetoothPeripheral, reason: BleDisconnectReason?) {
+        didDisconnect(bluetoothPeripheral)
+    }
     @JsName("didDiscoverServices")
     fun didDiscoverServices(bluetoothPeripheral: BluetoothPeripheral) {}
     @JsName("didFailToDiscoverServices")
