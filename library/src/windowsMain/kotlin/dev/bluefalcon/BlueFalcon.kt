@@ -71,7 +71,7 @@ actual class BlueFalcon actual constructor(
                 // null reason: Windows native layer does not provide disconnect status codes
                 delegates.forEach { it.didDisconnect(bluetoothPeripheral, null) }
             } catch (e: Exception) {
-                log?.error("Failed to disconnect: ${e.message}")
+                log?.error("Failed to disconnect: ${e.message}", cause = e)
             }
         }
     }
