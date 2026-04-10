@@ -394,6 +394,48 @@ BlueFalcon has a constructor that takes a Logger, you can implement your own log
 
 Look at the PrintLnLogger object of an example of how to do this.
 
+## Contributing
+
+We welcome contributions to Blue Falcon! For significant changes or new features, we use an AI-assisted workflow:
+
+### 1. Create an Architecture Decision Record (ADR)
+
+Before implementing major changes (new platforms, API changes, architectural decisions), create an ADR to document the decision:
+
+```
+# Ask your AI assistant:
+"Create a new ADR for [your proposed change]"
+
+# Or manually:
+cp docs/adr/ADR-TEMPLATE.md docs/adr/NNNN-your-title.md
+# Fill in the template and submit for review
+```
+
+ADRs help us:
+- Document the "why" behind important decisions
+- Consider alternatives and tradeoffs
+- Onboard future contributors (including AI)
+- Maintain architectural consistency
+
+See existing ADRs in [`/docs/adr/`](docs/adr/) for examples.
+
+### 2. Let AI Do the Heavy Lifting
+
+Once your ADR is accepted, use AI tools to implement the changes:
+
+```
+# Example prompts for GitHub Copilot, Cursor, or other AI assistants:
+"Implement the changes described in ADR 0001"
+"Add [platform] support following the pattern in ADR 0001"
+"Refactor [component] according to ADR NNNN"
+```
+
+Our codebase includes AI instructions (`.github/copilot-instructions.md`) to help assistants understand the project structure and conventions.
+
+### 3. Contribution Guidelines
+
+For detailed contribution guidelines, see [CONTRIBUTING.md](CONTRIBUTING.md). For questions or discussions, [file a Github issue](https://github.com/Reedyuk/blue-falcon/issues/new).
+
 ## Support
 
 For a **bug, feature request, or cool idea**, please [file a Github issue](https://github.com/Reedyuk/blue-falcon/issues/new).
