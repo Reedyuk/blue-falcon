@@ -57,3 +57,4 @@ ADRs can have the following statuses:
 <!-- Add links to ADRs here as they are created -->
 
 - [ADR 0001: Add Windows 10 Platform Support Using Native WinRT APIs](0001-add-windows-platform-support.md) - **Accepted** - 2026-04-10
+- [ADR 0002: Adopt Plugin-Based Engine Architecture](0002-adopt-plugin-based-engine-architecture.md) - **Proposed** - 2026-04-10
