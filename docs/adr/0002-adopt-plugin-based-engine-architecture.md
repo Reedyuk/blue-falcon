@@ -10,14 +10,14 @@
 
 ## Context
 
-Blue Falcon currently uses a monolithic Kotlin Multiplatform architecture where all platform implementations are tightly coupled within a single library artifact (`dev.bluefalcon:blue-falcon:2.x.x`). This design has served the project well for initial development but faces several challenges:
+Blue Falcon currently uses a monolithic Kotlin Multiplatform architecture where platform implementations are developed and published together under a single library coordinate (`dev.bluefalcon:blue-falcon:2.x.x`). This design has served the project well for initial development but faces several challenges:
 
 ### Current Architecture Limitations
 
-1. **All-or-nothing dependency**: Users must include all platform implementations even if they only need one
+1. **Shared versioning and release cycle**: Platform implementations are versioned and released together, even though consumers resolve only their platform-specific variant
 2. **Difficult third-party contributions**: Community members cannot easily add new platform support without modifying core library
 3. **No extensibility mechanism**: No way to add custom BLE functionality (e.g., device-specific protocols, additional abstractions)
-4. **Tight coupling**: Platform implementations and core API are bundled together
+4. **Tight coupling**: Core API and platform source set changes must evolve together within the same module and release process
 5. **Monolithic releases**: A bug fix in one platform requires releasing all platforms
 6. **Testing overhead**: Changes to core require testing all platform implementations
 
