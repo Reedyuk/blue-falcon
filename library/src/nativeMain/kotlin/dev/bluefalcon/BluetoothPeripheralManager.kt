@@ -82,8 +82,9 @@ class BluetoothPeripheralManager constructor(
     ) {
         log?.info("Disconnected from ${didDisconnectPeripheral.name} - ${didDisconnectPeripheral.identifier.UUIDString}")
         val device = BluetoothPeripheralImpl(didDisconnectPeripheral, rssiValue = null)
+        val reason = mapCBDisconnectReason(error)
         blueFalcon.delegates.forEach {
-            it.didDisconnect(device)
+            it.didDisconnect(device, reason)
         }
         didDisconnectPeripheral.delegate = null
     }
@@ -130,4 +131,37 @@ class BluetoothPeripheralManager constructor(
 
         return sharedAdvertisementData
     }
+}
+
+/**
+ * Maps iOS CoreBluetooth [NSError] to a [BleDisconnectReason].
+ * Returns `null` when [error] is `null` (clean disconnect).
+ */
+// CBError codes (CoreBluetooth)
+private const val CB_ERROR_UNKNOWN = 0
+private const val CB_ERROR_OPERATION_CANCELLED = 5
+private const val CB_ERROR_CONNECTION_TIMEOUT = 6
+private const val CB_ERROR_PERIPHERAL_DISCONNECTED = 7
+private const val CB_ERROR_CONNECTION_FAILED = 10
+private const val CB_ERROR_CONNECTION_LIMIT_REACHED = 11
+private const val CB_ERROR_UNKNOWN_DEVICE = 12
+private const val CB_ERROR_PEER_REMOVED_PAIRING = 14
+private const val CB_ERROR_ENCRYPTION_TIMED_OUT = 15
+
+internal fun mapCBDisconnectReason(error: NSError?): BleDisconnectReason? {
+    if (error == null) return null
+    val code = error.code.toInt()
+    val message = when (code) {
+        CB_ERROR_UNKNOWN -> "Unknown error"
+        CB_ERROR_OPERATION_CANCELLED -> "Operation cancelled"
+        CB_ERROR_CONNECTION_TIMEOUT -> "Connection timeout"
+        CB_ERROR_PERIPHERAL_DISCONNECTED -> "Peripheral disconnected"
+        CB_ERROR_CONNECTION_FAILED -> "Connection failed"
+        CB_ERROR_CONNECTION_LIMIT_REACHED -> "Connection limit reached"
+        CB_ERROR_UNKNOWN_DEVICE -> "Unknown device"
+        CB_ERROR_PEER_REMOVED_PAIRING -> "Peer removed pairing information"
+        CB_ERROR_ENCRYPTION_TIMED_OUT -> "Encryption timed out"
+        else -> error.localizedDescription
+    }
+    return BleDisconnectReason(code, message)
 }
