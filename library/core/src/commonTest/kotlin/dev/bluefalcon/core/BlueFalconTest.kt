@@ -43,7 +43,7 @@ class BlueFalconTest {
         // Given
         val engine = FakeBlueFalconEngine()
         val blueFalcon = BlueFalcon(engine)
-        val filters = listOf(ServiceFilter(Uuid("0000180D-0000-1000-8000-00805F9B34FB")))
+        val filters = listOf(ServiceFilter("0000180D-0000-1000-8000-00805F9B34FB".toUuid()))
         
         // When
         blueFalcon.scan(filters)
@@ -131,9 +131,9 @@ class BlueFalconTest {
         val blueFalcon = BlueFalcon(engine)
         
         // When
-        engine.setBluetoothState(BluetoothManagerState.PoweredOff)
+        engine.setBluetoothState(BluetoothManagerState.NotReady)
         
         // Then
-        assertEquals(BluetoothManagerState.PoweredOff, blueFalcon.managerState.value)
+        assertEquals(BluetoothManagerState.NotReady, blueFalcon.managerState.value)
     }
 }

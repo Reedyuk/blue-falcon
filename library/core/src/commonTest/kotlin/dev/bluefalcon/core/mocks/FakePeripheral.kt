@@ -65,7 +65,6 @@ data class FakeCharacteristic(
  */
 data class FakeDescriptor(
     override val uuid: Uuid,
-    override val name: String? = null,
     override var value: ByteArray? = null,
     override val characteristic: BluetoothCharacteristic? = null
 ) : BluetoothCharacteristicDescriptor {
@@ -76,7 +75,6 @@ data class FakeDescriptor(
         other as FakeDescriptor
         
         if (uuid != other.uuid) return false
-        if (name != other.name) return false
         if (value != null) {
             if (other.value == null) return false
             if (!value.contentEquals(other.value)) return false
@@ -87,7 +85,6 @@ data class FakeDescriptor(
     
     override fun hashCode(): Int {
         var result = uuid.hashCode()
-        result = 31 * result + (name?.hashCode() ?: 0)
         result = 31 * result + (value?.contentHashCode() ?: 0)
         return result
     }

@@ -17,7 +17,7 @@ class FakeBlueFalconEngine : BlueFalconEngine {
     private val _peripherals = MutableStateFlow<Set<BluetoothPeripheral>>(emptySet())
     override val peripherals: StateFlow<Set<BluetoothPeripheral>> = _peripherals
     
-    private val _managerState = MutableStateFlow(BluetoothManagerState.PoweredOn)
+    private val _managerState = MutableStateFlow(BluetoothManagerState.Ready)
     override val managerState: StateFlow<BluetoothManagerState> = _managerState
     
     override var isScanning: Boolean = false
@@ -109,6 +109,17 @@ class FakeBlueFalconEngine : BlueFalconEngine {
         }
     }
     
+    override suspend fun writeCharacteristic(
+        peripheral: BluetoothPeripheral,
+        characteristic: BluetoothCharacteristic,
+        value: String,
+        writeType: Int?
+    ) {
+        if (shouldFailWrite) {
+            throw BluetoothUnknownException()
+        }
+    }
+    
     override suspend fun notifyCharacteristic(
         peripheral: BluetoothPeripheral,
         characteristic: BluetoothCharacteristic,
@@ -188,6 +199,6 @@ class FakeBlueFalconEngine : BlueFalconEngine {
         shouldFailWrite = false
         isScanning = false
         _peripherals.value = emptySet()
-        _managerState.value = BluetoothManagerState.PoweredOn
+        _managerState.value = BluetoothManagerState.Ready
     }
 }
