@@ -1,5 +1,7 @@
 plugins {
     kotlin("multiplatform") version "2.3.0"
+    id("com.vanniktech.maven.publish") version "0.34.0"
+    id("signing")
 }
 
 repositories {
@@ -8,6 +10,7 @@ repositories {
 }
 
 val kotlinx_coroutines_version: String by project
+val versionPlugins: String by project
 
 kotlin {
     jvmToolchain(17)
@@ -45,5 +48,17 @@ kotlin.sourceSets.all {
     languageSettings.optIn("kotlin.uuid.ExperimentalUuidApi")
 }
 
+// Publishing configuration
 group = "dev.bluefalcon"
-version = "3.0.0-alpha01"
+version = versionPlugins
+
+mavenPublishing {
+    publishToMavenCentral(automaticRelease = true)
+    signAllPublications()
+
+    coordinates(
+        groupId = "dev.bluefalcon",
+        artifactId = "blue-falcon-plugin-caching",
+        version = versionPlugins
+    )
+}

@@ -10,6 +10,7 @@ repositories {
 }
 
 val kotlinx_coroutines_version: String by project
+val versionEngines: String by project
 
 kotlin {
     jvmToolchain(17)
@@ -34,12 +35,15 @@ kotlin.sourceSets.all {
 
 // Publishing configuration
 group = "dev.bluefalcon"
-version = "3.0.0-alpha01"
+version = versionEngines
 
 mavenPublishing {
+    publishToMavenCentral(automaticRelease = true)
+    signAllPublications()
+
     coordinates(
         groupId = "dev.bluefalcon",
         artifactId = "blue-falcon-engine-js",
-        version = "3.0.0-alpha01"
+        version = versionEngines
     )
 }

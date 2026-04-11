@@ -17,6 +17,7 @@ repositories {
 }
 
 val kotlinx_coroutines_version: String by project
+val versionLegacy: String by project
 
 android {
     compileSdk = 33
@@ -127,12 +128,15 @@ kotlin.sourceSets.all {
 
 // Publishing configuration - replaces old blue-falcon artifact
 group = "dev.bluefalcon"
-version = "3.0.0-alpha01"
+version = versionLegacy
 
 mavenPublishing {
+    publishToMavenCentral(automaticRelease = true)
+    signAllPublications()
+
     coordinates(
         groupId = "dev.bluefalcon",
         artifactId = "blue-falcon",
-        version = "3.0.0-alpha01"
+        version = versionLegacy
     )
 }
