@@ -55,38 +55,74 @@ This directory contains example projects demonstrating Blue Falcon usage across 
 
 ---
 
-### 4. ComposeMultiplatform-Example
+### 4. ComposeMultiplatform-3.0-Example
 
-**Platform**: Compose Multiplatform (Android + Desktop)  
+**Platform**: Compose Multiplatform (Android + iOS)  
 **Language**: Kotlin  
-**Description**: Production-ready example with Compose UI
+**Description**: Production-ready example with Compose UI using Blue Falcon 3.0 API
 
 **Features**:
-- Compose UI for device list
-- Real BLE scanning and connection
-- Reactive state management with Flow
-- Cross-platform code sharing
+- ✅ Coroutine-based API with suspend functions
+- ✅ Flow for reactive state management
+- ✅ Plugin architecture (Logging, Retry)
+- ✅ ViewModel pattern
+- ✅ Modern Compose UI
 
-**Location**: `ComposeMultiplatform-Example/`
+**Location**: `ComposeMultiplatform-3.0-Example/`  
+**See**: [ComposeMultiplatform-3.0-Example/README.md](ComposeMultiplatform-3.0-Example/README.md) for details
 
-**Running**:
-```bash
-cd ComposeMultiplatform-Example
-# Android
-./gradlew :androidApp:installDebug
+**Key Highlights**:
+```kotlin
+val blueFalcon = BlueFalcon {
+    install(LoggingPlugin) { level = LogLevel.DEBUG }
+    install(RetryPlugin) { maxRetries = 3 }
+}
 
-# Desktop
-./gradlew :desktopApp:run
+// Collect devices as Flow
+blueFalcon.peripherals.collect { devices ->
+    // Update UI
+}
+
+// Use suspend functions
+blueFalcon.scan()
+blueFalcon.connect(device)
 ```
-
-**Requirements**:
-- Kotlin 2.3.0+
-- Compose Multiplatform
-- Android device or Desktop with Bluetooth
 
 ---
 
-### 5. JS-Example
+### 5. ComposeMultiplatform-Legacy-Example
+
+**Platform**: Compose Multiplatform (Android + iOS)  
+**Language**: Kotlin  
+**Description**: Production-ready example with Compose UI using Blue Falcon 2.x (legacy) API
+
+**Features**:
+- ✅ Callback-based delegate pattern
+- ✅ BlueFalconDelegate implementation
+- ✅ Full Compose UI
+- ✅ Cross-platform code sharing
+- ⚠️ Legacy 2.x API (consider migrating to 3.0)
+
+**Location**: `ComposeMultiplatform-Legacy-Example/`  
+**See**: [ComposeMultiplatform-Legacy-Example/README.md](ComposeMultiplatform-Legacy-Example/README.md) for details
+
+**Key Pattern**:
+```kotlin
+class BleDelegate: BlueFalconDelegate {
+    override fun didConnect(peripheral: BluetoothPeripheral) {
+        // Handle connection via callback
+    }
+}
+
+val blueFalcon = BlueFalcon(context, delegate)
+blueFalcon.scan()
+```
+
+**⚠️ Note**: This is the legacy API. For new projects, use [ComposeMultiplatform-3.0-Example](ComposeMultiplatform-3.0-Example/) instead
+
+---
+
+### 6. JS-Example
 
 **Platform**: JavaScript (Web Browser)  
 **Language**: Kotlin/JS  
