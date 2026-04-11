@@ -65,3 +65,13 @@ mavenPublishing {
         version = versionEngines
     )
 }
+
+// Signing configuration
+signing {
+    // Only sign when publishing to Maven Central, not for local builds
+    setRequired {
+        gradle.taskGraph.allTasks.any { 
+            it.name.contains("publishTo") && it.name.contains("MavenCentral") 
+        }
+    }
+}
