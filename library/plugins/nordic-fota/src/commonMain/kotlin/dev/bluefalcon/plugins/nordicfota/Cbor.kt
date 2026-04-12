@@ -66,7 +66,38 @@ internal object CborEncoder {
     }
 
     private fun encodeUnsignedInt(buffer: MutableList<Byte>, value: Long) {
-        encodeTypeAndLength(buffer, MAJOR_UNSIGNED_INT, value.toInt())
+        require(value >= 0) { "CBOR unsigned int must be non-negative" }
+        val major = MAJOR_UNSIGNED_INT shl 5
+        when {
+            value < 24 -> buffer.add((major or value.toInt()).toByte())
+            value < 256 -> {
+                buffer.add((major or 24).toByte())
+                buffer.add(value.toByte())
+            }
+            value < 65536 -> {
+                buffer.add((major or 25).toByte())
+                buffer.add((value shr 8).toByte())
+                buffer.add(value.toByte())
+            }
+            value <= 0xFFFFFFFFL -> {
+                buffer.add((major or 26).toByte())
+                buffer.add((value shr 24).toByte())
+                buffer.add((value shr 16).toByte())
+                buffer.add((value shr 8).toByte())
+                buffer.add(value.toByte())
+            }
+            else -> {
+                buffer.add((major or 27).toByte())
+                buffer.add((value shr 56).toByte())
+                buffer.add((value shr 48).toByte())
+                buffer.add((value shr 40).toByte())
+                buffer.add((value shr 32).toByte())
+                buffer.add((value shr 24).toByte())
+                buffer.add((value shr 16).toByte())
+                buffer.add((value shr 8).toByte())
+                buffer.add(value.toByte())
+            }
+        }
     }
 
     private fun encodeByteString(buffer: MutableList<Byte>, value: ByteArray) {
