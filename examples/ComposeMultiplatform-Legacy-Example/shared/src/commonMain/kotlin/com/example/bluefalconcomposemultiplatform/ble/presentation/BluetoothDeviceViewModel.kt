@@ -126,16 +126,23 @@ class BluetoothDeviceViewModel(
         blueFalcon.delegates.add(delegate)
         CoroutineScope(Dispatchers.IO).launch {
             blueFalcon.peripherals.collect { peripherals ->
-                val uniqueKeys = _deviceState.value.devices.keys.toList()
-                val filteredPeripheral = peripherals.filter { !uniqueKeys.contains(it.uuid) }
-                filteredPeripheral.map { peripheral ->
-                    _deviceState.update {
-                        val updateDevices = it.devices.toMutableMap()
-                        updateDevices[peripheral.uuid] = EnhancedBluetoothPeripheral(false, peripheral)
-                        it.copy(
-                            devices = HashMap(updateDevices)
-                        )
+                _deviceState.update { currentState ->
+                    val updatedDevices = currentState.devices.toMutableMap()
+                    
+                    peripherals.forEach { peripheral ->
+                        val existingDevice = updatedDevices[peripheral.uuid]
+                        if (existingDevice == null) {
+                            // New peripheral - add it
+                            updatedDevices[peripheral.uuid] = EnhancedBluetoothPeripheral(
+                                connected = false,
+                                peripheral = peripheral
+                            )
+                        }
+                        // Note: Updates to existing peripherals (like service discovery) 
+                        // are handled by delegate callbacks to preserve connection state
                     }
+                    
+                    currentState.copy(devices = HashMap(updatedDevices))
                 }
             }
         }
@@ -167,6 +174,21 @@ class BluetoothDeviceViewModel(
 
             is UiEvent.OnDeviceSelected -> {
                 _deviceState.update { it.copy(selectedDeviceId = event.macId) }
+                // Discover services when device detail is opened
+                _deviceState.value.devices[event.macId]?.let { device ->
+                    if (device.connected && device.peripheral.services.isEmpty()) {
+                        CoroutineScope(Dispatchers.IO).launch {
+                            try {
+                                // Add a small delay to ensure peripheral is fully connected on iOS
+                                kotlinx.coroutines.delay(500)
+                                blueFalcon.discoverServices(device.peripheral)
+                                // Service discovery result will be handled by delegate callback
+                            } catch (e: Exception) {
+                                println("Failed to discover services: ${e.message}")
+                            }
+                        }
+                    }
+                }
             }
 
             UiEvent.OnNavigateBack -> {
