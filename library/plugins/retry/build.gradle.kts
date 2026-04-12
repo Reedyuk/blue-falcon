@@ -61,6 +61,33 @@ mavenPublishing {
         artifactId = "blue-falcon-plugin-retry",
         version = versionPlugins
     )
+    
+    pom {
+        name.set("Blue Falcon Retry Plugin")
+        description.set("Retry plugin for Blue Falcon - Automatic retry with exponential backoff for BLE operations")
+        url.set("https://github.com/Reedyuk/blue-falcon")
+        
+        licenses {
+            license {
+                name.set("The Apache License, Version 2.0")
+                url.set("http://www.apache.org/licenses/LICENSE-2.0.txt")
+            }
+        }
+        
+        developers {
+            developer {
+                id.set("Reedyuk")
+                name.set("Andrew Reed")
+                email.set("andrewreed.uk@gmail.com")
+            }
+        }
+        
+        scm {
+            url.set("https://github.com/Reedyuk/blue-falcon")
+            connection.set("scm:git:git://github.com/Reedyuk/blue-falcon.git")
+            developerConnection.set("scm:git:ssh://git@github.com/Reedyuk/blue-falcon.git")
+        }
+    }
 }
 
 // Signing configuration

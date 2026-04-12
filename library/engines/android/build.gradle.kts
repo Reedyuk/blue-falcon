@@ -60,6 +60,33 @@ mavenPublishing {
         artifactId = "blue-falcon-engine-android",
         version = versionEngines
     )
+    
+    pom {
+        name.set("Blue Falcon Android Engine")
+        description.set("Android BLE engine for Blue Falcon")
+        url.set("https://github.com/Reedyuk/blue-falcon")
+        
+        licenses {
+            license {
+                name.set("The Apache License, Version 2.0")
+                url.set("http://www.apache.org/licenses/LICENSE-2.0.txt")
+            }
+        }
+        
+        developers {
+            developer {
+                id.set("Reedyuk")
+                name.set("Andrew Reed")
+                email.set("andrewreed.uk@gmail.com")
+            }
+        }
+        
+        scm {
+            url.set("https://github.com/Reedyuk/blue-falcon")
+            connection.set("scm:git:git://github.com/Reedyuk/blue-falcon.git")
+            developerConnection.set("scm:git:ssh://git@github.com/Reedyuk/blue-falcon.git")
+        }
+    }
 }
 
 // Signing configuration
