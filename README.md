@@ -330,6 +330,7 @@ blueFalcon.readCharacteristic(bluetoothPeripheral, bluetoothCharacteristic)
 // Write a string value
 blueFalcon.writeCharacteristic(
     bluetoothPeripheral,
+```
 
 For the complete API including descriptors, MTU, L2CAP, and bonding, see the [API Reference](docs/API_REFERENCE.md).
 
