@@ -616,35 +616,35 @@ Successfully migrated all 6 platform implementations to the new engine architect
    - 9 files, 829 LOC
    - Full BLE support: scanning, GATT operations, bonding, L2CAP, connection priority
    - AndroidEngine.kt, AndroidBluetoothPeripheral.kt, callbacks, state monitoring
-   - Publishes as `dev.bluefalcon:blue-falcon-engine-android:3.0.0-alpha01`
+   - Publishes as `dev.bluefalcon:blue-falcon-engine-android:3.0.0`
 
 2. **iOS Engine** (`library/engines/ios/`) - ✅ Complete
    - Shared Apple implementation in nativeMain
    - Targets: iosArm64, iosSimulatorArm64, iosX64
    - AppleEngine.kt, BluetoothPeripheralManager.kt, CoreBluetooth interop
-   - Publishes as `dev.bluefalcon:blue-falcon-engine-ios:3.0.0-alpha01`
+   - Publishes as `dev.bluefalcon:blue-falcon-engine-ios:3.0.0`
 
 3. **macOS Engine** (`library/engines/macos/`) - ✅ Complete
    - Shared Apple implementation with iOS
    - Targets: macosArm64, macosX64
-   - Publishes as `dev.bluefalcon:blue-falcon-engine-macos:3.0.0-alpha01`
+   - Publishes as `dev.bluefalcon:blue-falcon-engine-macos:3.0.0`
 
 4. **JavaScript Engine** (`library/engines/js/`) - ✅ Complete
    - 341 LOC, Web Bluetooth API integration
    - JsEngine.kt with browser BLE support
    - External declarations for Web Bluetooth types
-   - Publishes as `dev.bluefalcon:blue-falcon-engine-js:3.0.0-alpha01`
+   - Publishes as `dev.bluefalcon:blue-falcon-engine-js:3.0.0`
 
 5. **Windows Engine** (`library/engines/windows/`) - ✅ Complete
    - 682 LOC, JNI bridge to native WinRT
    - WindowsEngine.kt with 15 native method declarations
    - Supports bonding, GATT operations, L2CAP
-   - Publishes as `dev.bluefalcon:blue-falcon-engine-windows:3.0.0-alpha01`
+   - Publishes as `dev.bluefalcon:blue-falcon-engine-windows:3.0.0`
 
 6. **Raspberry Pi Engine** (`library/engines/rpi/`) - ✅ Complete
    - 399 LOC, wraps Blessed library for Linux BLE
    - RpiEngine.kt with BlueZ integration
-   - Publishes as `dev.bluefalcon:blue-falcon-engine-rpi:3.0.0-alpha01`
+   - Publishes as `dev.bluefalcon:blue-falcon-engine-rpi:3.0.0`
 
 **Build Status**: ✅ All engines compile successfully with `./gradlew build`
 
@@ -684,7 +684,7 @@ Successfully created a compatibility layer that allows existing 2.x code to work
 - ✅ Exception signatures maintained (@Throws annotations)
 - ✅ Flow-based state: peripherals and managerState
 - ✅ Platform parity: All 6 platforms supported
-- ✅ Publishes as `dev.bluefalcon:blue-falcon:3.0.0-alpha01` (main artifact)
+- ✅ Publishes as `dev.bluefalcon:blue-falcon:3.0.0` (main artifact)
 
 **Build Status**: ✅ Compiles successfully with `./gradlew :legacy:build`
 
@@ -704,7 +704,7 @@ Successfully implemented three production-ready core plugins demonstrating the p
    - Custom logger support (DEBUG, INFO, WARN, ERROR)
    - Selective logging for discovery, connections, GATT operations
    - Format: `[BlueFalcon] [LEVEL] message`
-   - Publishes as `dev.bluefalcon:blue-falcon-plugin-logging:3.0.0-alpha01`
+   - Publishes as `dev.bluefalcon:blue-falcon-plugin-logging:3.0.0`
 
 2. **Retry Plugin** (`plugins/retry/`):
    - Automatic retry with exponential backoff
@@ -712,7 +712,7 @@ Successfully implemented three production-ready core plugins demonstrating the p
    - Delay progression: 500ms → 1s → 2s → 5s (capped)
    - Error predicate for selective retry
    - Per-operation timeout support
-   - Publishes as `dev.bluefalcon:blue-falcon-plugin-retry:3.0.0-alpha01`
+   - Publishes as `dev.bluefalcon:blue-falcon-plugin-retry:3.0.0`
 
 3. **Caching Plugin** (`plugins/caching/`):
    - Caches GATT service/characteristic discovery results
@@ -720,7 +720,7 @@ Successfully implemented three production-ready core plugins demonstrating the p
    - Auto-invalidation on disconnect
    - Memory-based cache with size limits
    - Improves performance for repeated connections
-   - Publishes as `dev.bluefalcon:blue-falcon-plugin-caching:3.0.0-alpha01`
+   - Publishes as `dev.bluefalcon:blue-falcon-plugin-caching:3.0.0`
 
 **Usage Example:**
 ```kotlin

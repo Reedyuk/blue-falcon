@@ -11,11 +11,11 @@ Successfully configured Blue Falcon 3.0 for automated publishing to Maven Centra
 Updated `library/gradle.properties` with 3.0 versions:
 
 ```properties
-version=3.0.0-alpha01
-versionCore=3.0.0-alpha01
-versionEngines=3.0.0-alpha01
-versionPlugins=3.0.0-alpha01
-versionLegacy=3.0.0-alpha01
+version=3.0.0
+versionCore=3.0.0
+versionEngines=3.0.0
+versionPlugins=3.0.0
+versionLegacy=3.0.0
 ```
 
 ### 2. Module Publishing Configuration ✅
@@ -23,23 +23,23 @@ versionLegacy=3.0.0-alpha01
 Added Maven Central publishing to **all 11 modules**:
 
 **Core Module:**
-- `dev.bluefalcon:blue-falcon-core:3.0.0-alpha01`
+- `dev.bluefalcon:blue-falcon-core:3.0.0`
 
 **Engine Modules (6):**
-- `dev.bluefalcon:blue-falcon-engine-android:3.0.0-alpha01`
-- `dev.bluefalcon:blue-falcon-engine-ios:3.0.0-alpha01`
-- `dev.bluefalcon:blue-falcon-engine-macos:3.0.0-alpha01`
-- `dev.bluefalcon:blue-falcon-engine-js:3.0.0-alpha01`
-- `dev.bluefalcon:blue-falcon-engine-windows:3.0.0-alpha01`
-- `dev.bluefalcon:blue-falcon-engine-rpi:3.0.0-alpha01`
+- `dev.bluefalcon:blue-falcon-engine-android:3.0.0`
+- `dev.bluefalcon:blue-falcon-engine-ios:3.0.0`
+- `dev.bluefalcon:blue-falcon-engine-macos:3.0.0`
+- `dev.bluefalcon:blue-falcon-engine-js:3.0.0`
+- `dev.bluefalcon:blue-falcon-engine-windows:3.0.0`
+- `dev.bluefalcon:blue-falcon-engine-rpi:3.0.0`
 
 **Plugin Modules (3):**
-- `dev.bluefalcon:blue-falcon-plugin-logging:3.0.0-alpha01`
-- `dev.bluefalcon:blue-falcon-plugin-retry:3.0.0-alpha01`
-- `dev.bluefalcon:blue-falcon-plugin-caching:3.0.0-alpha01`
+- `dev.bluefalcon:blue-falcon-plugin-logging:3.0.0`
+- `dev.bluefalcon:blue-falcon-plugin-retry:3.0.0`
+- `dev.bluefalcon:blue-falcon-plugin-caching:3.0.0`
 
 **Legacy Module:**
-- `dev.bluefalcon:blue-falcon:3.0.0-alpha01` (backward compatible)
+- `dev.bluefalcon:blue-falcon:3.0.0` (backward compatible)
 
 Each module's `build.gradle.kts` includes:
 ```kotlin
@@ -113,14 +113,14 @@ cd library
 
 1. **Create and push tag:**
    ```bash
-   git tag v3.0.0-alpha01
-   git push origin v3.0.0-alpha01
+   git tag v3.0.0
+   git push origin v3.0.0
    ```
 
 2. **Create GitHub Release:**
    - Go to GitHub → Releases → "Draft a new release"
-   - Select tag `v3.0.0-alpha01`
-   - Title: "Blue Falcon 3.0.0-alpha01"
+   - Select tag `v3.0.0`
+   - Title: "Blue Falcon 3.0.0"
    - Description: Copy from `docs/RELEASE_NOTES_3.0.0.md`
    - Click "Publish release"
 
@@ -157,7 +157,7 @@ cd library
 ## Files Modified
 
 1. **`library/gradle.properties`**
-   - Updated version numbers to 3.0.0-alpha01
+   - Updated version numbers to 3.0.0
 
 2. **`.github/workflows/release.yml`**
    - Updated for multi-module publishing
@@ -202,7 +202,7 @@ The publishing infrastructure is ready for Phase 6 release preparation. All modu
    - Verify artifacts
 
 4. **Create first release**
-   - Tag `v3.0.0-alpha01`
+   - Tag `v3.0.0`
    - Create GitHub release
    - Verify automated publish works
    - Announce to community

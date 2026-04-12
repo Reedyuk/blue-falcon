@@ -33,7 +33,7 @@ Simply update your version - **no code changes required**:
 
 ```kotlin
 commonMain.dependencies {
-    implementation("dev.bluefalcon:blue-falcon:3.0.0-alpha01")
+    implementation("dev.bluefalcon:blue-falcon:3.0.0")
 }
 ```
 
@@ -45,16 +45,16 @@ Your existing 2.x code continues to work unchanged! See the [Migration Guide](do
 
 ```kotlin
 commonMain.dependencies {
-    implementation("dev.bluefalcon:blue-falcon-core:3.0.0-alpha01")
+    implementation("dev.bluefalcon:blue-falcon-core:3.0.0")
 }
 
 // Add platform-specific engines
 androidMain.dependencies {
-    implementation("dev.bluefalcon:blue-falcon-engine-android:3.0.0-alpha01")
+    implementation("dev.bluefalcon:blue-falcon-engine-android:3.0.0")
 }
 
 iosMain.dependencies {
-    implementation("dev.bluefalcon:blue-falcon-engine-ios:3.0.0-alpha01")
+    implementation("dev.bluefalcon:blue-falcon-engine-ios:3.0.0")
 }
 ```
 
@@ -63,13 +63,13 @@ iosMain.dependencies {
 ```kotlin
 commonMain.dependencies {
     // Logging support
-    implementation("dev.bluefalcon:blue-falcon-plugin-logging:3.0.0-alpha01")
+    implementation("dev.bluefalcon:blue-falcon-plugin-logging:3.0.0")
     
     // Automatic retry with exponential backoff
-    implementation("dev.bluefalcon:blue-falcon-plugin-retry:3.0.0-alpha01")
+    implementation("dev.bluefalcon:blue-falcon-plugin-retry:3.0.0")
     
     // Service/characteristic caching
-    implementation("dev.bluefalcon:blue-falcon-plugin-caching:3.0.0-alpha01")
+    implementation("dev.bluefalcon:blue-falcon-plugin-caching:3.0.0")
 }
 ```
 

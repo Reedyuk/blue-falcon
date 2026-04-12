@@ -66,14 +66,14 @@ The easiest way to publish is through GitHub releases:
 
 1. **Create a git tag:**
    ```bash
-   git tag v3.0.0-alpha01
-   git push origin v3.0.0-alpha01
+   git tag v3.0.0
+   git push origin v3.0.0
    ```
 
 2. **Create GitHub Release:**
    - Go to GitHub → Releases → "Draft a new release"
    - Select your tag
-   - Title: "Blue Falcon 3.0.0-alpha01"
+   - Title: "Blue Falcon 3.0.0"
    - Description: Copy from `docs/RELEASE_NOTES_3.0.0.md`
    - Click "Publish release"
 
@@ -108,24 +108,24 @@ cd library
 Blue Falcon 3.0 publishes **11 modules**:
 
 ### Core
-- `dev.bluefalcon:blue-falcon-core:3.0.0-alpha01`
+- `dev.bluefalcon:blue-falcon-core:3.0.0`
   - Platform-independent core interfaces and plugin system
 
 ### Engines
-- `dev.bluefalcon:blue-falcon-engine-android:3.0.0-alpha01`
-- `dev.bluefalcon:blue-falcon-engine-ios:3.0.0-alpha01`
-- `dev.bluefalcon:blue-falcon-engine-macos:3.0.0-alpha01`
-- `dev.bluefalcon:blue-falcon-engine-js:3.0.0-alpha01`
-- `dev.bluefalcon:blue-falcon-engine-windows:3.0.0-alpha01`
-- `dev.bluefalcon:blue-falcon-engine-rpi:3.0.0-alpha01`
+- `dev.bluefalcon:blue-falcon-engine-android:3.0.0`
+- `dev.bluefalcon:blue-falcon-engine-ios:3.0.0`
+- `dev.bluefalcon:blue-falcon-engine-macos:3.0.0`
+- `dev.bluefalcon:blue-falcon-engine-js:3.0.0`
+- `dev.bluefalcon:blue-falcon-engine-windows:3.0.0`
+- `dev.bluefalcon:blue-falcon-engine-rpi:3.0.0`
 
 ### Plugins
-- `dev.bluefalcon:blue-falcon-plugin-logging:3.0.0-alpha01`
-- `dev.bluefalcon:blue-falcon-plugin-retry:3.0.0-alpha01`
-- `dev.bluefalcon:blue-falcon-plugin-caching:3.0.0-alpha01`
+- `dev.bluefalcon:blue-falcon-plugin-logging:3.0.0`
+- `dev.bluefalcon:blue-falcon-plugin-retry:3.0.0`
+- `dev.bluefalcon:blue-falcon-plugin-caching:3.0.0`
 
 ### Legacy Compatibility
-- `dev.bluefalcon:blue-falcon:3.0.0-alpha01`
+- `dev.bluefalcon:blue-falcon:3.0.0`
   - Drop-in replacement for 2.x users
   - Includes all engines and backward compatibility layer
 
@@ -134,15 +134,15 @@ Blue Falcon 3.0 publishes **11 modules**:
 Versions are centralized in `library/gradle.properties`:
 
 ```properties
-version=3.0.0-alpha01
-versionCore=3.0.0-alpha01
-versionEngines=3.0.0-alpha01
-versionPlugins=3.0.0-alpha01
-versionLegacy=3.0.0-alpha01
+version=3.0.0
+versionCore=3.0.0
+versionEngines=3.0.0
+versionPlugins=3.0.0
+versionLegacy=3.0.0
 ```
 
 **Version progression:**
-- `3.0.0-alpha01` → Testing with early adopters
+- `3.0.0` → Testing with early adopters
 - `3.0.0-beta01` → Feature complete, bug fixes only
 - `3.0.0-rc01` → Release candidate, production ready
 - `3.0.0` → Final release
@@ -164,7 +164,7 @@ Or use direct links:
 ```kotlin
 // build.gradle.kts
 dependencies {
-    implementation("dev.bluefalcon:blue-falcon:3.0.0-alpha01")
+    implementation("dev.bluefalcon:blue-falcon:3.0.0")
     // Should download successfully
 }
 ```
@@ -173,11 +173,11 @@ dependencies {
 
 ```bash
 # Download artifact
-curl -O https://repo1.maven.org/maven2/dev/bluefalcon/blue-falcon-core/3.0.0-alpha01/blue-falcon-core-3.0.0-alpha01.jar
-curl -O https://repo1.maven.org/maven2/dev/bluefalcon/blue-falcon-core/3.0.0-alpha01/blue-falcon-core-3.0.0-alpha01.jar.asc
+curl -O https://repo1.maven.org/maven2/dev/bluefalcon/blue-falcon-core/3.0.0/blue-falcon-core-3.0.0.jar
+curl -O https://repo1.maven.org/maven2/dev/bluefalcon/blue-falcon-core/3.0.0/blue-falcon-core-3.0.0.jar.asc
 
 # Verify signature
-gpg --verify blue-falcon-core-3.0.0-alpha01.jar.asc blue-falcon-core-3.0.0-alpha01.jar
+gpg --verify blue-falcon-core-3.0.0.jar.asc blue-falcon-core-3.0.0.jar
 ```
 
 ## Troubleshooting

@@ -191,21 +191,21 @@ actual class AppModule {
 ```kotlin
 commonMain.dependencies {
     // Blue Falcon 3.0 Core
-    implementation("dev.bluefalcon:blue-falcon-core:3.0.0-alpha01")
+    implementation("dev.bluefalcon:blue-falcon-core:3.0.0")
     
     // Optional plugins
-    implementation("dev.bluefalcon:blue-falcon-plugin-logging:3.0.0-alpha01")
-    implementation("dev.bluefalcon:blue-falcon-plugin-retry:3.0.0-alpha01")
+    implementation("dev.bluefalcon:blue-falcon-plugin-logging:3.0.0")
+    implementation("dev.bluefalcon:blue-falcon-plugin-retry:3.0.0")
 }
 
 androidMain.dependencies {
     // Android Engine
-    implementation("dev.bluefalcon:blue-falcon-engine-android:3.0.0-alpha01")
+    implementation("dev.bluefalcon:blue-falcon-engine-android:3.0.0")
 }
 
 iosMain.dependencies {
     // iOS Engine
-    implementation("dev.bluefalcon:blue-falcon-engine-ios:3.0.0-alpha01")
+    implementation("dev.bluefalcon:blue-falcon-engine-ios:3.0.0")
 }
 ```
 

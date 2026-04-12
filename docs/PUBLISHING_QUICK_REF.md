@@ -6,8 +6,8 @@
 
 ```bash
 # 1. Create and push a git tag
-git tag v3.0.0-alpha01
-git push origin v3.0.0-alpha01
+git tag v3.0.0
+git push origin v3.0.0
 
 # 2. Go to GitHub and create a release from the tag
 # GitHub Actions will automatically:
@@ -40,7 +40,7 @@ cd library
 
 # Then test in a sample project
 dependencies {
-    implementation("dev.bluefalcon:blue-falcon:3.0.0-alpha01")
+    implementation("dev.bluefalcon:blue-falcon:3.0.0")
 }
 ```
 
@@ -136,7 +136,7 @@ find ~/.m2/repository/dev/bluefalcon -name "*.pom" -exec cat {} \;
 ## 🔄 Version Progression
 
 ```
-3.0.0-alpha01  → Testing with early adopters
+3.0.0  → Testing with early adopters
 3.0.0-beta01   → Feature complete, bug fixes only
 3.0.0-rc01     → Release candidate, production ready
 3.0.0          → Final stable release
