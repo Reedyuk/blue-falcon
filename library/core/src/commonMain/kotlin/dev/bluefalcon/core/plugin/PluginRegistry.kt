@@ -36,7 +36,7 @@ class PluginRegistry {
             currentCall = plugin.onBeforeScan(currentCall)
         }
         proceed(currentCall)
-        for (plugin in plugins) {
+        for (plugin in plugins.reversed()) {
             plugin.onAfterScan(currentCall)
         }
     }
@@ -50,7 +50,7 @@ class PluginRegistry {
             currentCall = plugin.onBeforeConnect(currentCall)
         }
         val result = proceed(currentCall)
-        for (plugin in plugins) {
+        for (plugin in plugins.reversed()) {
             plugin.onAfterConnect(currentCall, result)
         }
         return result
@@ -65,7 +65,7 @@ class PluginRegistry {
             currentCall = plugin.onBeforeRead(currentCall)
         }
         val result = proceed(currentCall)
-        for (plugin in plugins) {
+        for (plugin in plugins.reversed()) {
             plugin.onAfterRead(currentCall, result)
         }
         return result
@@ -80,7 +80,7 @@ class PluginRegistry {
             currentCall = plugin.onBeforeWrite(currentCall)
         }
         val result = proceed(currentCall)
-        for (plugin in plugins) {
+        for (plugin in plugins.reversed()) {
             plugin.onAfterWrite(currentCall, result)
         }
         return result
