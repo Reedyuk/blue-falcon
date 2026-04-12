@@ -134,6 +134,19 @@ class BluetoothDeviceViewModel(
                 _deviceState.update { it.copy(selectedDeviceId = null) }
             }
 
+            is UiEvent.OnRefreshDevice -> {
+                _deviceState.value.devices[event.macId]?.let { device ->
+                    CoroutineScope(Dispatchers.IO).launch {
+                        try {
+                            // Re-discover services to refresh data
+                            blueFalcon.discoverServices(device.peripheral)
+                        } catch (e: Exception) {
+                            println("Failed to refresh device: ${e.message}")
+                        }
+                    }
+                }
+            }
+
             is UiEvent.OnReadCharacteristic -> {
                 _deviceState.value.devices[event.macId]?.let { device ->
                     CoroutineScope(Dispatchers.IO).launch {

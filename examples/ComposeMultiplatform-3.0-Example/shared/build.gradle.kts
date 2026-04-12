@@ -43,9 +43,9 @@ kotlin {
                 implementation("dev.icerock.moko:mvvm-flow-compose:0.16.1")
 
                 // Blue Falcon 3.0
-                implementation("dev.bluefalcon:blue-falcon-core:3.0.0")
-                implementation("dev.bluefalcon:blue-falcon-plugin-logging:3.0.0")
-                implementation("dev.bluefalcon:blue-falcon-plugin-retry:3.0.0")
+                implementation("dev.bluefalcon:blue-falcon-core:3.0.1")
+                implementation("dev.bluefalcon:blue-falcon-plugin-logging:3.0.1")
+                implementation("dev.bluefalcon:blue-falcon-plugin-retry:3.0.1")
             }
         }
         val commonTest by getting {
@@ -69,7 +69,7 @@ kotlin {
         val iosMain by creating {
             dependencies {
                 // Blue Falcon iOS Engine
-                implementation("dev.bluefalcon:blue-falcon-engine-ios:3.0.0")
+                implementation("dev.bluefalcon:blue-falcon-engine-ios:3.0.1")
             }
             dependsOn(commonMain)
             iosX64Main.dependsOn(this)

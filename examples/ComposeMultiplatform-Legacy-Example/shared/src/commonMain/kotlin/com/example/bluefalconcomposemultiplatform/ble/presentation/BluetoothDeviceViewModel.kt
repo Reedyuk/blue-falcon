@@ -195,6 +195,13 @@ class BluetoothDeviceViewModel(
                 _deviceState.update { it.copy(selectedDeviceId = null) }
             }
 
+            is UiEvent.OnRefreshDevice -> {
+                _deviceState.value.devices[event.macId]?.let { device ->
+                    // Re-discover services to refresh data
+                    blueFalcon.discoverServices(device.peripheral)
+                }
+            }
+
             is UiEvent.OnReadCharacteristic -> {
                 _deviceState.value.devices[event.macId]?.let {
                     blueFalcon.readCharacteristic(it.peripheral, event.characteristic)
