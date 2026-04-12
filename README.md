@@ -1,14 +1,16 @@
 # ![Blue Falcon](bluefalcon.png) Blue-Falcon 
 
-![CI](https://github.com/Reedyuk/blue-falcon/actions/workflows/release.yml/badge.svg) 
-[![Kotlin](https://img.shields.io/badge/kotlin-2.3.0-blue.svg)](http://kotlinlang.org) 
-![badge][badge-android] 
-![badge][badge-native] 
-![badge][badge-mac] 
-![badge][badge-rpi] 
-![badge][badge-js] 
-![badge][badge-windows] 
-<a href="https://git.live"><img src="https://img.shields.io/endpoint?url=https%3A%2F%2Fteamhub-dev.web.app%2Fbadge%3Forg%3DReedyuk%26repo%3Dblue-falcon"></a>
+[![CI](https://github.com/Reedyuk/blue-falcon/actions/workflows/release.yml/badge.svg)](https://github.com/Reedyuk/blue-falcon/actions/workflows/release.yml)
+[![Maven Central](https://img.shields.io/maven-central/v/dev.bluefalcon/blue-falcon-core?label=Maven%20Central)](https://central.sonatype.com/search?q=dev.bluefalcon)
+[![Kotlin](https://img.shields.io/badge/kotlin-2.3.0-blue.svg?logo=kotlin)](https://kotlinlang.org)
+[![License](https://img.shields.io/github/license/Reedyuk/blue-falcon)](LICENSE)
+
+[![Android](https://img.shields.io/badge/platform-android-brightgreen.svg?style=flat)](#)
+[![iOS](https://img.shields.io/badge/platform-ios-lightgrey.svg?style=flat)](#)
+[![macOS](https://img.shields.io/badge/platform-macos-lightgrey.svg?style=flat)](#)
+[![Raspberry Pi](https://img.shields.io/badge/platform-rpi-lightgrey.svg?style=flat)](#)
+[![JavaScript](https://img.shields.io/badge/platform-js-yellow.svg?style=flat)](#)
+[![Windows](https://img.shields.io/badge/platform-windows-blue.svg?style=flat)](#)
 
 **A Bluetooth Low Energy (BLE) Kotlin Multiplatform library for iOS, Android, MacOS, Raspberry Pi, Windows, and JavaScript.**
 
@@ -350,10 +352,3 @@ Blue Falcon is released under the [MIT License](LICENSE).
 ---
 
 **Made with ❤️ by the Blue Falcon community**
-
-[badge-android]: http://img.shields.io/badge/platform-android-brightgreen.svg?style=flat
-[badge-native]: http://img.shields.io/badge/platform-native-lightgrey.svg?style=flat
-[badge-js]: http://img.shields.io/badge/platform-js-yellow.svg?style=flat
-[badge-mac]: http://img.shields.io/badge/platform-macos-lightgrey.svg?style=flat
-[badge-rpi]: http://img.shields.io/badge/platform-rpi-lightgrey.svg?style=flat
-[badge-windows]: http://img.shields.io/badge/platform-windows-blue.svg?style=flat

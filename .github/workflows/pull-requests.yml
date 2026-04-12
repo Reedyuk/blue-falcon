@@ -28,7 +28,7 @@ jobs:
       run: ./gradlew -p ./library build --parallel --no-daemon
       
     - name: Run tests
-      run: ./gradlew -p ./library test --no-daemon || echo "⚠️  Tests have known compilation issues, continuing..."
+      run: ./gradlew -p ./library test --no-daemon"
 
   build-windows:
     name: Build (Windows)
