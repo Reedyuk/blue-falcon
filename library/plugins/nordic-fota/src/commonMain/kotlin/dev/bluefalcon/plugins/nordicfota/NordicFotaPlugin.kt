@@ -252,7 +252,11 @@ class NordicFotaPlugin(private val config: Config) : BlueFalconPlugin {
         )
     }
 
-    private fun handleImageStateResponse(@Suppress("UNUSED_PARAMETER") response: SmpResponse): ByteArray? {
+    private fun handleImageStateResponse(
+        @Suppress("UNUSED_PARAMETER") response: SmpResponse
+    ): ByteArray? {
+        // Response payload contains image slot details which could be used for
+        // validation in future enhancements. Currently we proceed to reset.
         if (config.autoReset) {
             updateState(FotaState.Resetting)
             return buildResetMessage()

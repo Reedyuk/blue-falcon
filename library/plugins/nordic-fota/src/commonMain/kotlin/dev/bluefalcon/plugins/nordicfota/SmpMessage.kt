@@ -78,13 +78,11 @@ internal object SmpMessage {
             "data" to chunk
         )
 
-        // Include total image length and image hash in the first chunk
+        // Include total image length and image index in the first chunk.
+        // The device validates the image integrity after the full upload completes.
         if (offset == 0) {
             payload["len"] = imageData.size
             payload["image"] = imageIndex
-            // SHA-256 hash of the image (first 32 bytes of the image header contain enough
-            // for the device to identify it — full hash computation would require a SHA-256
-            // library, so we send the image data and let the device validate)
         }
 
         return buildRequest(
@@ -109,7 +107,9 @@ internal object SmpMessage {
     /**
      * Build a request to confirm (mark as permanent) the image in a given slot.
      *
-     * @param imageHash The SHA-256 hash of the image to confirm (from image state response)
+     * @param imageHash Optional SHA-256 hash of the image to confirm. When empty,
+     *                  the device confirms the currently test-booted image.
+     *                  When provided, confirms a specific image identified by hash.
      */
     fun buildImageConfirmRequest(imageHash: ByteArray = byteArrayOf()): ByteArray {
         val payload = mutableMapOf<String, Any>(
