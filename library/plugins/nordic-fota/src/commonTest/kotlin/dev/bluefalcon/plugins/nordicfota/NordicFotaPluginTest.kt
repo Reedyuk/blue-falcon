@@ -1,5 +1,7 @@
 package dev.bluefalcon.plugins.nordicfota
 
+import dev.bluefalcon.core.plugin.ConnectCall
+import dev.bluefalcon.core.plugin.DisconnectCall
 import dev.bluefalcon.core.plugin.PluginConfig
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -7,6 +9,7 @@ import kotlin.test.assertTrue
 import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
+import kotlinx.coroutines.test.runTest
 
 class NordicFotaPluginTest {
 
@@ -190,7 +193,7 @@ class NordicFotaPluginTest {
     }
 
     @Test
-    fun processResponseResetCompletesUpdate() {
+    fun processResponseResetKeepsResettingState() {
         val plugin = NordicFotaPlugin.create {
             autoConfirm = true
             autoReset = true
@@ -198,7 +201,7 @@ class NordicFotaPluginTest {
         val peripheral = TestPeripheral("test-device")
         plugin.startUpdate(peripheral, ByteArray(10))
 
-        // Walk through the entire state machine
+        // Walk through upload and confirm
         plugin.processResponse(buildUploadResponse(nextOffset = 10))
         plugin.processResponse(buildImageStateResponse())
 
@@ -206,8 +209,148 @@ class NordicFotaPluginTest {
         val next = plugin.processResponse(resetResponse)
 
         assertNull(next)
+        // State stays Resetting until disconnect is observed
+        val state = plugin.state.value
+        assertTrue(state is FotaState.Resetting)
+    }
+
+    @Test
+    fun disconnectDuringResettingTransitionsToValidating() = runTest {
+        val plugin = NordicFotaPlugin.create {
+            autoConfirm = true
+            autoReset = true
+        }
+        val peripheral = TestPeripheral("test-device")
+        plugin.startUpdate(peripheral, ByteArray(10))
+
+        // Walk through upload → confirm → reset
+        plugin.processResponse(buildUploadResponse(nextOffset = 10))
+        plugin.processResponse(buildImageStateResponse())
+        plugin.processResponse(buildResetResponse())
+        assertTrue(plugin.state.value is FotaState.Resetting)
+
+        // Simulate disconnect after device reset
+        plugin.onAfterDisconnect(DisconnectCall(peripheral), Result.success(Unit))
+
+        val state = plugin.state.value
+        assertTrue(state is FotaState.Validating)
+    }
+
+    @Test
+    fun reconnectDuringValidatingTransitionsToComplete() = runTest {
+        val plugin = NordicFotaPlugin.create {
+            autoConfirm = true
+            autoReset = true
+        }
+        val peripheral = TestPeripheral("test-device")
+        plugin.startUpdate(peripheral, ByteArray(10))
+
+        // Walk through upload → confirm → reset → disconnect
+        plugin.processResponse(buildUploadResponse(nextOffset = 10))
+        plugin.processResponse(buildImageStateResponse())
+        plugin.processResponse(buildResetResponse())
+        plugin.onAfterDisconnect(DisconnectCall(peripheral), Result.success(Unit))
+        assertTrue(plugin.state.value is FotaState.Validating)
+
+        // Simulate reconnection
+        plugin.onAfterConnect(ConnectCall(peripheral, false), Result.success(Unit))
+
         val state = plugin.state.value
         assertTrue(state is FotaState.Complete)
+    }
+
+    @Test
+    fun fullStateMachineFlow() = runTest {
+        val plugin = NordicFotaPlugin.create {
+            autoConfirm = true
+            autoReset = true
+        }
+        val states = mutableListOf<FotaState>()
+        plugin.addCallback(object : FotaCallback {
+            override fun onStateChanged(state: FotaState) {
+                states.add(state)
+            }
+        })
+
+        val peripheral = TestPeripheral("test-device")
+        plugin.startUpdate(peripheral, ByteArray(10))
+
+        plugin.processResponse(buildUploadResponse(nextOffset = 10))
+        plugin.processResponse(buildImageStateResponse())
+        plugin.processResponse(buildResetResponse())
+        plugin.onAfterDisconnect(DisconnectCall(peripheral), Result.success(Unit))
+        plugin.onAfterConnect(ConnectCall(peripheral, false), Result.success(Unit))
+
+        // Verify the full state machine: Uploading → Confirming → Resetting → Validating → Complete
+        assertTrue(states.any { it is FotaState.Uploading })
+        assertTrue(states.any { it is FotaState.Confirming })
+        assertTrue(states.any { it is FotaState.Resetting })
+        assertTrue(states.any { it is FotaState.Validating })
+        assertTrue(states.any { it is FotaState.Complete })
+    }
+
+    @Test
+    fun disconnectForUnrelatedPeripheralDoesNotAffectState() = runTest {
+        val plugin = NordicFotaPlugin.create {
+            autoConfirm = true
+            autoReset = true
+        }
+        val peripheral = TestPeripheral("target-device")
+        val otherPeripheral = TestPeripheral("other-device")
+        plugin.startUpdate(peripheral, ByteArray(10))
+
+        plugin.processResponse(buildUploadResponse(nextOffset = 10))
+        plugin.processResponse(buildImageStateResponse())
+        plugin.processResponse(buildResetResponse())
+        assertTrue(plugin.state.value is FotaState.Resetting)
+
+        // Disconnect a different peripheral — should not change state
+        plugin.onAfterDisconnect(DisconnectCall(otherPeripheral), Result.success(Unit))
+        assertTrue(plugin.state.value is FotaState.Resetting)
+    }
+
+    @Test
+    fun reconnectForUnrelatedPeripheralDoesNotAffectState() = runTest {
+        val plugin = NordicFotaPlugin.create {
+            autoConfirm = true
+            autoReset = true
+        }
+        val peripheral = TestPeripheral("target-device")
+        val otherPeripheral = TestPeripheral("other-device")
+        plugin.startUpdate(peripheral, ByteArray(10))
+
+        plugin.processResponse(buildUploadResponse(nextOffset = 10))
+        plugin.processResponse(buildImageStateResponse())
+        plugin.processResponse(buildResetResponse())
+        plugin.onAfterDisconnect(DisconnectCall(peripheral), Result.success(Unit))
+        assertTrue(plugin.state.value is FotaState.Validating)
+
+        // Reconnect a different peripheral — should not change state
+        plugin.onAfterConnect(ConnectCall(otherPeripheral, false), Result.success(Unit))
+        assertTrue(plugin.state.value is FotaState.Validating)
+    }
+
+    @Test
+    fun failedReconnectDoesNotComplete() = runTest {
+        val plugin = NordicFotaPlugin.create {
+            autoConfirm = true
+            autoReset = true
+        }
+        val peripheral = TestPeripheral("test-device")
+        plugin.startUpdate(peripheral, ByteArray(10))
+
+        plugin.processResponse(buildUploadResponse(nextOffset = 10))
+        plugin.processResponse(buildImageStateResponse())
+        plugin.processResponse(buildResetResponse())
+        plugin.onAfterDisconnect(DisconnectCall(peripheral), Result.success(Unit))
+        assertTrue(plugin.state.value is FotaState.Validating)
+
+        // Failed reconnection — should stay in Validating
+        plugin.onAfterConnect(
+            ConnectCall(peripheral, false),
+            Result.failure(Exception("Connection failed"))
+        )
+        assertTrue(plugin.state.value is FotaState.Validating)
     }
 
     @Test
@@ -263,7 +406,7 @@ class NordicFotaPluginTest {
     }
 
     @Test
-    fun callbackReceivesCompleteEvent() {
+    fun callbackReceivesCompleteEvent() = runTest {
         val plugin = NordicFotaPlugin.create {
             autoConfirm = true
             autoReset = true
@@ -282,6 +425,8 @@ class NordicFotaPluginTest {
         plugin.processResponse(buildUploadResponse(nextOffset = 10))
         plugin.processResponse(buildImageStateResponse())
         plugin.processResponse(buildResetResponse())
+        plugin.onAfterDisconnect(DisconnectCall(peripheral), Result.success(Unit))
+        plugin.onAfterConnect(ConnectCall(peripheral, false), Result.success(Unit))
 
         assertTrue(completed)
     }
