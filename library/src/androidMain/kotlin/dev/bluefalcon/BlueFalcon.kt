@@ -516,8 +516,10 @@ actual class BlueFalcon actual constructor(
                 pendingTimeouts.remove(address)
                 if (gatts.contains(gatt)) {
                     log?.warn("Disconnect timeout for $address — forcing close")
+                    val reason = mapGattDisconnectReason(INTERNAL_DISCONNECT_TIMEOUT)
+                    val peripheral = BluetoothPeripheralImpl(gatt.device)
                     delegates.forEach {
-                        it.didDisconnect(BluetoothPeripheralImpl(gatt.device))
+                        it.didDisconnect(peripheral, reason)
                     }
                     gatts.remove(gatt)
                     gatt.close()
@@ -538,8 +540,10 @@ actual class BlueFalcon actual constructor(
             connectedGatts.forEach { gatt ->
                 log?.info("Adapter off - forcing disconnect for ${gatt.device.address}")
                 gatt.close()
+                val reason = mapGattDisconnectReason(INTERNAL_ADAPTER_OFF)
+                val peripheral = BluetoothPeripheralImpl(gatt.device)
                 delegates.forEach {
-                    it.didDisconnect(BluetoothPeripheralImpl(gatt.device))
+                    it.didDisconnect(peripheral, reason)
                 }
             }
         }
@@ -564,8 +568,10 @@ actual class BlueFalcon actual constructor(
                         cancelDisconnectTimeout(bluetoothGatt.device.address)
                         val wasTracked = gatts.contains(bluetoothGatt)
                         if (wasTracked) {
+                            val reason = mapGattDisconnectReason(status)
+                            val peripheral = BluetoothPeripheralImpl(bluetoothGatt.device)
                             delegates.forEach {
-                                it.didDisconnect(BluetoothPeripheralImpl(bluetoothGatt.device))
+                                it.didDisconnect(peripheral, reason)
                             }
                         }
                         gatts.remove(bluetoothGatt)
@@ -838,4 +844,43 @@ actual class BlueFalcon actual constructor(
         private val CCCD_UUID = java.util.UUID.fromString("00002902-0000-1000-8000-00805f9b34fb")
         private const val DISCONNECT_TIMEOUT_MS = 5_000L
     }
+}
+
+/**
+ * Maps Android GATT status codes to a [BleDisconnectReason].
+ * Returns `null` for [BluetoothGatt.GATT_SUCCESS] (clean disconnect).
+ */
+// Internal BlueFalcon codes (not from BLE stack)
+private const val INTERNAL_ADAPTER_OFF = -1
+private const val INTERNAL_DISCONNECT_TIMEOUT = -2
+
+// HCI/GATT disconnect status codes
+private const val GATT_CONN_L2CAP_FAILURE = 1
+private const val GATT_CONN_TIMEOUT = 8
+private const val GATT_CONN_TERMINATE_PEER_USER = 19
+private const val GATT_CONN_TERMINATE_LOCAL_HOST = 22
+private const val GATT_CONN_LMP_TIMEOUT = 34
+private const val GATT_CONTROLLER_BUSY = 58
+private const val GATT_UNACCEPT_CONN_INTERVAL = 59
+private const val GATT_CONN_FAIL_ESTABLISH = 62
+private const val GATT_ERROR = 133
+private const val GATT_CONN_CANCEL = 256
+private const val GATT_FAILURE = 257
+
+internal fun mapGattDisconnectReason(status: Int): BleDisconnectReason? = when (status) {
+    BluetoothGatt.GATT_SUCCESS -> null
+    INTERNAL_ADAPTER_OFF -> BleDisconnectReason(status, "Bluetooth adapter turned off")
+    INTERNAL_DISCONNECT_TIMEOUT -> BleDisconnectReason(status, "Disconnect timeout (forced close)")
+    GATT_CONN_L2CAP_FAILURE -> BleDisconnectReason(status, "L2CAP connection failure")
+    GATT_CONN_TIMEOUT -> BleDisconnectReason(status, "Connection supervision timeout")
+    GATT_CONN_TERMINATE_PEER_USER -> BleDisconnectReason(status, "Remote device terminated connection")
+    GATT_CONN_TERMINATE_LOCAL_HOST -> BleDisconnectReason(status, "Local host terminated connection")
+    GATT_CONN_LMP_TIMEOUT -> BleDisconnectReason(status, "LMP response timeout")
+    GATT_CONTROLLER_BUSY -> BleDisconnectReason(status, "Controller busy")
+    GATT_UNACCEPT_CONN_INTERVAL -> BleDisconnectReason(status, "Unacceptable connection interval")
+    GATT_CONN_FAIL_ESTABLISH -> BleDisconnectReason(status, "Connection failed to establish")
+    GATT_ERROR -> BleDisconnectReason(status, "GATT error")
+    GATT_CONN_CANCEL -> BleDisconnectReason(status, "Connection cancelled")
+    GATT_FAILURE -> BleDisconnectReason(status, "GATT failure")
+    else -> BleDisconnectReason(status, "Unknown GATT status")
 }
