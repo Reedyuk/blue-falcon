@@ -865,7 +865,7 @@ private const val GATT_UNACCEPT_CONN_INTERVAL = 59
 private const val GATT_CONN_FAIL_ESTABLISH = 62
 private const val GATT_ERROR = 133
 private const val GATT_CONN_CANCEL = 256
-private const val GATT_TOO_MANY_OPEN_CONNECTIONS = 257
+private const val GATT_FAILURE = 257
 
 internal fun mapGattDisconnectReason(status: Int): BleDisconnectReason? = when (status) {
     BluetoothGatt.GATT_SUCCESS -> null
@@ -881,6 +881,6 @@ internal fun mapGattDisconnectReason(status: Int): BleDisconnectReason? = when (
     GATT_CONN_FAIL_ESTABLISH -> BleDisconnectReason(status, "Connection failed to establish")
     GATT_ERROR -> BleDisconnectReason(status, "GATT error")
     GATT_CONN_CANCEL -> BleDisconnectReason(status, "Connection cancelled")
-    GATT_TOO_MANY_OPEN_CONNECTIONS -> BleDisconnectReason(status, "Too many open connections")
+    GATT_FAILURE -> BleDisconnectReason(status, "GATT failure")
     else -> BleDisconnectReason(status, "Unknown GATT status")
 }
