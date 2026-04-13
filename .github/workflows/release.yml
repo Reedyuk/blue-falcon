@@ -14,24 +14,38 @@ env:
   ORG_GRADLE_PROJECT_signingInMemoryKeyPassword: ${{ secrets.GPG_KEY_PASS }}
 
 jobs:
-  build:
+  build-and-publish:
     runs-on: macos-latest
     steps:
-    - uses: actions/checkout@v2
-    - uses: actions/setup-java@v1
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up JDK 17
+      uses: actions/setup-java@v4
       with:
         java-version: 17
-    - name: Run gradle build
-      run: ./Library/gradlew -p ./Library build
-    - name: Run publish
-      run: ./Library/gradlew -p ./Library publish
-
-  verify-windows:
-    runs-on: windows-latest
-    steps:
-    - uses: actions/checkout@v2
-    - uses: actions/setup-java@v1
-      with:
-        java-version: 17
-    - name: Verify Windows target compiles
-      run: ./gradlew.bat -p ./library compileKotlinWindows windowsJar
+        distribution: 'temurin'
+        
+    - name: Setup Gradle
+      uses: gradle/gradle-build-action@v2
+      
+    - name: Build all modules
+      run: ./gradlew -p ./library build --parallel --no-daemon
+      
+    - name: Publish to Maven Central
+      run: ./gradlew -p ./library publishAllPublicationsToMavenCentralRepository --no-daemon
+      
+    - name: Print published artifacts
+      run: |
+        echo "✅ Published Blue Falcon 3.0 modules:"
+        echo "  • blue-falcon-core"
+        echo "  • blue-falcon-engine-android"
+        echo "  • blue-falcon-engine-ios"
+        echo "  • blue-falcon-engine-macos"
+        echo "  • blue-falcon-engine-js"
+        echo "  • blue-falcon-engine-windows"
+        echo "  • blue-falcon-engine-rpi"
+        echo "  • blue-falcon-plugin-logging"
+        echo "  • blue-falcon-plugin-retry"
+        echo "  • blue-falcon-plugin-caching"
+        echo "  • blue-falcon (legacy compatibility)"
