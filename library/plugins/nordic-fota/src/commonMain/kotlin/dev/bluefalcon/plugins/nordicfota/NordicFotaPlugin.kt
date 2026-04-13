@@ -101,6 +101,17 @@ class NordicFotaPlugin(private val config: Config) : BlueFalconPlugin {
         this.client = client
     }
 
+    override suspend fun onAfterConnect(call: ConnectCall, result: Result<Unit>) {
+        // When reconnecting after a reset, transition from Validating to Complete
+        if (uploadPeripheralUuid != null && call.peripheral.uuid == uploadPeripheralUuid) {
+            if (_state.value is FotaState.Validating && result.isSuccess) {
+                updateState(FotaState.Complete)
+                notifyComplete()
+                cleanupUploadState()
+            }
+        }
+    }
+
     override suspend fun onBeforeWrite(call: WriteCall): WriteCall {
         return call
     }
@@ -115,6 +126,16 @@ class NordicFotaPlugin(private val config: Config) : BlueFalconPlugin {
                     val error = result.exceptionOrNull()
                     updateState(FotaState.Error("Write failed during upload", error))
                 }
+            }
+        }
+    }
+
+    override suspend fun onAfterDisconnect(call: DisconnectCall, result: Result<Unit>) {
+        // After a reset, the device disconnects. Transition to Validating
+        // so the caller can reconnect and verify the firmware.
+        if (uploadPeripheralUuid != null && call.peripheral.uuid == uploadPeripheralUuid) {
+            if (_state.value is FotaState.Resetting) {
+                updateState(FotaState.Validating)
             }
         }
     }
@@ -265,9 +286,9 @@ class NordicFotaPlugin(private val config: Config) : BlueFalconPlugin {
     }
 
     private fun handleResetResponse(): ByteArray? {
-        updateState(FotaState.Complete)
-        notifyComplete()
-        cleanupUploadState()
+        // Device will reset and disconnect. The disconnect interceptor transitions
+        // the state to Validating, and reconnection completes the update.
+        // State remains Resetting until the disconnect is observed.
         return null
     }
 
