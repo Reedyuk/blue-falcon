@@ -14,21 +14,56 @@ val versionCore: String by project
 
 kotlin {
     jvmToolchain(17)
-    
-    // All platforms will use this core
+
+    // JVM
     jvm()
-    
+
+    // JavaScript / WebAssembly
     js {
         browser()
         nodejs()
     }
-    
-    // Apple platforms
+    @OptIn(org.jetbrains.kotlin.gradle.ExperimentalWasmDsl::class)
+    wasmJs {
+        browser()
+        nodejs()
+    }
+    @OptIn(org.jetbrains.kotlin.gradle.ExperimentalWasmDsl::class)
+    wasmWasi()
+
+    // Apple – iOS
     iosSimulatorArm64()
     iosX64()
     iosArm64()
+
+    // Apple – macOS
     macosArm64()
     macosX64()
+
+    // Apple – tvOS
+    tvosArm64()
+    tvosX64()
+    tvosSimulatorArm64()
+
+    // Apple – watchOS
+    watchosArm32()
+    watchosArm64()
+    watchosX64()
+    watchosSimulatorArm64()
+    watchosDeviceArm64()
+
+    // Linux
+    linuxX64()
+    linuxArm64()
+
+    // Windows (MinGW native)
+    mingwX64()
+
+    // Android Native
+    androidNativeArm32()
+    androidNativeArm64()
+    androidNativeX64()
+    androidNativeX86()
     
     sourceSets {
         val commonMain by getting {
