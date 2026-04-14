@@ -1,5 +1,6 @@
 plugins {
     kotlin("multiplatform") version "2.3.0"
+    id("com.android.library")
     id("com.vanniktech.maven.publish") version "0.34.0"
     id("signing")
 }
@@ -11,6 +12,15 @@ repositories {
 
 val kotlinx_coroutines_version: String by project
 val versionCore: String by project
+
+android {
+    compileSdk = 33
+    namespace = "dev.bluefalcon.core"
+    defaultConfig {
+        minSdk = 24
+        targetSdk = 33
+    }
+}
 
 kotlin {
     jvmToolchain(17)
@@ -59,11 +69,10 @@ kotlin {
     // Windows (MinGW native)
     mingwX64()
 
-    // Android Native
-    androidNativeArm32()
-    androidNativeArm64()
-    androidNativeX64()
-    androidNativeX86()
+    // Android
+    androidTarget {
+        publishAllLibraryVariants()
+    }
     
     sourceSets {
         val commonMain by getting {
