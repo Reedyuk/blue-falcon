@@ -138,13 +138,19 @@ class AppleEngine : BlueFalconEngine, CBCentralManagerCallback, CBPeripheralCall
         val applePeripheral = peripheral as? AppleBluetoothPeripheral
             ?: throw IllegalArgumentException("Peripheral must be an AppleBluetoothPeripheral")
         
+        // Ensure delegate is set before discovering services
+        applePeripheral.cbPeripheral.delegate = peripheralDelegate
+        
         val uuids = if (serviceUUIDs.isEmpty()) {
             null
         } else {
             serviceUUIDs.map { CBUUID.UUIDWithString(it.toString()) }
         }
         
-        applePeripheral.cbPeripheral.discoverServices(uuids)
+        // Only discover services if peripheral is connected
+        if (applePeripheral.cbPeripheral.state == CBPeripheralStateConnected) {
+            applePeripheral.cbPeripheral.discoverServices(uuids)
+        }
     }
     
     override suspend fun discoverCharacteristics(
@@ -158,13 +164,19 @@ class AppleEngine : BlueFalconEngine, CBCentralManagerCallback, CBPeripheralCall
         val appleService = service as? AppleBluetoothService
             ?: throw IllegalArgumentException("Service must be an AppleBluetoothService")
         
+        // Ensure delegate is set before discovering characteristics
+        applePeripheral.cbPeripheral.delegate = peripheralDelegate
+        
         val uuids = if (characteristicUUIDs.isEmpty()) {
             null
         } else {
             characteristicUUIDs.map { CBUUID.UUIDWithString(it.toString()) }
         }
         
-        applePeripheral.cbPeripheral.discoverCharacteristics(uuids, appleService.cbService)
+        // Only discover characteristics if peripheral is connected
+        if (applePeripheral.cbPeripheral.state == CBPeripheralStateConnected) {
+            applePeripheral.cbPeripheral.discoverCharacteristics(uuids, appleService.cbService)
+        }
     }
     
     override suspend fun readCharacteristic(
@@ -177,7 +189,12 @@ class AppleEngine : BlueFalconEngine, CBCentralManagerCallback, CBPeripheralCall
         val appleCharacteristic = characteristic as? AppleBluetoothCharacteristic
             ?: throw IllegalArgumentException("Characteristic must be an AppleBluetoothCharacteristic")
         
-        applePeripheral.cbPeripheral.readValueForCharacteristic(appleCharacteristic.cbCharacteristic)
+        // Ensure delegate is set
+        applePeripheral.cbPeripheral.delegate = peripheralDelegate
+        
+        if (applePeripheral.cbPeripheral.state == CBPeripheralStateConnected) {
+            applePeripheral.cbPeripheral.readValueForCharacteristic(appleCharacteristic.cbCharacteristic)
+        }
     }
     
     override suspend fun writeCharacteristic(
@@ -214,16 +231,21 @@ class AppleEngine : BlueFalconEngine, CBCentralManagerCallback, CBPeripheralCall
         val appleCharacteristic = characteristic as? AppleBluetoothCharacteristic
             ?: throw IllegalArgumentException("Characteristic must be an AppleBluetoothCharacteristic")
         
+        // Ensure delegate is set
+        applePeripheral.cbPeripheral.delegate = peripheralDelegate
+        
         val cbWriteType = when (writeType) {
             1 -> CBCharacteristicWriteWithoutResponse
             else -> CBCharacteristicWriteWithResponse
         }
         
-        applePeripheral.cbPeripheral.writeValue(
-            data,
-            appleCharacteristic.cbCharacteristic,
-            cbWriteType
-        )
+        if (applePeripheral.cbPeripheral.state == CBPeripheralStateConnected) {
+            applePeripheral.cbPeripheral.writeValue(
+                data,
+                appleCharacteristic.cbCharacteristic,
+                cbWriteType
+            )
+        }
     }
     
     override suspend fun notifyCharacteristic(

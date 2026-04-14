@@ -23,16 +23,20 @@ class BluetoothDeviceViewModel(
         // Collect peripherals from BlueFalcon's StateFlow
         CoroutineScope(Dispatchers.IO).launch {
             blueFalcon.peripherals.collect { peripherals ->
-                val uniqueKeys = _deviceState.value.devices.keys.toList()
-                val filteredPeripheral = peripherals.filter { !uniqueKeys.contains(it.uuid) }
-                filteredPeripheral.map { peripheral ->
-                    _deviceState.update {
-                        val updateDevices = it.devices.toMutableMap()
-                        updateDevices[peripheral.uuid] = EnhancedBluetoothPeripheral(false, peripheral)
-                        it.copy(
-                            devices = HashMap(updateDevices)
+                _deviceState.update { currentState ->
+                    val updatedDevices = currentState.devices.toMutableMap()
+                    
+                    peripherals.forEach { peripheral ->
+                        val existingDevice = updatedDevices[peripheral.uuid]
+                        // Update peripheral data while preserving connection state
+                        updatedDevices[peripheral.uuid] = EnhancedBluetoothPeripheral(
+                            connected = existingDevice?.connected ?: false,
+                            peripheral = peripheral,
+                            mtuStatus = existingDevice?.mtuStatus
                         )
                     }
+                    
+                    currentState.copy(devices = HashMap(updatedDevices))
                 }
             }
         }
@@ -116,11 +120,7 @@ class BluetoothDeviceViewModel(
                                 val state = blueFalcon.connectionState(device.peripheral)
                                 if (state == dev.bluefalcon.core.BluetoothPeripheralState.Connected) {
                                     blueFalcon.discoverServices(device.peripheral)
-                                    _deviceState.update { state ->
-                                        val updateDevices = state.devices.toMutableMap()
-                                        updateDevices[event.macId] = device.copy(peripheral = device.peripheral)
-                                        state.copy(devices = HashMap(updateDevices))
-                                    }
+                                    // Peripheral update will be handled automatically by the peripherals flow
                                 }
                             } catch (e: Exception) {
                                 println("Failed to discover services: ${e.message}")
@@ -132,6 +132,19 @@ class BluetoothDeviceViewModel(
 
             UiEvent.OnNavigateBack -> {
                 _deviceState.update { it.copy(selectedDeviceId = null) }
+            }
+
+            is UiEvent.OnRefreshDevice -> {
+                _deviceState.value.devices[event.macId]?.let { device ->
+                    CoroutineScope(Dispatchers.IO).launch {
+                        try {
+                            // Re-discover services to refresh data
+                            blueFalcon.discoverServices(device.peripheral)
+                        } catch (e: Exception) {
+                            println("Failed to refresh device: ${e.message}")
+                        }
+                    }
+                }
             }
 
             is UiEvent.OnReadCharacteristic -> {

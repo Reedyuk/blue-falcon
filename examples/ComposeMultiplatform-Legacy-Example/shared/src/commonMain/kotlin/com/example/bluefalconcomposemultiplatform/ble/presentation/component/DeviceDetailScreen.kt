@@ -24,7 +24,17 @@ import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.FileDownload
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.NotificationsOff
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.tween
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -43,6 +53,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -53,8 +64,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.bluefalconcomposemultiplatform.ble.presentation.EnhancedBluetoothPeripheral
 import com.example.bluefalconcomposemultiplatform.ble.presentation.UiEvent
+import com.example.bluefalconcomposemultiplatform.ble.util.BleServiceNames
 import dev.bluefalcon.BluetoothCharacteristic
 import dev.bluefalcon.BluetoothService
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class, kotlin.uuid.ExperimentalUuidApi::class)
 @Composable
@@ -64,6 +78,8 @@ fun DeviceDetailScreen(
 ) {
     val macId = device.peripheral.uuid
     var showMtuDialog by remember { mutableStateOf(false) }
+    var isRefreshing by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
 
     Scaffold(
         topBar = {
@@ -93,6 +109,23 @@ fun DeviceDetailScreen(
                     }
                 },
                 actions = {
+                    IconButton(
+                        onClick = {
+                            scope.launch {
+                                isRefreshing = true
+                                onEvent(UiEvent.OnRefreshDevice(macId))
+                                delay(1000)
+                                isRefreshing = false
+                            }
+                        },
+                        enabled = !isRefreshing
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Refresh,
+                            contentDescription = "Refresh services",
+                            tint = MaterialTheme.colorScheme.onPrimary
+                        )
+                    }
                     OutlinedButton(
                         onClick = { onEvent(UiEvent.OnDisconnectClick(macId)) },
                         modifier = Modifier.padding(end = 8.dp)
@@ -111,55 +144,115 @@ fun DeviceDetailScreen(
         }
     ) { paddingValues ->
         val services = device.peripheral.services.values.toList()
+        
+        // Pull-to-refresh state
+        val pullOffset = remember { Animatable(0f) }
+        val refreshThreshold = 100f
 
-        if (services.isEmpty()) {
+        val refreshTrigger: () -> Unit = {
+            scope.launch {
+                isRefreshing = true
+                onEvent(UiEvent.OnRefreshDevice(macId))
+                delay(1000)
+                isRefreshing = false
+            }
+        }
+
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(paddingValues)
+                .pointerInput(Unit) {
+                    detectVerticalDragGestures(
+                        onDragEnd = {
+                            scope.launch {
+                                if (pullOffset.value >= refreshThreshold && !isRefreshing) {
+                                    refreshTrigger()
+                                }
+                                pullOffset.animateTo(
+                                    targetValue = 0f,
+                                    animationSpec = tween(durationMillis = 200)
+                                )
+                            }
+                        },
+                        onVerticalDrag = { _, dragAmount ->
+                            scope.launch {
+                                val newOffset = (pullOffset.value + dragAmount).coerceIn(0f, refreshThreshold * 1.5f)
+                                pullOffset.snapTo(newOffset)
+                            }
+                        }
+                    )
+                }
+        ) {
+            // Pull-to-refresh indicator
+            if (pullOffset.value > 0f) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .offset { IntOffset(0, (pullOffset.value - 50).toInt()) }
+                        .align(Alignment.TopCenter)
+                ) {
+                    CircularProgressIndicator(
+                        modifier = Modifier
+                            .size(32.dp)
+                            .align(Alignment.Center),
+                        progress = { (pullOffset.value / refreshThreshold).coerceIn(0f, 1f) }
+                    )
+                }
+            }
+
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(paddingValues)
-                    .padding(32.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.Center
+                    .offset { IntOffset(0, pullOffset.value.toInt()) }
             ) {
-                Icon(
-                    imageVector = Icons.Default.Bluetooth,
-                    contentDescription = "Connected",
-                    modifier = Modifier.size(64.dp),
-                    tint = MaterialTheme.colorScheme.primary
-                )
-                Spacer(modifier = Modifier.height(16.dp))
-                Text(
-                    text = "Discovering services...",
-                    color = MaterialTheme.colorScheme.outline,
-                    fontSize = 16.sp
-                )
-            }
-        } else {
-            LazyColumn(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(paddingValues)
-            ) {
-                item {
-                    DeviceInfoCard(device = device, onRequestMtu = { showMtuDialog = true })
-                }
-                item {
+            if (services.isEmpty()) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(32.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Bluetooth,
+                        contentDescription = "Connected",
+                        modifier = Modifier.size(64.dp),
+                        tint = MaterialTheme.colorScheme.primary
+                    )
+                    Spacer(modifier = Modifier.height(16.dp))
                     Text(
-                        text = "SERVICES",
-                        modifier = Modifier.padding(start = 16.dp, top = 12.dp, bottom = 8.dp),
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.primary,
-                        letterSpacing = 1.sp
+                        text = "Discovering services...",
+                        color = MaterialTheme.colorScheme.outline,
+                        fontSize = 16.sp
                     )
                 }
-                items(services) { service ->
-                    ServiceCard(
-                        macId = macId,
-                        service = service,
-                        onEvent = onEvent
-                    )
+            } else {
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize()
+                ) {
+                    item {
+                        DeviceInfoCard(device = device, onRequestMtu = { showMtuDialog = true })
+                    }
+                    item {
+                        Text(
+                            text = "SERVICES",
+                            modifier = Modifier.padding(start = 16.dp, top = 12.dp, bottom = 8.dp),
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary,
+                            letterSpacing = 1.sp
+                        )
+                    }
+                    items(services) { service ->
+                        ServiceCard(
+                            macId = macId,
+                            service = service,
+                            onEvent = onEvent
+                        )
+                    }
                 }
+            }
             }
         }
     }
@@ -298,15 +391,19 @@ fun ServiceCard(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Column(modifier = Modifier.weight(1f)) {
+                    val serviceName = BleServiceNames.getServiceName(service.uuid.toString())
+                        ?: service.name 
+                        ?: "Unknown Service"
+                    
                     Text(
-                        text = service.name ?: "Unknown Service",
+                        text = serviceName,
                         fontWeight = FontWeight.Bold,
                         fontSize = 14.sp,
                         color = MaterialTheme.colorScheme.primary
                     )
                     Text(
-                        text = "UUID: ${service.uuid}",
-                        fontSize = 11.sp,
+                        text = service.uuid.toString().lowercase(),
+                        fontSize = 10.sp,
                         fontFamily = FontFamily.Monospace,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -359,14 +456,18 @@ fun CharacteristicItem(
             .padding(horizontal = 16.dp, vertical = 8.dp)
     ) {
         // Characteristic name and UUID
+        val characteristicName = BleServiceNames.getCharacteristicName(characteristic.uuid.toString())
+            ?: characteristic.name
+            ?: "Unknown Characteristic"
+        
         Text(
-            text = characteristic.name ?: "Unknown Characteristic",
+            text = characteristicName,
             fontWeight = FontWeight.Medium,
             fontSize = 13.sp,
             color = MaterialTheme.colorScheme.onSurface
         )
         Text(
-            text = "UUID: ${characteristic.uuid}",
+            text = characteristic.uuid.toString().lowercase(),
             fontSize = 10.sp,
             fontFamily = FontFamily.Monospace,
             color = MaterialTheme.colorScheme.onSurfaceVariant

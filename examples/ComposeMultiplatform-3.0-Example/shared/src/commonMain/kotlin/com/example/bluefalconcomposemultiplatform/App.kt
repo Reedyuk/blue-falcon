@@ -36,12 +36,8 @@ fun App(
 
         val state by viewModel.deviceState.collectAsState()
 
-        val selectedDevice = state.selectedDeviceId?.let { id ->
-            state.devices[id]?.takeIf { it.connected }
-        }
-
         AnimatedContent(
-            targetState = selectedDevice,
+            targetState = state.selectedDeviceId,
             transitionSpec = {
                 if (targetState != null) {
                     (slideInHorizontally { it } + fadeIn()) togetherWith
@@ -51,10 +47,16 @@ fun App(
                             (slideOutHorizontally { it } + fadeOut())
                 }
             }
-        ) { device ->
-            if (device != null) {
+        ) { selectedDeviceId ->
+            // Look up the current device from state inside the content lambda
+            // This ensures we get the latest version when services are discovered
+            val selectedDevice = selectedDeviceId?.let { id ->
+                state.devices[id]?.takeIf { it.connected }
+            }
+            
+            if (selectedDevice != null) {
                 DeviceDetailScreen(
-                    device = device,
+                    device = selectedDevice,
                     onEvent = viewModel::onEvent
                 )
             } else {

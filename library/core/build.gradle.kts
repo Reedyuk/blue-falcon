@@ -1,5 +1,6 @@
 plugins {
     kotlin("multiplatform") version "2.3.0"
+    id("com.android.library")
     id("com.vanniktech.maven.publish") version "0.34.0"
     id("signing")
 }
@@ -12,23 +13,66 @@ repositories {
 val kotlinx_coroutines_version: String by project
 val versionCore: String by project
 
+android {
+    compileSdk = 33
+    namespace = "dev.bluefalcon.core"
+    defaultConfig {
+        minSdk = 24
+        targetSdk = 33
+    }
+}
+
 kotlin {
     jvmToolchain(17)
-    
-    // All platforms will use this core
+
+    // JVM
     jvm()
-    
+
+    // JavaScript / WebAssembly
     js {
         browser()
         nodejs()
     }
-    
-    // Apple platforms
+    @OptIn(org.jetbrains.kotlin.gradle.ExperimentalWasmDsl::class)
+    wasmJs {
+        browser()
+        nodejs()
+    }
+    @OptIn(org.jetbrains.kotlin.gradle.ExperimentalWasmDsl::class)
+    wasmWasi()
+
+    // Apple – iOS
     iosSimulatorArm64()
     iosX64()
     iosArm64()
+
+    // Apple – macOS
     macosArm64()
     macosX64()
+
+    // Apple – tvOS
+    tvosArm64()
+    tvosX64()
+    tvosSimulatorArm64()
+
+    // Apple – watchOS
+    watchosArm32()
+    watchosArm64()
+    watchosX64()
+    watchosSimulatorArm64()
+    watchosDeviceArm64()
+
+    // Linux
+    linuxX64()
+    linuxArm64()
+
+    // Windows (MinGW native)
+    mingwX64()
+
+    // Android
+    androidTarget {
+        publishAllLibraryVariants()
+    }
     
     sourceSets {
         val commonMain by getting {

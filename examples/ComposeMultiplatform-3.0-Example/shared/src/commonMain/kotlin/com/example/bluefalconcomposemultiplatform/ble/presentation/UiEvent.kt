@@ -10,6 +10,7 @@ sealed interface UiEvent {
     data class OnDisconnectClick(val macId: String): UiEvent
     data class OnDeviceSelected(val macId: String): UiEvent
     object OnNavigateBack: UiEvent
+    data class OnRefreshDevice(val macId: String): UiEvent
 
     data class OnReadCharacteristic(val macId: String, val characteristic: BluetoothCharacteristic): UiEvent
     data class OnWriteCharacteristic(val macId: String, val characteristic: BluetoothCharacteristic, val value: String): UiEvent
