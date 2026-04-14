@@ -73,6 +73,7 @@ import com.example.bluefalconcomposemultiplatform.ble.util.BleServiceNames
 import dev.bluefalcon.core.BluetoothCharacteristic
 import dev.bluefalcon.core.BluetoothService
 import dev.bluefalcon.plugins.nordicfota.FotaState
+import dev.bluefalcon.plugins.nordicfota.NordicFotaPlugin
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -243,7 +244,7 @@ fun DeviceDetailScreen(
                     // Show FOTA card if device has the SMP service
                     val hasSmpService = services.any { service ->
                         service.uuid.toString().equals(
-                            "8d53dc1d-1db7-4cd3-868b-8a527460aa84",
+                            NordicFotaPlugin.SMP_SERVICE_UUID,
                             ignoreCase = true
                         )
                     }
@@ -765,6 +766,9 @@ fun FotaCard(
     val macId = device.peripheral.uuid
     val fotaState = device.fotaState
 
+    // Demo firmware data — replace with actual firmware bytes in production
+    val startDemoFota = { onEvent(UiEvent.OnStartFota(macId, ByteArray(1024) { (it % 256).toByte() })) }
+
     Card(
         modifier = Modifier
             .fillMaxWidth()
@@ -814,11 +818,7 @@ fun FotaCard(
                     )
                     Spacer(modifier = Modifier.height(8.dp))
                     Button(
-                        onClick = {
-                            // Demo firmware data — replace with actual firmware bytes in production
-                            val demoFirmware = ByteArray(1024) { (it % 256).toByte() }
-                            onEvent(UiEvent.OnStartFota(macId, demoFirmware))
-                        },
+                        onClick = { startDemoFota() },
                         colors = ButtonDefaults.buttonColors(
                             containerColor = MaterialTheme.colorScheme.primary
                         )
@@ -926,10 +926,7 @@ fun FotaCard(
                     )
                     Spacer(modifier = Modifier.height(8.dp))
                     Button(
-                        onClick = {
-                            val demoFirmware = ByteArray(1024) { (it % 256).toByte() }
-                            onEvent(UiEvent.OnStartFota(macId, demoFirmware))
-                        },
+                        onClick = { startDemoFota() },
                         colors = ButtonDefaults.buttonColors(
                             containerColor = MaterialTheme.colorScheme.primary
                         )
