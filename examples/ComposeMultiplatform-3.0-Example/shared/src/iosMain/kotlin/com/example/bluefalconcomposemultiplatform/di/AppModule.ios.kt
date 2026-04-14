@@ -5,8 +5,15 @@ import dev.bluefalcon.engine.ios.IosEngine
 import dev.bluefalcon.plugins.logging.LoggingPlugin
 import dev.bluefalcon.plugins.logging.LogLevel
 import dev.bluefalcon.plugins.retry.RetryPlugin
+import dev.bluefalcon.plugins.nordicfota.NordicFotaPlugin
 
 actual class AppModule {
+    actual val fotaPlugin: NordicFotaPlugin = NordicFotaPlugin.create {
+        chunkSize = 256
+        autoConfirm = true
+        autoReset = true
+    }
+
     actual val blueFalcon: BlueFalcon = BlueFalcon(
         engine = IosEngine()
     ).apply {
@@ -23,5 +30,8 @@ actual class AppModule {
             maxRetries = 3
             initialDelay = kotlin.time.Duration.parse("1s")
         })) { }
+
+        // Install Nordic FOTA plugin
+        plugins.install(fotaPlugin) { }
     }
 }
