@@ -48,7 +48,10 @@ object BleServiceNames {
         // Other common services
         "6e400001-b5a3-f393-e0a9-e50e24dcca9e" to "Nordic UART Service",
         "0000fee0-0000-1000-8000-00805f9b34fb" to "Xiaomi Service",
-        "0000fee7-0000-1000-8000-00805f9b34fb" to "Tile Service"
+        "0000fee7-0000-1000-8000-00805f9b34fb" to "Tile Service",
+        
+        // Nordic MCUmgr SMP (Firmware OTA)
+        "8d53dc1d-1db7-4cd3-868b-8a527460aa84" to "Nordic SMP (FOTA)"
     )
     
     private val characteristicNames = mapOf(
@@ -82,7 +85,10 @@ object BleServiceNames {
         
         // Nordic UART
         "6e400002-b5a3-f393-e0a9-e50e24dcca9e" to "UART TX",
-        "6e400003-b5a3-f393-e0a9-e50e24dcca9e" to "UART RX"
+        "6e400003-b5a3-f393-e0a9-e50e24dcca9e" to "UART RX",
+        
+        // Nordic MCUmgr SMP (Firmware OTA)
+        "da2e7828-fbce-4e01-ae9e-261174997c48" to "SMP Characteristic"
     )
     
     /**

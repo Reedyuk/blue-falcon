@@ -21,4 +21,8 @@ sealed interface UiEvent {
         val characteristic: BluetoothCharacteristic,
         val descriptor: BluetoothCharacteristicDescriptor
     ): UiEvent
+
+    // Nordic FOTA events
+    data class OnStartFota(val macId: String, val firmwareData: ByteArray): UiEvent
+    data class OnCancelFota(val macId: String): UiEvent
 }
