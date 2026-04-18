@@ -1,4 +1,4 @@
-# ADR 0003: Expose Characteristic Notification Events to Consumers and Plugins
+# ADR 0004: Expose Characteristic Notification Events to Consumers and Plugins
 
 **Status:** Accepted
 

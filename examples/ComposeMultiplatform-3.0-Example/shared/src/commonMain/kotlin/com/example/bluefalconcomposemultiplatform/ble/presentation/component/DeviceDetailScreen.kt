@@ -25,6 +25,7 @@ import androidx.compose.material.icons.filled.FileDownload
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.NotificationsOff
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.SystemUpdate
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
@@ -41,7 +42,10 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
@@ -68,6 +72,8 @@ import com.example.bluefalconcomposemultiplatform.ble.presentation.UiEvent
 import com.example.bluefalconcomposemultiplatform.ble.util.BleServiceNames
 import dev.bluefalcon.core.BluetoothCharacteristic
 import dev.bluefalcon.core.BluetoothService
+import dev.bluefalcon.plugins.nordicfota.FotaState
+import dev.bluefalcon.plugins.nordicfota.NordicFotaPlugin
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -234,6 +240,21 @@ fun DeviceDetailScreen(
                 ) {
                     item {
                         DeviceInfoCard(device = device, onRequestMtu = { showMtuDialog = true })
+                    }
+                    // Show FOTA card if device has the SMP service
+                    val hasSmpService = services.any { service ->
+                        service.uuid.toString().equals(
+                            NordicFotaPlugin.SMP_SERVICE_UUID,
+                            ignoreCase = true
+                        )
+                    }
+                    if (hasSmpService) {
+                        item {
+                            FotaCard(
+                                device = device,
+                                onEvent = onEvent
+                            )
+                        }
                     }
                     item {
                         Text(
@@ -749,4 +770,186 @@ fun MtuDialog(
             }
         }
     )
+}
+
+@OptIn(kotlin.uuid.ExperimentalUuidApi::class)
+@Composable
+fun FotaCard(
+    device: EnhancedBluetoothPeripheral,
+    onEvent: (UiEvent) -> Unit
+) {
+    val macId = device.peripheral.uuid
+    val fotaState = device.fotaState
+
+    // Demo firmware data — replace with actual firmware bytes in production
+    val startDemoFota = { onEvent(UiEvent.OnStartFota(macId, ByteArray(1024) { (it % 256).toByte() })) }
+
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 12.dp, vertical = 8.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+    ) {
+        Column(
+            modifier = Modifier.padding(12.dp)
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    imageVector = Icons.Default.SystemUpdate,
+                    contentDescription = "Firmware Update",
+                    modifier = Modifier.size(20.dp),
+                    tint = MaterialTheme.colorScheme.primary
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = "FIRMWARE UPDATE (FOTA)",
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary,
+                    letterSpacing = 1.sp
+                )
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            when (fotaState) {
+                is FotaState.Idle -> {
+                    Text(
+                        text = "Device supports Nordic SMP firmware updates.",
+                        fontSize = 13.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = "Tap below to start a demo firmware update. In production, " +
+                            "provide the actual firmware binary.",
+                        fontSize = 11.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Button(
+                        onClick = { startDemoFota() },
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = MaterialTheme.colorScheme.primary
+                        )
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.SystemUpdate,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("START DEMO FOTA", fontSize = 12.sp)
+                    }
+                }
+
+                is FotaState.Uploading -> {
+                    Text(
+                        text = "Uploading firmware…",
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Spacer(modifier = Modifier.height(6.dp))
+                    LinearProgressIndicator(
+                        progress = { fotaState.progress },
+                        modifier = Modifier.fillMaxWidth(),
+                        color = MaterialTheme.colorScheme.primary,
+                        trackColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f),
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = "${(fotaState.progress * 100).toInt()}% — " +
+                            "${fotaState.offset} / ${fotaState.totalBytes} bytes",
+                        fontSize = 11.sp,
+                        fontFamily = FontFamily.Monospace,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    OutlinedButton(
+                        onClick = { onEvent(UiEvent.OnCancelFota(macId)) }
+                    ) {
+                        Text("CANCEL", fontSize = 12.sp)
+                    }
+                }
+
+                is FotaState.Confirming -> {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(20.dp),
+                            strokeWidth = 2.dp
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "Confirming firmware image…",
+                            fontSize = 13.sp,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                    }
+                }
+
+                is FotaState.Resetting -> {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(20.dp),
+                            strokeWidth = 2.dp
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "Resetting device…",
+                            fontSize = 13.sp,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                    }
+                }
+
+                is FotaState.Validating -> {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(20.dp),
+                            strokeWidth = 2.dp
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "Validating firmware…",
+                            fontSize = 13.sp,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                    }
+                }
+
+                is FotaState.Complete -> {
+                    Text(
+                        text = "✓ Firmware update complete!",
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
+
+                is FotaState.Error -> {
+                    Text(
+                        text = "✗ Update failed: ${fotaState.error}",
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = MaterialTheme.colorScheme.error
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Button(
+                        onClick = { startDemoFota() },
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = MaterialTheme.colorScheme.primary
+                        )
+                    ) {
+                        Text("RETRY", fontSize = 12.sp)
+                    }
+                }
+            }
+        }
+    }
 }

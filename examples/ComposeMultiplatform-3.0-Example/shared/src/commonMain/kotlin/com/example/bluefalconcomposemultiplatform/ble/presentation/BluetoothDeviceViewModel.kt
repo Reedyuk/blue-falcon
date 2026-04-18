@@ -1,6 +1,8 @@
 package com.example.bluefalconcomposemultiplatform.ble.presentation
 
 import dev.bluefalcon.core.BlueFalcon
+import dev.bluefalcon.plugins.nordicfota.FotaState
+import dev.bluefalcon.plugins.nordicfota.NordicFotaPlugin
 import dev.icerock.moko.mvvm.viewmodel.ViewModel
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -13,7 +15,8 @@ import kotlin.uuid.ExperimentalUuidApi
 
 @OptIn(ExperimentalUuidApi::class)
 class BluetoothDeviceViewModel(
-    private val blueFalcon: BlueFalcon
+    private val blueFalcon: BlueFalcon,
+    private val fotaPlugin: NordicFotaPlugin
 ): ViewModel() {
 
     private val _deviceState: MutableStateFlow<BluetoothDeviceState> = MutableStateFlow(BluetoothDeviceState())
@@ -33,7 +36,8 @@ class BluetoothDeviceViewModel(
                             connected = existingDevice?.connected ?: false,
                             peripheral = peripheral,
                             mtuStatus = existingDevice?.mtuStatus,
-                            notificationData = existingDevice?.notificationData ?: emptyMap()
+                            notificationData = existingDevice?.notificationData ?: emptyMap(),
+                            fotaState = existingDevice?.fotaState ?: FotaState.Idle
                         )
                     }
                     
@@ -62,6 +66,19 @@ class BluetoothDeviceViewModel(
                         )
                     }
                     state.copy(devices = HashMap(updatedDevices))
+                }
+            }
+        }
+
+        // Collect FOTA state changes and update the relevant device
+        CoroutineScope(Dispatchers.IO).launch {
+            fotaPlugin.state.collect { fotaState ->
+                _deviceState.update { currentState ->
+                    val selectedId = currentState.selectedDeviceId ?: return@update currentState
+                    val device = currentState.devices[selectedId] ?: return@update currentState
+                    val updatedDevices = currentState.devices.toMutableMap()
+                    updatedDevices[selectedId] = device.copy(fotaState = fotaState)
+                    currentState.copy(devices = HashMap(updatedDevices))
                 }
             }
         }
@@ -262,6 +279,55 @@ class BluetoothDeviceViewModel(
                     }
                 }
             }
+
+            is UiEvent.OnStartFota -> {
+                _deviceState.value.devices[event.macId]?.let { device ->
+                    CoroutineScope(Dispatchers.IO).launch {
+                        try {
+                            val messages = fotaPlugin.startUpdate(device.peripheral, event.firmwareData)
+                            // Write each SMP message to the SMP characteristic
+                            val smpChar = findSmpCharacteristic(device)
+                            if (smpChar != null) {
+                                // Enable notifications on SMP characteristic
+                                blueFalcon.notifyCharacteristic(device.peripheral, smpChar, true)
+                                // Write the first chunk
+                                if (messages.isNotEmpty()) {
+                                    blueFalcon.writeCharacteristic(
+                                        device.peripheral,
+                                        smpChar,
+                                        messages.first()
+                                    )
+                                }
+                            } else {
+                                println("SMP characteristic not found on device")
+                            }
+                        } catch (e: Exception) {
+                            println("Failed to start FOTA: ${e.message}")
+                        }
+                    }
+                }
+            }
+
+            is UiEvent.OnCancelFota -> {
+                fotaPlugin.cancelUpdate()
+            }
         }
+    }
+
+    private fun findSmpCharacteristic(
+        device: EnhancedBluetoothPeripheral
+    ): dev.bluefalcon.core.BluetoothCharacteristic? {
+        val smpServiceUuid = NordicFotaPlugin.SMP_SERVICE_UUID
+        val smpCharUuid = NordicFotaPlugin.SMP_CHARACTERISTIC_UUID
+        for (service in device.peripheral.services) {
+            if (service.uuid.toString().equals(smpServiceUuid, ignoreCase = true)) {
+                for (char in service.characteristics) {
+                    if (char.uuid.toString().equals(smpCharUuid, ignoreCase = true)) {
+                        return char
+                    }
+                }
+            }
+        }
+        return null
     }
 }

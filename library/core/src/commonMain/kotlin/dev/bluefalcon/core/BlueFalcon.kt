@@ -75,7 +75,11 @@ class BlueFalcon(
      * Disconnect from a peripheral
      */
     suspend fun disconnect(peripheral: BluetoothPeripheral) {
-        engine.disconnect(peripheral)
+        plugins.interceptDisconnect(DisconnectCall(peripheral)) { call ->
+            runCatching {
+                engine.disconnect(call.peripheral)
+            }
+        }
     }
     
     /**

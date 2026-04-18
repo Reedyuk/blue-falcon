@@ -85,6 +85,21 @@ class PluginRegistry {
         }
         return result
     }
+    
+    /**
+     * Execute disconnect interceptors
+     */
+    suspend fun interceptDisconnect(call: DisconnectCall, proceed: suspend (DisconnectCall) -> Result<Unit>): Result<Unit> {
+        var currentCall = call
+        for (plugin in plugins) {
+            currentCall = plugin.onBeforeDisconnect(currentCall)
+        }
+        val result = proceed(currentCall)
+        for (plugin in plugins.reversed()) {
+            plugin.onAfterDisconnect(currentCall, result)
+        }
+        return result
+    }
 
     /**
      * Dispatch incoming characteristic notifications to plugins.

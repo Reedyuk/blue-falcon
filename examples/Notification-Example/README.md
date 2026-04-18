@@ -93,5 +93,5 @@ hrChar.notifications
 
 - **[Core API](../../library/core/)** – `BluetoothCharacteristic.notifications`, `BlueFalconEngine.characteristicNotifications`
 - **[Plugin Development Guide](../../docs/PLUGIN_DEVELOPMENT_GUIDE.md)** – `onNotificationReceived` hook
-- **[ADR 0003](../../docs/adr/0003-expose-characteristic-notification-events.md)** – Architecture decision record
+- **[ADR 0004](../../docs/adr/0004-expose-characteristic-notification-events.md)** – Architecture decision record
 - **[ComposeMultiplatform-3.0-Example](../ComposeMultiplatform-3.0-Example/)** – Notification handling in a Compose UI

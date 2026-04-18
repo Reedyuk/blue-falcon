@@ -52,6 +52,16 @@ interface BlueFalconPlugin {
     suspend fun onAfterWrite(call: WriteCall, result: Result<Unit>) {}
 
     /**
+     * Called before a disconnect operation
+     */
+    suspend fun onBeforeDisconnect(call: DisconnectCall): DisconnectCall = call
+
+    /**
+     * Called after a disconnect operation
+     */
+    suspend fun onAfterDisconnect(call: DisconnectCall, result: Result<Unit>) {}
+
+    /**
      * Called when a characteristic notification/indication payload is received.
      */
     suspend fun onNotificationReceived(
@@ -79,6 +89,13 @@ data class ScanCall(
 data class ConnectCall(
     val peripheral: BluetoothPeripheral,
     val autoConnect: Boolean
+)
+
+/**
+ * Disconnect operation call
+ */
+data class DisconnectCall(
+    val peripheral: BluetoothPeripheral
 )
 
 /**
