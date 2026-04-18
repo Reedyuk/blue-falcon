@@ -270,7 +270,8 @@ fun DeviceDetailScreen(
                         ServiceCard(
                             macId = macId,
                             service = service,
-                            onEvent = onEvent
+                            onEvent = onEvent,
+                            notificationData = device.notificationData
                         )
                     }
                 }
@@ -390,7 +391,8 @@ fun DeviceInfoCard(
 fun ServiceCard(
     macId: String,
     service: BluetoothService,
-    onEvent: (UiEvent) -> Unit
+    onEvent: (UiEvent) -> Unit,
+    notificationData: Map<String, String> = emptyMap()
 ) {
     var expanded by remember { mutableStateOf(false) }
 
@@ -448,7 +450,8 @@ fun ServiceCard(
                         CharacteristicItem(
                             macId = macId,
                             characteristic = characteristic,
-                            onEvent = onEvent
+                            onEvent = onEvent,
+                            lastNotificationHex = notificationData[characteristic.uuid.toString()]
                         )
                         HorizontalDivider(
                             modifier = Modifier.padding(start = 16.dp),
@@ -467,7 +470,8 @@ fun ServiceCard(
 fun CharacteristicItem(
     macId: String,
     characteristic: BluetoothCharacteristic,
-    onEvent: (UiEvent) -> Unit
+    onEvent: (UiEvent) -> Unit,
+    lastNotificationHex: String? = null
 ) {
     var showWriteDialog by remember { mutableStateOf(false) }
     var showDescriptors by remember { mutableStateOf(false) }
@@ -515,6 +519,17 @@ fun CharacteristicItem(
             fontFamily = FontFamily.Monospace,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
+
+        // Live notification data display
+        if (lastNotificationHex != null) {
+            Text(
+                text = "Notification: (0x) $lastNotificationHex",
+                fontSize = 11.sp,
+                fontFamily = FontFamily.Monospace,
+                color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.padding(top = 2.dp)
+            )
+        }
 
         Spacer(modifier = Modifier.height(6.dp))
 

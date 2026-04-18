@@ -36,11 +36,36 @@ class BluetoothDeviceViewModel(
                             connected = existingDevice?.connected ?: false,
                             peripheral = peripheral,
                             mtuStatus = existingDevice?.mtuStatus,
+                            notificationData = existingDevice?.notificationData ?: emptyMap(),
                             fotaState = existingDevice?.fotaState ?: FotaState.Idle
                         )
                     }
                     
                     currentState.copy(devices = HashMap(updatedDevices))
+                }
+            }
+        }
+
+        // Collect characteristic notifications and update the UI state
+        CoroutineScope(Dispatchers.IO).launch {
+            blueFalcon.engine.characteristicNotifications.collect { notification ->
+                val peripheralId = notification.peripheral.uuid
+                val charUuid = notification.characteristic.uuid.toString()
+                val hex = notification.value.joinToString(" ") { byte ->
+                    (byte.toInt() and 0xFF).toString(16).padStart(2, '0').uppercase()
+                }
+
+                _deviceState.update { state ->
+                    val updatedDevices = state.devices.toMutableMap()
+                    updatedDevices[peripheralId]?.let { device ->
+                        val updatedNotifications = device.notificationData.toMutableMap()
+                        updatedNotifications[charUuid] = hex
+                        updatedDevices[peripheralId] = device.copy(
+                            notificationData = updatedNotifications,
+                            updateCount = device.updateCount + 1
+                        )
+                    }
+                    state.copy(devices = HashMap(updatedDevices))
                 }
             }
         }

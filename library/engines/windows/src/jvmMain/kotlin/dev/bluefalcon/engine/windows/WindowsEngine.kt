@@ -3,6 +3,8 @@ package dev.bluefalcon.engine.windows
 import dev.bluefalcon.core.*
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -19,6 +21,9 @@ class WindowsEngine : BlueFalconEngine {
     
     private val _managerState = MutableStateFlow(BluetoothManagerState.NotReady)
     override val managerState: StateFlow<BluetoothManagerState> = _managerState.asStateFlow()
+
+    private val _characteristicNotifications = MutableSharedFlow<CharacteristicNotification>(extraBufferCapacity = 64)
+    override val characteristicNotifications: SharedFlow<CharacteristicNotification> = _characteristicNotifications
     
     override var isScanning: Boolean = false
         private set
@@ -374,7 +379,24 @@ class WindowsEngine : BlueFalconEngine {
         characteristicUuid: String,
         value: ByteArray
     ) {
-        onCharacteristicRead(address, characteristicUuid, value)
+        val peripheral = connections[address] ?: return
+
+        peripheral.services.forEach { service ->
+            (service as? WindowsBluetoothService)?.characteristics?.forEach { char ->
+                val windowsChar = char as? WindowsBluetoothCharacteristic
+                if (windowsChar != null && windowsChar.uuid.toString() == characteristicUuid) {
+                    windowsChar.updateValue(value)
+                    windowsChar.emitNotification(value)
+                    _characteristicNotifications.tryEmit(
+                        CharacteristicNotification(
+                            peripheral = peripheral,
+                            characteristic = windowsChar,
+                            value = value.copyOf()
+                        )
+                    )
+                }
+            }
+        }
     }
     
     @Suppress("unused")

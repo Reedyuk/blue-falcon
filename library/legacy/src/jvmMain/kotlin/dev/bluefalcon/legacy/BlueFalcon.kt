@@ -50,6 +50,14 @@ actual class BlueFalcon actual constructor(
                 }
             }
         }
+
+        scope.launch {
+            engine.characteristicNotifications.collect { notification ->
+                delegates.forEach {
+                    it.didCharacteristcValueChanged(notification.peripheral, notification.characteristic)
+                }
+            }
+        }
     }
     
     actual fun connect(bluetoothPeripheral: BluetoothPeripheral, autoConnect: Boolean) {

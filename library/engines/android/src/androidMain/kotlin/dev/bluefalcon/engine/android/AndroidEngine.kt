@@ -14,6 +14,8 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
@@ -36,6 +38,9 @@ class AndroidEngine(
     
     private val _managerState = MutableStateFlow(BluetoothManagerState.NotReady)
     override val managerState: StateFlow<BluetoothManagerState> = _managerState.asStateFlow()
+
+    private val _characteristicNotifications = MutableSharedFlow<CharacteristicNotification>(extraBufferCapacity = 64)
+    override val characteristicNotifications: SharedFlow<CharacteristicNotification> = _characteristicNotifications
     
     override var isScanning: Boolean = false
         private set
@@ -509,6 +514,21 @@ class AndroidEngine(
             characteristic: BluetoothGattCharacteristic?
         ) {
             logger?.debug("onCharacteristicChanged ${characteristic?.uuid}")
+            if (gatt == null || characteristic == null) return
+
+            val value = characteristic.value?.copyOf() ?: return
+            val peripheral =
+                _peripherals.value.find { (it as? AndroidBluetoothPeripheral)?.device?.address == gatt.device.address }
+                    ?: AndroidBluetoothPeripheral(gatt.device)
+            val bluetoothCharacteristic = AndroidBluetoothCharacteristic(characteristic)
+            bluetoothCharacteristic.emitNotification(value)
+            _characteristicNotifications.tryEmit(
+                CharacteristicNotification(
+                    peripheral = peripheral,
+                    characteristic = bluetoothCharacteristic,
+                    value = value
+                )
+            )
         }
         
         override fun onCharacteristicWrite(

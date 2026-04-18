@@ -5,6 +5,8 @@ import com.welie.blessed.BluetoothPeripheral as BlessedPeripheral
 import dev.bluefalcon.core.*
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -20,6 +22,9 @@ class RpiEngine : BlueFalconEngine {
     
     private val _managerState = MutableStateFlow(BluetoothManagerState.Ready)
     override val managerState: StateFlow<BluetoothManagerState> = _managerState.asStateFlow()
+
+    private val _characteristicNotifications = MutableSharedFlow<CharacteristicNotification>(extraBufferCapacity = 64)
+    override val characteristicNotifications: SharedFlow<CharacteristicNotification> = _characteristicNotifications
     
     override var isScanning: Boolean = false
         private set
@@ -242,6 +247,19 @@ class RpiEngine : BlueFalconEngine {
                 status: BluetoothCommandStatus
             ) {
                 peripheral.updateCharacteristicValue(characteristic.uuid.toString(), value)
+                peripheral.characteristics
+                    .filterIsInstance<RpiBluetoothCharacteristic>()
+                    .firstOrNull { it.uuid.toString() == characteristic.uuid.toString() }
+                    ?.let { bluetoothCharacteristic ->
+                        bluetoothCharacteristic.emitNotification(value)
+                        _characteristicNotifications.tryEmit(
+                            CharacteristicNotification(
+                                peripheral = peripheral,
+                                characteristic = bluetoothCharacteristic,
+                                value = value.copyOf()
+                            )
+                        )
+                    }
             }
             
             override fun onCharacteristicWrite(
@@ -255,4 +273,3 @@ class RpiEngine : BlueFalconEngine {
         }
     }
 }
-

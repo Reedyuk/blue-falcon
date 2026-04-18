@@ -4,6 +4,9 @@ import dev.bluefalcon.core.BluetoothCharacteristic
 import dev.bluefalcon.core.BluetoothCharacteristicDescriptor
 import dev.bluefalcon.core.BluetoothService
 import dev.bluefalcon.core.Uuid
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
 
 /**
  * Windows implementation of BluetoothCharacteristic
@@ -19,12 +22,16 @@ class WindowsBluetoothCharacteristic(
     private var _value: ByteArray? = null
     private val _descriptors = mutableListOf<BluetoothCharacteristicDescriptor>()
     private var _service: BluetoothService? = null
+    private val _notifications = MutableSharedFlow<ByteArray>(extraBufferCapacity = 64)
     
     override val value: ByteArray?
         get() = _value
     
     override val descriptors: List<BluetoothCharacteristicDescriptor>
         get() = _descriptors.toList()
+
+    override val notifications: SharedFlow<ByteArray>
+        get() = _notifications.asSharedFlow()
     
     override val isNotifying: Boolean
         get() = (properties and PROPERTY_NOTIFY) == PROPERTY_NOTIFY
@@ -34,6 +41,10 @@ class WindowsBluetoothCharacteristic(
     
     internal fun updateValue(value: ByteArray) {
         _value = value
+    }
+
+    internal fun emitNotification(value: ByteArray) {
+        _notifications.tryEmit(value.copyOf())
     }
     
     internal fun setService(service: BluetoothService) {

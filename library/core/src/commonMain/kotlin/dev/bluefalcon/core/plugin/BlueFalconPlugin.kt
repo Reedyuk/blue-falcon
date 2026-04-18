@@ -60,6 +60,15 @@ interface BlueFalconPlugin {
      * Called after a disconnect operation
      */
     suspend fun onAfterDisconnect(call: DisconnectCall, result: Result<Unit>) {}
+
+    /**
+     * Called when a characteristic notification/indication payload is received.
+     */
+    suspend fun onNotificationReceived(
+        peripheral: BluetoothPeripheral,
+        characteristic: BluetoothCharacteristic,
+        value: ByteArray
+    ) {}
 }
 
 /**
@@ -105,6 +114,12 @@ data class WriteCall(
     val characteristic: BluetoothCharacteristic,
     val value: ByteArray,
     val writeType: Int?
+)
+
+data class NotificationCall(
+    val peripheral: BluetoothPeripheral,
+    val characteristic: BluetoothCharacteristic,
+    val value: ByteArray
 )
 
 /**

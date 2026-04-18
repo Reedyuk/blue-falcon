@@ -3,6 +3,7 @@ package dev.bluefalcon.engine.ios
 import dev.bluefalcon.core.*
 import dev.bluefalcon.engine.apple.AppleEngine
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 
 /**
@@ -21,6 +22,9 @@ class IosEngine : BlueFalconEngine {
     
     override val managerState: StateFlow<BluetoothManagerState>
         get() = appleEngine.managerState
+
+    override val characteristicNotifications: SharedFlow<CharacteristicNotification>
+        get() = appleEngine.characteristicNotifications
     
     override val isScanning: Boolean
         get() = appleEngine.isScanning

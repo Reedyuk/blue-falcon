@@ -8,5 +8,7 @@ data class EnhancedBluetoothPeripheral(
     val peripheral: BluetoothPeripheral,
     val updateCount: Long = 0,
     val mtuStatus: String? = null,
-    val fotaState: FotaState = FotaState.Idle
+    val fotaState: FotaState = FotaState.Idle,
+    /** Latest notification payload per characteristic UUID (hex-encoded). */
+    val notificationData: Map<String, String> = emptyMap()
 )

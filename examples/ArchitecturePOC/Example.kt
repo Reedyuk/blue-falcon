@@ -81,8 +81,44 @@ class NordicOTAPlugin : BlueFalconPlugin {
     }
 }
 
-// Example 4: Multiple engines for different platforms
-fun example4_multiplatformSetup() {
+// Example 4: Subscribing to characteristic notifications
+suspend fun example4_notifications(blueFalcon: BlueFalcon, peripheral: BluetoothPeripheral) {
+    // After connecting and discovering services…
+    val characteristic = peripheral.characteristics.firstOrNull()
+        ?: return
+
+    // Enable notifications on the remote device
+    blueFalcon.notifyCharacteristic(peripheral, characteristic, true)
+
+    // Collect incoming notification payloads via the per-characteristic Flow
+    kotlinx.coroutines.coroutineScope {
+        kotlinx.coroutines.launch {
+            characteristic.notifications.collect { value ->
+                val hex = value.joinToString(" ") { "%02X".format(it) }
+                println("[Notification] ${characteristic.uuid}: $hex")
+            }
+        }
+    }
+}
+
+// Example 5: Plugin that reacts to notification payloads
+class NotificationLoggingPlugin : BlueFalconPlugin {
+    override fun install(client: BlueFalconClient, config: PluginConfig) {
+        println("NotificationLoggingPlugin installed")
+    }
+
+    override suspend fun onNotificationReceived(
+        peripheral: BluetoothPeripheral,
+        characteristic: BluetoothCharacteristic,
+        value: ByteArray
+    ) {
+        val hex = value.joinToString(" ") { "%02X".format(it) }
+        println("[Plugin] Notification from ${peripheral.name}: ${characteristic.uuid} = $hex")
+    }
+}
+
+// Example 6: Multiple engines for different platforms
+fun example6_multiplatformSetup() {
     /*
     val blueFalcon = when {
         Platform.isAndroid -> BlueFalcon {

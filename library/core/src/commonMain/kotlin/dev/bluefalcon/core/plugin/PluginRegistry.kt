@@ -100,4 +100,13 @@ class PluginRegistry {
         }
         return result
     }
+
+    /**
+     * Dispatch incoming characteristic notifications to plugins.
+     */
+    suspend fun dispatchNotification(call: NotificationCall) {
+        for (plugin in plugins) {
+            plugin.onNotificationReceived(call.peripheral, call.characteristic, call.value)
+        }
+    }
 }

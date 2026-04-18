@@ -1,6 +1,7 @@
 package dev.bluefalcon.core
 
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 
 /**
@@ -22,6 +23,11 @@ interface BlueFalconEngine {
      * Current Bluetooth manager state
      */
     val managerState: StateFlow<BluetoothManagerState>
+
+    /**
+     * Characteristic notification/indication events emitted by platform callbacks.
+     */
+    val characteristicNotifications: SharedFlow<CharacteristicNotification>
     
     /**
      * Check if currently scanning
@@ -181,3 +187,9 @@ interface BlueFalconEngine {
      */
     suspend fun removeBond(peripheral: BluetoothPeripheral)
 }
+
+data class CharacteristicNotification(
+    val peripheral: BluetoothPeripheral,
+    val characteristic: BluetoothCharacteristic,
+    val value: ByteArray
+)
