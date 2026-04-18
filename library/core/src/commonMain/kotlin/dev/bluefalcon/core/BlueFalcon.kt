@@ -2,7 +2,6 @@ package dev.bluefalcon.core
 
 import dev.bluefalcon.core.plugin.*
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.StateFlow
 
 /**

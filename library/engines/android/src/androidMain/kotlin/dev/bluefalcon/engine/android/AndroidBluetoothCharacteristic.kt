@@ -66,7 +66,7 @@ class AndroidBluetoothCharacteristic(val characteristic: BluetoothGattCharacteri
         31 * characteristic.uuid.hashCode() + characteristic.service.uuid.hashCode()
     
     companion object CREATOR : Parcelable.Creator<AndroidBluetoothCharacteristic> {
-        private val notificationFlows = WeakHashMap<BluetoothGattCharacteristic, MutableSharedFlow<ByteArray>>()
+        private val notificationFlows = java.util.Collections.synchronizedMap(WeakHashMap<BluetoothGattCharacteristic, MutableSharedFlow<ByteArray>>())
 
         private fun notificationFlowFor(characteristic: BluetoothGattCharacteristic): MutableSharedFlow<ByteArray> =
             synchronized(notificationFlows) {
