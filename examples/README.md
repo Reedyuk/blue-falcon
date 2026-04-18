@@ -55,7 +55,25 @@ This directory contains example projects demonstrating Blue Falcon usage across 
 
 ---
 
-### 4. ComposeMultiplatform-3.0-Example
+### 4. Notification-Example
+
+**Platform**: Kotlin Multiplatform  
+**Language**: Kotlin  
+**Description**: Examples of subscribing to BLE characteristic notifications
+
+**Features**:
+- Per-characteristic `SharedFlow<ByteArray>` collection
+- Engine-level notification stream
+- Plugin `onNotificationReceived` hook
+- Full scan → connect → subscribe → observe workflow
+- Heart-rate monitor byte parsing example
+
+**Location**: `Notification-Example/`  
+**See**: [Notification-Example/README.md](Notification-Example/README.md) for details
+
+---
+
+### 5. ComposeMultiplatform-3.0-Example
 
 **Platform**: Compose Multiplatform (Android + iOS)  
 **Language**: Kotlin  
@@ -90,7 +108,7 @@ blueFalcon.connect(device)
 
 ---
 
-### 5. ComposeMultiplatform-Legacy-Example
+### 6. ComposeMultiplatform-Legacy-Example
 
 **Platform**: Compose Multiplatform (Android + iOS)  
 **Language**: Kotlin  
@@ -122,7 +140,7 @@ blueFalcon.scan()
 
 ---
 
-### 6. JS-Example
+### 7. JS-Example
 
 **Platform**: JavaScript (Web Browser)  
 **Language**: Kotlin/JS  
