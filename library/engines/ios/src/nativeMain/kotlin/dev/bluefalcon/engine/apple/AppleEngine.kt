@@ -4,6 +4,8 @@ import dev.bluefalcon.core.*
 import kotlinx.cinterop.BetaInteropApi
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -24,6 +26,9 @@ class AppleEngine : BlueFalconEngine, CBCentralManagerCallback, CBPeripheralCall
     
     private val _managerState = MutableStateFlow(BluetoothManagerState.NotReady)
     override val managerState: StateFlow<BluetoothManagerState> = _managerState.asStateFlow()
+
+    private val _characteristicNotifications = MutableSharedFlow<CharacteristicNotification>(extraBufferCapacity = 64)
+    override val characteristicNotifications: SharedFlow<CharacteristicNotification> = _characteristicNotifications
     
     override var isScanning: Boolean = false
         private set
@@ -393,7 +398,21 @@ class AppleEngine : BlueFalconEngine, CBCentralManagerCallback, CBPeripheralCall
         characteristic: CBCharacteristic,
         error: NSError?
     ) {
-        // Characteristic value updated - automatically handled through characteristic.value property
+        val bluetoothPeripheral =
+            connectedPeripherals[peripheral.identifier.UUIDString] ?: AppleBluetoothPeripheral(peripheral, null)
+        val bluetoothCharacteristic = AppleBluetoothCharacteristic(
+            cbCharacteristic = characteristic,
+            service = characteristic.service?.let { AppleBluetoothService(it) }
+        )
+        val value = bluetoothCharacteristic.value ?: return
+        bluetoothCharacteristic.emitNotification(value)
+        _characteristicNotifications.tryEmit(
+            CharacteristicNotification(
+                peripheral = bluetoothPeripheral,
+                characteristic = bluetoothCharacteristic,
+                value = value
+            )
+        )
     }
     
     override fun onCharacteristicWritten(

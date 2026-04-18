@@ -4,8 +4,12 @@ import android.bluetooth.BluetoothGattCharacteristic
 import android.os.Parcel
 import android.os.Parcelable
 import dev.bluefalcon.core.*
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlin.uuid.toKotlinUuid
+import java.util.WeakHashMap
 
 /**
  * Android implementation of BluetoothCharacteristic.
@@ -19,6 +23,9 @@ class AndroidBluetoothCharacteristic(val characteristic: BluetoothGattCharacteri
     
     override val value: ByteArray?
         get() = characteristic.value
+
+    override val notifications: SharedFlow<ByteArray>
+        get() = notificationFlowFor(characteristic).asSharedFlow()
     
     override val descriptors: List<BluetoothCharacteristicDescriptor>
         get() = characteristic.descriptors.map { AndroidBluetoothCharacteristicDescriptor(it) }
@@ -34,6 +41,10 @@ class AndroidBluetoothCharacteristic(val characteristic: BluetoothGattCharacteri
                 BluetoothGattCharacteristic.PROPERTY_NOTIFY
     
     internal val _descriptorsFlow = MutableStateFlow<List<BluetoothCharacteristicDescriptor>>(emptyList())
+
+    internal fun emitNotification(value: ByteArray) {
+        notificationFlowFor(characteristic).tryEmit(value.copyOf())
+    }
     
     constructor(parcel: Parcel) : this(
         requireNotNull(parcel.readParcelable(BluetoothGattCharacteristic::class.java.classLoader))
@@ -55,6 +66,15 @@ class AndroidBluetoothCharacteristic(val characteristic: BluetoothGattCharacteri
         31 * characteristic.uuid.hashCode() + characteristic.service.uuid.hashCode()
     
     companion object CREATOR : Parcelable.Creator<AndroidBluetoothCharacteristic> {
+        private val notificationFlows = WeakHashMap<BluetoothGattCharacteristic, MutableSharedFlow<ByteArray>>()
+
+        private fun notificationFlowFor(characteristic: BluetoothGattCharacteristic): MutableSharedFlow<ByteArray> =
+            synchronized(notificationFlows) {
+                notificationFlows.getOrPut(characteristic) {
+                    MutableSharedFlow(extraBufferCapacity = 64)
+                }
+            }
+
         override fun createFromParcel(parcel: Parcel): AndroidBluetoothCharacteristic {
             return AndroidBluetoothCharacteristic(parcel)
         }

@@ -1,5 +1,7 @@
 package dev.bluefalcon.core
 
+import kotlinx.coroutines.flow.SharedFlow
+
 /**
  * Represents a Bluetooth Low Energy peripheral device
  */
@@ -75,6 +77,11 @@ interface BluetoothCharacteristic {
      * Current value of the characteristic
      */
     val value: ByteArray?
+
+    /**
+     * Stream of subscribed notification/indication payloads.
+     */
+    val notifications: SharedFlow<ByteArray>
     
     /**
      * Descriptors for this characteristic

@@ -3,6 +3,8 @@ package dev.bluefalcon.core.mocks
 import dev.bluefalcon.core.*
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 
@@ -19,6 +21,9 @@ class FakeBlueFalconEngine : BlueFalconEngine {
     
     private val _managerState = MutableStateFlow(BluetoothManagerState.Ready)
     override val managerState: StateFlow<BluetoothManagerState> = _managerState
+
+    private val _characteristicNotifications = MutableSharedFlow<CharacteristicNotification>(extraBufferCapacity = 64)
+    override val characteristicNotifications: SharedFlow<CharacteristicNotification> = _characteristicNotifications
     
     override var isScanning: Boolean = false
         private set
@@ -200,5 +205,9 @@ class FakeBlueFalconEngine : BlueFalconEngine {
         isScanning = false
         _peripherals.value = emptySet()
         _managerState.value = BluetoothManagerState.Ready
+    }
+
+    suspend fun emitCharacteristicNotification(notification: CharacteristicNotification) {
+        _characteristicNotifications.emit(notification)
     }
 }

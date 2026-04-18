@@ -2,9 +2,12 @@ package dev.bluefalcon.engine.js
 
 import dev.bluefalcon.core.Uuid
 import dev.bluefalcon.engine.js.external.BluetoothRemoteGATTCharacteristic
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import org.khronos.webgl.ArrayBuffer
 import org.khronos.webgl.Int8Array
 import dev.bluefalcon.core.BluetoothCharacteristic as CoreBluetoothCharacteristic
@@ -23,9 +26,13 @@ class JsBluetoothCharacteristic(
     
     private val _descriptorsFlow = MutableStateFlow<List<CoreBluetoothCharacteristicDescriptor>>(emptyList())
     private val descriptorsFlow: StateFlow<List<CoreBluetoothCharacteristicDescriptor>> = _descriptorsFlow.asStateFlow()
+    private val _notifications = MutableSharedFlow<ByteArray>(extraBufferCapacity = 64)
     
     override val descriptors: List<CoreBluetoothCharacteristicDescriptor>
         get() = _descriptorsFlow.value
+
+    override val notifications: SharedFlow<ByteArray>
+        get() = _notifications.asSharedFlow()
     
     override val uuid: Uuid
         get() = Uuid.parse(characteristic.uuid)
@@ -35,6 +42,10 @@ class JsBluetoothCharacteristic(
     
     val stringValue: String?
         get() = value?.decodeToString()
+
+    internal fun emitNotification(value: ByteArray) {
+        _notifications.tryEmit(value.copyOf())
+    }
 }
 
 fun ArrayBuffer?.toByteArray(): ByteArray? = this?.run { Int8Array(this).unsafeCast<ByteArray>() }

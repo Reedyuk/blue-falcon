@@ -5,6 +5,9 @@ import dev.bluefalcon.core.BluetoothCharacteristic
 import dev.bluefalcon.core.BluetoothCharacteristicDescriptor
 import dev.bluefalcon.core.BluetoothService
 import dev.bluefalcon.core.Uuid
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlin.uuid.toKotlinUuid
 
 /**
@@ -21,8 +24,12 @@ class RpiBluetoothCharacteristic(
         get() = nativeCharacteristic.uuid.toString()
     
     private var _value: ByteArray? = null
+    private val _notifications = MutableSharedFlow<ByteArray>(extraBufferCapacity = 64)
     override val value: ByteArray?
         get() = _value
+
+    override val notifications: SharedFlow<ByteArray>
+        get() = _notifications.asSharedFlow()
     
     override val descriptors: List<BluetoothCharacteristicDescriptor>
         get() = nativeCharacteristic.descriptors.map { RpiBluetoothCharacteristicDescriptor(it) }
@@ -35,5 +42,9 @@ class RpiBluetoothCharacteristic(
     
     internal fun updateValue(value: ByteArray) {
         _value = value
+    }
+
+    internal fun emitNotification(value: ByteArray) {
+        _notifications.tryEmit(value.copyOf())
     }
 }

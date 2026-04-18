@@ -1,6 +1,9 @@
 package dev.bluefalcon.core.mocks
 
 import dev.bluefalcon.core.*
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
 
 /**
  * Fake implementation of BluetoothPeripheral for testing
@@ -34,6 +37,13 @@ data class FakeCharacteristic(
     override val isNotifying: Boolean = false,
     override val service: BluetoothService? = null
 ) : BluetoothCharacteristic {
+    private val _notifications = MutableSharedFlow<ByteArray>(extraBufferCapacity = 64)
+    override val notifications: SharedFlow<ByteArray> = _notifications.asSharedFlow()
+
+    fun emitNotification(value: ByteArray) {
+        _notifications.tryEmit(value.copyOf())
+    }
+
     override fun equals(other: Any?): Boolean {
         if (this === other) return true
         if (other == null || this::class != other::class) return false

@@ -44,9 +44,14 @@ actual class BlueFalcon actual constructor(
                 _peripherals.value = newPeripherals
             }
         }
-        
-        // TODO: Setup delegate callbacks by observing engine events
-        // This will require listening to engine's StateFlows and calling delegate methods
+
+        scope.launch {
+            engine.characteristicNotifications.collect { notification ->
+                delegates.forEach {
+                    it.didCharacteristcValueChanged(notification.peripheral, notification.characteristic)
+                }
+            }
+        }
     }
     
     actual fun connect(bluetoothPeripheral: BluetoothPeripheral, autoConnect: Boolean) {

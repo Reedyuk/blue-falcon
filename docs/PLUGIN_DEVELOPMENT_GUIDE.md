@@ -756,7 +756,11 @@ Extend `BlueFalconPlugin` for custom hooks:
 ```kotlin
 interface AdvancedPlugin : BlueFalconPlugin {
     suspend fun onServiceDiscovered(service: BluetoothService) {}
-    suspend fun onNotificationReceived(characteristic: BluetoothCharacteristic) {}
+    override suspend fun onNotificationReceived(
+        peripheral: BluetoothPeripheral,
+        characteristic: BluetoothCharacteristic,
+        value: ByteArray
+    ) {}
 }
 ```
 

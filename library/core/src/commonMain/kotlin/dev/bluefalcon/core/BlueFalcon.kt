@@ -1,6 +1,8 @@
 package dev.bluefalcon.core
 
 import dev.bluefalcon.core.plugin.*
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.StateFlow
 
 /**
@@ -9,11 +11,25 @@ import kotlinx.coroutines.flow.StateFlow
 class BlueFalcon(
     val engine: BlueFalconEngine
 ) : BlueFalconClient {
-    
+
     /**
      * Plugin registry for managing installed plugins
      */
     val plugins: PluginRegistry = PluginRegistry()
+
+    init {
+        engine.scope.launch {
+            engine.characteristicNotifications.collect { notification ->
+                plugins.dispatchNotification(
+                    NotificationCall(
+                        peripheral = notification.peripheral,
+                        characteristic = notification.characteristic,
+                        value = notification.value
+                    )
+                )
+            }
+        }
+    }
     
     /**
      * Delegated properties from engine

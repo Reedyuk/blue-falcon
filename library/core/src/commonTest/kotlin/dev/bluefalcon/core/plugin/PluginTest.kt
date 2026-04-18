@@ -88,6 +88,39 @@ class PluginTest {
             executionOrder
         )
     }
+
+    @Test
+    fun `notification callback should be dispatched to plugin`() = runTest {
+        var notificationCalled = false
+        val expectedValue = byteArrayOf(0x01, 0x02, 0x03)
+        val engine = FakeBlueFalconEngine()
+        val peripheral = engine.createFakePeripheral("Device")
+        val characteristic = FakeCharacteristic(uuid = "00002a37-0000-1000-8000-00805f9b34fb".toUuid())
+        val plugin = object : BlueFalconPlugin {
+            override fun install(client: BlueFalconClient, config: PluginConfig) {}
+
+            override suspend fun onNotificationReceived(
+                peripheral: BluetoothPeripheral,
+                characteristic: BluetoothCharacteristic,
+                value: ByteArray
+            ) {
+                notificationCalled = true
+                assertTrue(value.contentEquals(expectedValue))
+            }
+        }
+        val blueFalcon = BlueFalcon(engine)
+        blueFalcon.plugins.install(plugin)
+
+        engine.emitCharacteristicNotification(
+            CharacteristicNotification(
+                peripheral = peripheral,
+                characteristic = characteristic,
+                value = expectedValue
+            )
+        )
+
+        assertTrue(notificationCalled)
+    }
     
     private fun createTestPlugin(name: String, order: MutableList<String>) = 
         object : BlueFalconPlugin {

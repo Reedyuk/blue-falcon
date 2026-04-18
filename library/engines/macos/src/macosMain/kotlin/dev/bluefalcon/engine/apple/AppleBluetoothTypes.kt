@@ -2,6 +2,9 @@ package dev.bluefalcon.engine.apple
 
 import dev.bluefalcon.core.*
 import kotlinx.cinterop.*
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import platform.CoreBluetooth.*
 import platform.Foundation.NSData
 import platform.posix.memcpy
@@ -74,6 +77,9 @@ class AppleBluetoothCharacteristic(
                 }
             }
         }
+
+    override val notifications: SharedFlow<ByteArray>
+        get() = NotificationFlowStore.flowFor(cbCharacteristic).asSharedFlow()
     
     override val descriptors: List<BluetoothCharacteristicDescriptor>
         get() = cbCharacteristic.descriptors
@@ -83,6 +89,30 @@ class AppleBluetoothCharacteristic(
     
     override val isNotifying: Boolean
         get() = cbCharacteristic.isNotifying
+
+    internal fun emitNotification(value: ByteArray) {
+        NotificationFlowStore.emit(cbCharacteristic, value)
+    }
+
+    private object NotificationFlowStore {
+        private val flows = mutableMapOf<String, MutableSharedFlow<ByteArray>>()
+
+        fun flowFor(characteristic: CBCharacteristic): MutableSharedFlow<ByteArray> =
+            flows.getOrPut(notificationKey(characteristic)) {
+                MutableSharedFlow(extraBufferCapacity = 64)
+            }
+
+        fun emit(characteristic: CBCharacteristic, value: ByteArray) {
+            flowFor(characteristic).tryEmit(value.copyOf())
+        }
+
+        private fun notificationKey(characteristic: CBCharacteristic): String {
+            val peripheralId = characteristic.service?.peripheral?.identifier?.UUIDString ?: "unknown"
+            val serviceId = characteristic.service?.UUID?.UUIDString ?: "unknown"
+            val characteristicId = characteristic.UUID.UUIDString
+            return "$peripheralId/$serviceId/$characteristicId"
+        }
+    }
 }
 
 /**
