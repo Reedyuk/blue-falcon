@@ -138,6 +138,7 @@ blueFalcon.scan()
 - **[Plugin Development](docs/PLUGIN_DEVELOPMENT_GUIDE.md)** - Creating custom plugins
 - **[Testing Guide](docs/TESTING_GUIDE.md)** - Testing your BLE code
 - **[Publishing Guide](docs/PUBLISHING.md)** - Release and publishing process
+- **[Windows Setup](library/src/windowsMain/WINDOWS.md)** - Windows support details, including native DLL build steps
 
 ### Architecture
 
@@ -175,6 +176,24 @@ blueFalcon.scan()
 #### Windows
 - Windows 10 version 1803 (April 2018 Update) or later
 - JDK 11+
+
+##### Building `bluefalcon-windows.dll` (from source)
+
+If you are building Blue Falcon's Windows implementation from source, build the native DLL with CMake:
+
+```powershell
+cd library\src\windowsMain\cpp
+mkdir build
+cd build
+cmake .. -G "Visual Studio 16 2019" -A x64
+cmake --build . --config Release
+```
+
+The resulting `bluefalcon-windows.dll` is generated in the `Release` directory. Copy it to your Java library path or to `library/src/windowsMain/resources/`.
+
+For full Windows setup and troubleshooting, see:
+- `library/src/windowsMain/WINDOWS.md`
+- `library/src/windowsMain/cpp/README.md`
 
 #### Raspberry Pi
 - Linux with BlueZ 5.0+
