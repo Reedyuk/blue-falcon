@@ -4,8 +4,8 @@
 
 To build the Windows Bluetooth native library, you need:
 
-1. **Windows 10 SDK** (version 10.0.17763.0 or later)
-2. **Visual Studio 2019 or later** with C++ development tools
+1. **Windows 10 SDK** (version 10.0.22621.0 or later)
+2. **Visual Studio 2022 v17.8 or later** with C++ development tools
 3. **CMake** (version 3.14 or later)
 4. **Java Development Kit (JDK)** 11 or later
 
@@ -58,7 +58,7 @@ set JAVA_HOME=C:\Path\To\JDK
 ```
 
 ### C++/WinRT Errors
-The Windows SDK includes C++/WinRT headers. Make sure you have Windows 10 SDK version 10.0.17763.0 or later.
+The Windows SDK includes C++/WinRT headers. Make sure you have Windows 10 SDK version 10.0.22621.0 or later.
 
 ## Architecture Support
 

@@ -8,9 +8,12 @@
 #include <winrt/Windows.Devices.Bluetooth.GenericAttributeProfile.h>
 #include <winrt/Windows.Devices.Bluetooth.Advertisement.h>
 #include <winrt/Windows.Devices.Enumeration.h>
+#include <winrt/Windows.Storage.Streams.h>
 #include <string>
 #include <map>
 #include <memory>
+#include <mutex>
+class SRWLockGuard { SRWLOCK* l; public: SRWLockGuard(SRWLOCK* lock) : l(lock) { AcquireSRWLockExclusive(l); } ~SRWLockGuard() { ReleaseSRWLockExclusive(l); } };
 
 using namespace winrt;
 using namespace Windows::Foundation;
@@ -46,12 +49,12 @@ public:
     void discoverServices(uint64_t address);
     void discoverCharacteristics(uint64_t address, const std::wstring& serviceUuid);
     void readCharacteristic(uint64_t address, const std::wstring& characteristicUuid);
-    void writeCharacteristic(uint64_t address, const std::wstring& characteristicUuid, 
+    void writeCharacteristic(uint64_t address, const std::wstring& characteristicUuid,
                             const uint8_t* data, size_t length, bool withResponse);
     void setNotify(uint64_t address, const std::wstring& characteristicUuid, bool enable);
     void setIndicate(uint64_t address, const std::wstring& characteristicUuid, bool enable);
     void readDescriptor(uint64_t address, const std::wstring& descriptorUuid);
-    void writeDescriptor(uint64_t address, const std::wstring& descriptorUuid, 
+    void writeDescriptor(uint64_t address, const std::wstring& descriptorUuid,
                         const uint8_t* data, size_t length);
     void changeMTU(uint64_t address, int mtu);
     
@@ -78,5 +81,5 @@ private:
     
     // Device connections
     std::map<uint64_t, std::shared_ptr<DeviceConnection>> m_connections;
-    std::mutex m_connectionsMutex;
+    SRWLOCK m_connectionsMutex = SRWLOCK_INIT;
 };
