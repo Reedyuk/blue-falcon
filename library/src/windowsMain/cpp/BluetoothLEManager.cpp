@@ -137,8 +137,8 @@ void BluetoothLEManager::stopScan() {
 }
 
 void BluetoothLEManager::connect(uint64_t address) {
-    std::lock_guard<std::mutex> lock(m_connectionsMutex);
-    
+    SRWLockGuard lock(&m_connectionsMutex);
+
     auto it = m_connections.find(address);
     if (it != m_connections.end() && it->second->connectionState == 2) {
         return; // Already connected
@@ -152,7 +152,7 @@ void BluetoothLEManager::connect(uint64_t address) {
     // Connect to device asynchronously
     auto asyncOp = BluetoothLEDevice::FromBluetoothAddressAsync(address);
     asyncOp.Completed([this, address](auto&& asyncInfo, AsyncStatus status) {
-        std::lock_guard<std::mutex> lock(m_connectionsMutex);
+        SRWLockGuard lock(&m_connectionsMutex);
         auto it = m_connections.find(address);
         if (it == m_connections.end()) return;
         
@@ -177,8 +177,8 @@ void BluetoothLEManager::connect(uint64_t address) {
 }
 
 void BluetoothLEManager::disconnect(uint64_t address) {
-    std::lock_guard<std::mutex> lock(m_connectionsMutex);
-    
+    SRWLockGuard lock(&m_connectionsMutex);
+
     auto it = m_connections.find(address);
     if (it != m_connections.end()) {
         it->second->connectionState = 3; // Disconnecting
@@ -195,8 +195,8 @@ void BluetoothLEManager::disconnect(uint64_t address) {
 }
 
 int BluetoothLEManager::getConnectionState(uint64_t address) {
-    std::lock_guard<std::mutex> lock(m_connectionsMutex);
-    
+    SRWLockGuard lock(&m_connectionsMutex);
+
     auto it = m_connections.find(address);
     if (it != m_connections.end()) {
         return it->second->connectionState;
@@ -206,25 +206,27 @@ int BluetoothLEManager::getConnectionState(uint64_t address) {
 }
 
 void BluetoothLEManager::discoverServices(uint64_t address) {
-    std::lock_guard<std::mutex> lock(m_connectionsMutex);
-    
+    SRWLockGuard lock(&m_connectionsMutex);
+
     auto it = m_connections.find(address);
     if (it == m_connections.end() || it->second->device == nullptr) {
         return;
     }
     
     auto device = it->second->device;
-    
-    // Get GATT services asynchronously
-    auto asyncOp = device.GetGattServicesAsync();
+
+    // Uncached forces a live GATT query to the device. The default Cached mode
+    // returns empty results on fresh connections because the OS cache has not
+    // yet been populated, causing service discovery to silently report 0 services.
+    auto asyncOp = device.GetGattServicesAsync(BluetoothCacheMode::Uncached);
     asyncOp.Completed([this, address](auto&& asyncInfo, AsyncStatus status) {
         if (status == AsyncStatus::Completed) {
             try {
                 auto result = asyncInfo.GetResults();
                 if (result.Status() == GattCommunicationStatus::Success) {
                     auto services = result.Services();
-                    
-                    std::lock_guard<std::mutex> lock(m_connectionsMutex);
+
+                    SRWLockGuard lock(&m_connectionsMutex);
                     auto it = m_connections.find(address);
                     if (it == m_connections.end()) return;
                     
@@ -232,8 +234,8 @@ void BluetoothLEManager::discoverServices(uint64_t address) {
                     std::vector<std::wstring> serviceUuids;
                     for (auto service : services) {
                         auto uuid = service.Uuid();
-                        it->second->services[uuid] = service;
-                        
+                        it->second->services.insert_or_assign(uuid, service);
+
                         // Convert UUID to string
                         wchar_t uuidStr[40];
                         swprintf_s(uuidStr, 40, L"%08x-%04x-%04x-%02x%02x-%02x%02x%02x%02x%02x%02x",
@@ -276,8 +278,8 @@ void BluetoothLEManager::discoverServices(uint64_t address) {
 }
 
 void BluetoothLEManager::discoverCharacteristics(uint64_t address, const std::wstring& serviceUuidStr) {
-    std::lock_guard<std::mutex> lock(m_connectionsMutex);
-    
+    SRWLockGuard lock(&m_connectionsMutex);
+
     auto it = m_connections.find(address);
     if (it == m_connections.end()) return;
     
@@ -287,24 +289,24 @@ void BluetoothLEManager::discoverCharacteristics(uint64_t address, const std::ws
     if (serviceIt == it->second->services.end()) return;
     
     auto service = serviceIt->second;
-    
-    // Get characteristics asynchronously
-    auto asyncOp = service.GetCharacteristicsAsync();
+
+    // Uncached forces a live GATT query. See discoverServices for rationale.
+    auto asyncOp = service.GetCharacteristicsAsync(BluetoothCacheMode::Uncached);
     asyncOp.Completed([this, address, serviceGuid](auto&& asyncInfo, AsyncStatus status) {
         if (status == AsyncStatus::Completed) {
             try {
                 auto result = asyncInfo.GetResults();
                 if (result.Status() == GattCommunicationStatus::Success) {
                     auto characteristics = result.Characteristics();
-                    
-                    std::lock_guard<std::mutex> lock(m_connectionsMutex);
+
+                    SRWLockGuard lock(&m_connectionsMutex);
                     auto it = m_connections.find(address);
                     if (it == m_connections.end()) return;
                     
                     for (auto characteristic : characteristics) {
                         auto uuid = characteristic.Uuid();
-                        it->second->characteristics[uuid] = characteristic;
-                        
+                        it->second->characteristics.insert_or_assign(uuid, characteristic);
+
                         // Get properties
                         int properties = 0;
                         auto charProps = characteristic.CharacteristicProperties();
@@ -357,8 +359,8 @@ void BluetoothLEManager::discoverCharacteristics(uint64_t address, const std::ws
 }
 
 void BluetoothLEManager::readCharacteristic(uint64_t address, const std::wstring& characteristicUuidStr) {
-    std::lock_guard<std::mutex> lock(m_connectionsMutex);
-    
+    SRWLockGuard lock(&m_connectionsMutex);
+
     auto it = m_connections.find(address);
     if (it == m_connections.end()) return;
     
@@ -393,7 +395,7 @@ void BluetoothLEManager::readCharacteristic(uint64_t address, const std::wstring
                         env->SetByteArrayRegion(jData, 0, data.size(), (jbyte*)data.data());
                         
                         jclass cls = env->GetObjectClass(m_javaObject);
-                        jmethodID mid = env->GetMethodID(cls, "onCharacteristicRead", 
+                        jmethodID mid = env->GetMethodID(cls, "onCharacteristicRead",
                                                         "(JLjava/lang/String;[B)V");
                         if (mid != nullptr) {
                             env->CallVoidMethod(m_javaObject, mid, (jlong)address, jUuid, jData);
@@ -414,8 +416,8 @@ void BluetoothLEManager::readCharacteristic(uint64_t address, const std::wstring
 
 void BluetoothLEManager::writeCharacteristic(uint64_t address, const std::wstring& characteristicUuidStr,
                                              const uint8_t* data, size_t length, bool withResponse) {
-    std::lock_guard<std::mutex> lock(m_connectionsMutex);
-    
+    SRWLockGuard lock(&m_connectionsMutex);
+
     auto it = m_connections.find(address);
     if (it == m_connections.end()) return;
     
@@ -431,7 +433,7 @@ void BluetoothLEManager::writeCharacteristic(uint64_t address, const std::wstrin
     auto buffer = writer.DetachBuffer();
     
     // Write value asynchronously
-    GattWriteOption writeOption = withResponse ? 
+    GattWriteOption writeOption = withResponse ?
         GattWriteOption::WriteWithResponse : GattWriteOption::WriteWithoutResponse;
     
     auto asyncOp = characteristic.WriteValueAsync(buffer, writeOption);
@@ -453,7 +455,7 @@ void BluetoothLEManager::writeCharacteristic(uint64_t address, const std::wstrin
             jstring jUuid = env->NewStringUTF(uuidStr.c_str());
             
             jclass cls = env->GetObjectClass(m_javaObject);
-            jmethodID mid = env->GetMethodID(cls, "onCharacteristicWritten", 
+            jmethodID mid = env->GetMethodID(cls, "onCharacteristicWritten",
                                             "(JLjava/lang/String;Z)V");
             if (mid != nullptr) {
                 env->CallVoidMethod(m_javaObject, mid, (jlong)address, jUuid, (jboolean)success);
@@ -467,8 +469,8 @@ void BluetoothLEManager::writeCharacteristic(uint64_t address, const std::wstrin
 }
 
 void BluetoothLEManager::setNotify(uint64_t address, const std::wstring& characteristicUuidStr, bool enable) {
-    std::lock_guard<std::mutex> lock(m_connectionsMutex);
-    
+    SRWLockGuard lock(&m_connectionsMutex);
+
     auto it = m_connections.find(address);
     if (it == m_connections.end()) return;
     
@@ -488,7 +490,7 @@ void BluetoothLEManager::setNotify(uint64_t address, const std::wstring& charact
             try {
                 auto result = asyncInfo.GetResults();
                 if (result == GattCommunicationStatus::Success) {
-                    std::lock_guard<std::mutex> lock(m_connectionsMutex);
+                    SRWLockGuard lock(&m_connectionsMutex);
                     auto it = m_connections.find(address);
                     if (it == m_connections.end()) return;
                     
@@ -519,7 +521,7 @@ void BluetoothLEManager::setNotify(uint64_t address, const std::wstring& charact
                             env->SetByteArrayRegion(jData, 0, data.size(), (jbyte*)data.data());
                             
                             jclass cls = env->GetObjectClass(m_javaObject);
-                            jmethodID mid = env->GetMethodID(cls, "onCharacteristicChanged", 
+                            jmethodID mid = env->GetMethodID(cls, "onCharacteristicChanged",
                                                             "(JLjava/lang/String;[B)V");
                             if (mid != nullptr) {
                                 env->CallVoidMethod(m_javaObject, mid, (jlong)address, jUuid, jData);
@@ -540,8 +542,8 @@ void BluetoothLEManager::setNotify(uint64_t address, const std::wstring& charact
 }
 
 void BluetoothLEManager::setIndicate(uint64_t address, const std::wstring& characteristicUuidStr, bool enable) {
-    std::lock_guard<std::mutex> lock(m_connectionsMutex);
-    
+    SRWLockGuard lock(&m_connectionsMutex);
+
     auto it = m_connections.find(address);
     if (it == m_connections.end()) return;
     
@@ -575,8 +577,8 @@ void BluetoothLEManager::writeDescriptor(uint64_t address, const std::wstring& d
 void BluetoothLEManager::changeMTU(uint64_t address, int mtu) {
     // Windows automatically negotiates MTU
     // We can notify Java with the current MTU
-    std::lock_guard<std::mutex> lock(m_connectionsMutex);
-    
+    SRWLockGuard lock(&m_connectionsMutex);
+
     auto it = m_connections.find(address);
     if (it == m_connections.end() || it->second->device == nullptr) return;
     
