@@ -5,16 +5,37 @@ plugins {
     id("org.jetbrains.kotlin.plugin.compose")
 }
 
+val falconVersion = "3.2.0"
+
 kotlin {
     jvmToolchain(21)
     androidTarget()
+
+    // JVM desktop (Windows + Linux)
+    jvm()
+
+    // macOS native
+    macosArm64 {
+        binaries {
+            executable {
+                entryPoint = "main"
+            }
+        }
+    }
+    macosX64 {
+        binaries {
+            executable {
+                entryPoint = "main"
+            }
+        }
+    }
 
     targets.withType(org.jetbrains.kotlin.gradle.plugin.mpp.KotlinNativeTarget::class.java).all {
         binaries.withType(org.jetbrains.kotlin.gradle.plugin.mpp.Framework::class.java).all {
             export("dev.icerock.moko:mvvm-core:0.16.1")
         }
     }
-    
+
     listOf(
         iosX64(),
         iosArm64(),
@@ -33,9 +54,7 @@ kotlin {
                 implementation(compose.foundation)
                 implementation(compose.material3)
                 implementation(compose.materialIconsExtended)
-                @OptIn(org.jetbrains.compose.ExperimentalComposeLibrary::class)
-                implementation(compose.components.resources)
-                
+
                 // Use api() for mvvm-core since it's exported in iOS framework
                 api("dev.icerock.moko:mvvm-core:0.16.1")
                 implementation("dev.icerock.moko:mvvm-compose:0.16.1")
@@ -43,10 +62,10 @@ kotlin {
                 implementation("dev.icerock.moko:mvvm-flow-compose:0.16.1")
 
                 // Blue Falcon 3.0
-                implementation("dev.bluefalcon:blue-falcon-core:3.1.0")
-                implementation("dev.bluefalcon:blue-falcon-plugin-logging:3.1.0")
-                implementation("dev.bluefalcon:blue-falcon-plugin-retry:3.1.0")
-                implementation("dev.bluefalcon:blue-falcon-plugin-nordic-fota:3.1.0")
+                implementation("dev.bluefalcon:blue-falcon-core:$falconVersion")
+                implementation("dev.bluefalcon:blue-falcon-plugin-logging:$falconVersion")
+                implementation("dev.bluefalcon:blue-falcon-plugin-retry:$falconVersion")
+                implementation("dev.bluefalcon:blue-falcon-plugin-nordic-fota:$falconVersion")
             }
         }
         val commonTest by getting {
@@ -58,9 +77,9 @@ kotlin {
             dependencies {
                 implementation("androidx.appcompat:appcompat:1.6.1")
                 implementation("androidx.activity:activity-compose:1.7.2")
-                
+
                 // Blue Falcon Android Engine
-                implementation("dev.bluefalcon:blue-falcon-engine-android:3.0.0")
+                implementation("dev.bluefalcon:blue-falcon-engine-android:$falconVersion")
             }
         }
         val androidUnitTest by getting
@@ -70,7 +89,7 @@ kotlin {
         val iosMain by creating {
             dependencies {
                 // Blue Falcon iOS Engine
-                implementation("dev.bluefalcon:blue-falcon-engine-ios:3.1.0")
+                implementation("dev.bluefalcon:blue-falcon-engine-ios:$falconVersion")
             }
             dependsOn(commonMain)
             iosX64Main.dependsOn(this)
@@ -85,6 +104,30 @@ kotlin {
             iosX64Test.dependsOn(this)
             iosArm64Test.dependsOn(this)
             iosSimulatorArm64Test.dependsOn(this)
+        }
+
+        // JVM desktop (Windows, Linux, macOS via JNI)
+        val jvmMain by getting {
+            dependencies {
+                // Blue Falcon Windows Engine (JNI + WinRT, publish engines locally first)
+                implementation("dev.bluefalcon:blue-falcon-engine-windows:$falconVersion")
+                // Blue Falcon Linux Engine (BlueZ via Blessed)
+                implementation("dev.bluefalcon:blue-falcon-engine-rpi:$falconVersion")
+                // Blue Falcon macOS JVM Engine (JNI + CoreBluetooth, publish engines locally first)
+                implementation("dev.bluefalcon:blue-falcon-engine-macos-jvm:$falconVersion")
+            }
+        }
+
+        // macOS native (CoreBluetooth via Kotlin/Native cinterop)
+        val macosArm64Main by getting
+        val macosX64Main by getting
+        val macosMain by creating {
+            dependencies {
+                implementation("dev.bluefalcon:blue-falcon-engine-macos:$falconVersion")
+            }
+            dependsOn(commonMain)
+            macosArm64Main.dependsOn(this)
+            macosX64Main.dependsOn(this)
         }
     }
 }

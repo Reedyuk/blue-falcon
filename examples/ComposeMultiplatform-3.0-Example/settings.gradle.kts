@@ -26,13 +26,20 @@ pluginManagement {
 
 dependencyResolutionManagement {
     repositories {
+        mavenLocal()
         google()
         mavenCentral()
         maven("https://maven.pkg.jetbrains.space/public/p/compose/dev")
-        mavenLocal()
+        maven("https://jitpack.io") {
+            content {
+                includeGroup("com.github.weliem.blessed-bluez")
+                includeGroup("com.github.weliem")
+            }
+        }
     }
 }
 
 rootProject.name = "BlueFalconComposeMultiplatform"
 include(":androidBlueFalconExampleMP")
+include(":desktopBlueFalconExampleMP")
 include(":shared")

@@ -25,6 +25,7 @@ include(":engines:js")
 include(":engines:windows")
 include(":engines:ios")
 include(":engines:macos")
+include(":engines:macos-jvm")
 
 // Include legacy compatibility layer
 include(":legacy")
