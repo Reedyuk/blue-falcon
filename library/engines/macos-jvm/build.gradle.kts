@@ -1,3 +1,5 @@
+import org.gradle.nativeplatform.platform.internal.DefaultNativePlatform
+
 plugins {
     kotlin("multiplatform") version "2.3.0"
     id("com.vanniktech.maven.publish") version "0.34.0"
@@ -7,16 +9,37 @@ plugins {
 repositories {
     google()
     mavenCentral()
-    maven("https://jitpack.io") {
-        content {
-            includeGroup("com.github.weliem.blessed-bluez")
-            includeGroup("com.github.weliem")
-        }
-    }
 }
 
 val kotlinx_coroutines_version: String by project
 val versionEngines: String by project
+
+val isMacOs = DefaultNativePlatform.getCurrentOperatingSystem().isMacOsX
+
+val generatedResourcesDir = layout.buildDirectory.dir("generated-resources")
+
+val compileNativeMacos by tasks.registering(Exec::class) {
+    enabled = isMacOs
+
+    val nativeSrcDir = file("native")
+    val outputDir = generatedResourcesDir.get().dir("natives").asFile
+
+    inputs.dir(nativeSrcDir)
+    outputs.dir(outputDir)
+
+    val javaHome = System.getenv("JAVA_HOME") ?: System.getProperty("java.home") ?: ""
+
+    commandLine(
+        "clang",
+        "-dynamiclib",
+        "-framework", "CoreBluetooth",
+        "-framework", "Foundation",
+        "-I", "$javaHome/include",
+        "-I", "$javaHome/include/darwin",
+        "$nativeSrcDir/BlueFalconJNI.m",
+        "-o", "${outputDir.absolutePath}/libbluefalcon-macos.dylib"
+    )
+}
 
 kotlin {
     jvmToolchain(17)
@@ -25,22 +48,23 @@ kotlin {
 
     sourceSets {
         val jvmMain by getting {
+            resources.srcDir(generatedResourcesDir)
             dependencies {
                 implementation(project(":core"))
                 implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:$kotlinx_coroutines_version")
-                // Blessed library for Raspberry Pi BLE
-                implementation("com.github.weliem.blessed-bluez:blessed:0.65")
-                implementation("com.github.hypfvieh:dbus-java-transport-native-unixsocket:4.3.2")
             }
         }
     }
+}
+
+tasks.named("jvmProcessResources") {
+    dependsOn(compileNativeMacos)
 }
 
 kotlin.sourceSets.all {
     languageSettings.optIn("kotlin.uuid.ExperimentalUuidApi")
 }
 
-// Publishing configuration
 group = "dev.bluefalcon"
 version = versionEngines
 
@@ -50,13 +74,13 @@ mavenPublishing {
 
     coordinates(
         groupId = "dev.bluefalcon",
-        artifactId = "blue-falcon-engine-rpi",
+        artifactId = "blue-falcon-engine-macos-jvm",
         version = versionEngines
     )
 
     pom {
-        name.set("Blue Falcon Raspberry Pi Engine")
-        description.set("Raspberry Pi BLE engine for Blue Falcon using BlueZ DBus")
+        name.set("Blue Falcon macOS JVM Engine")
+        description.set("macOS BLE engine for Blue Falcon — JVM/Compose Desktop via JNI + CoreBluetooth")
         url.set("https://github.com/Reedyuk/blue-falcon")
 
         licenses {
@@ -82,9 +106,7 @@ mavenPublishing {
     }
 }
 
-// Signing configuration
 signing {
-    // Only sign when publishing to Maven Central, not for local builds
     setRequired {
         gradle.taskGraph.allTasks.any {
             it.name.contains("publishTo") && it.name.contains("MavenCentral")

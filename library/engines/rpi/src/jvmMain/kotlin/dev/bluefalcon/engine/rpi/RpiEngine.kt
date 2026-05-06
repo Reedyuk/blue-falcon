@@ -2,6 +2,7 @@ package dev.bluefalcon.engine.rpi
 
 import com.welie.blessed.*
 import com.welie.blessed.BluetoothPeripheral as BlessedPeripheral
+import com.welie.blessed.bluez.DbusHelper
 import dev.bluefalcon.core.*
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -10,6 +11,7 @@ import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import org.freedesktop.dbus.connections.impl.DBusConnectionBuilder
 
 /**
  * Raspberry Pi implementation of BlueFalconEngine using the Blessed library
@@ -47,7 +49,34 @@ class RpiEngine : BlueFalconEngine {
         }
     }
     
-    private val bluetoothManager = BluetoothCentralManager(bluetoothManagerCallback)
+    private val bluetoothManager: BluetoothCentralManager = run {
+        // blessed-bluez 0.64 sorts adapters by getDeviceName() (the last path component) ascending
+        // and returns the last one. On systems with /org/bluez/test, "test" > "hci0" so the wrong
+        // adapter is chosen. We bypass this by creating the connection ourselves, initialising the
+        // BluezSignalHandler singleton (normally done by package-private BluezAdapterProvider), and
+        // then calling the package-private BluetoothCentralManager constructor with the correct adapter.
+        val connection = DBusConnectionBuilder.forSystemBus().build()
+
+        // Initialise the BluezSignalHandler singleton that the CentralManager requires.
+        val signalHandlerClass = Class.forName("com.welie.blessed.BluezSignalHandler")
+        val createInstanceMethod = signalHandlerClass.getDeclaredMethod(
+            "createInstance",
+            org.freedesktop.dbus.connections.impl.DBusConnection::class.java
+        )
+        createInstanceMethod.isAccessible = true
+        createInstanceMethod.invoke(null, connection)
+
+        val hciAdapter = DbusHelper.findBluezAdapters(connection)
+            .filter { Regex("/hci\\d+$").containsMatchIn(it.dbusPath) }
+            .maxByOrNull { it.dbusPath }
+            ?: throw IllegalStateException("No Bluetooth HCI adapter found at /org/bluez/hciX")
+
+        val ctor = BluetoothCentralManager::class.java.declaredConstructors
+            .first { it.parameterCount == 3 }
+        ctor.isAccessible = true
+        @Suppress("UNCHECKED_CAST")
+        ctor.newInstance(bluetoothManagerCallback, emptySet<String>(), hciAdapter) as BluetoothCentralManager
+    }
     
     override suspend fun scan(filters: List<ServiceFilter>) {
         isScanning = true
