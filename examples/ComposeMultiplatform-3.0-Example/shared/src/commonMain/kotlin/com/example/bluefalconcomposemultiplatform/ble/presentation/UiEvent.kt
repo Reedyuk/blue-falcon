@@ -25,4 +25,8 @@ sealed interface UiEvent {
     // Nordic FOTA events
     data class OnStartFota(val macId: String, val firmwareData: ByteArray): UiEvent
     data class OnCancelFota(val macId: String): UiEvent
+
+    // Clone events
+    data class OnCloneDevice(val macId: String): UiEvent
+    object OnDismissCloneResult: UiEvent
 }

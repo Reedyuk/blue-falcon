@@ -1,6 +1,8 @@
 package com.example.bluefalconcomposemultiplatform.ble.presentation
 
 import dev.bluefalcon.core.BlueFalcon
+import dev.bluefalcon.plugins.clone.CloneConfig
+import dev.bluefalcon.plugins.clone.DeviceClonePlugin
 import dev.bluefalcon.plugins.nordicfota.FotaState
 import dev.bluefalcon.plugins.nordicfota.NordicFotaPlugin
 import dev.icerock.moko.mvvm.viewmodel.ViewModel
@@ -18,6 +20,12 @@ class BluetoothDeviceViewModel(
     private val blueFalcon: BlueFalcon,
     private val fotaPlugin: NordicFotaPlugin
 ): ViewModel() {
+
+    private val clonePlugin = DeviceClonePlugin(CloneConfig().apply {
+        readCharacteristicValues = true
+        readDescriptorValues = true
+        platform = "ComposeMultiplatform"
+    })
 
     private val _deviceState: MutableStateFlow<BluetoothDeviceState> = MutableStateFlow(BluetoothDeviceState())
     val deviceState: StateFlow<BluetoothDeviceState> get() = _deviceState
@@ -310,6 +318,44 @@ class BluetoothDeviceViewModel(
 
             is UiEvent.OnCancelFota -> {
                 fotaPlugin.cancelUpdate()
+            }
+
+            is UiEvent.OnCloneDevice -> {
+                _deviceState.value.devices[event.macId]?.let { device ->
+                    _deviceState.update { state ->
+                        val updateDevices = state.devices.toMutableMap()
+                        updateDevices[event.macId] = device.copy(cloneInProgress = true)
+                        state.copy(devices = HashMap(updateDevices))
+                    }
+                    CoroutineScope(Dispatchers.IO).launch {
+                        try {
+                            val clone = clonePlugin.cloneDevice(device.peripheral, blueFalcon.engine)
+                            val json = clonePlugin.exportToJson(clone)
+                            _deviceState.update { state ->
+                                val updateDevices = state.devices.toMutableMap()
+                                updateDevices[event.macId] = device.copy(cloneInProgress = false)
+                                state.copy(
+                                    devices = HashMap(updateDevices),
+                                    cloneResultJson = json
+                                )
+                            }
+                        } catch (e: Exception) {
+                            println("Failed to clone device: ${e.message}")
+                            _deviceState.update { state ->
+                                val updateDevices = state.devices.toMutableMap()
+                                updateDevices[event.macId] = device.copy(cloneInProgress = false)
+                                state.copy(
+                                    devices = HashMap(updateDevices),
+                                    cloneResultJson = "Error: ${e.message}"
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
+            UiEvent.OnDismissCloneResult -> {
+                _deviceState.update { it.copy(cloneResultJson = null) }
             }
         }
     }

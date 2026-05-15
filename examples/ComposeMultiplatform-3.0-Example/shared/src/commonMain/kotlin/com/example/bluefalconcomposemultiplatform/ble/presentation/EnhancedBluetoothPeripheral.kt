@@ -10,5 +10,7 @@ data class EnhancedBluetoothPeripheral(
     val mtuStatus: String? = null,
     val fotaState: FotaState = FotaState.Idle,
     /** Latest notification payload per characteristic UUID (hex-encoded). */
-    val notificationData: Map<String, String> = emptyMap()
+    val notificationData: Map<String, String> = emptyMap(),
+    /** Whether a clone operation is in progress. */
+    val cloneInProgress: Boolean = false
 )
