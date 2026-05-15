@@ -1,7 +1,7 @@
 plugins {
     kotlin("multiplatform") version "2.3.0"
     kotlin("plugin.serialization") version "2.3.0"
-    id("com.vanniktech.maven.publish") version "0.34.0"
+    id("com.vanniktech.maven.publish")
     id("signing")
 }
 

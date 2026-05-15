@@ -4,6 +4,9 @@ pluginManagement {
         gradlePluginPortal()
         mavenCentral()
     }
+    plugins {
+        id("com.vanniktech.maven.publish") version "0.34.0"
+    }
     resolutionStrategy {
         eachPlugin {
             if (requested.id.namespace == "com.android") {

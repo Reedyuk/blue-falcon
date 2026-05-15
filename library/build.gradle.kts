@@ -4,6 +4,9 @@ import org.jetbrains.kotlin.gradle.plugin.mpp.apple.XCFramework
 plugins {
     kotlin("multiplatform") version "2.3.0"
     id("com.android.library")
+    // Declared here with apply false so all subprojects share a single ClassLoader,
+    // preventing the MavenCentralBuildService provider type mismatch error.
+    id("com.vanniktech.maven.publish") apply false
     // Root module should not publish - only submodules (core, engines, plugins, legacy) publish
     // This prevents duplicate artifact IDs with the legacy module
 }
