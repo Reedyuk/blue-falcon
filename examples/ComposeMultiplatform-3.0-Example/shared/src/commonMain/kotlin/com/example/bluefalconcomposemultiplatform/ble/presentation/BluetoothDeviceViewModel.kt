@@ -1,6 +1,8 @@
 package com.example.bluefalconcomposemultiplatform.ble.presentation
 
 import dev.bluefalcon.core.BlueFalcon
+import dev.bluefalcon.core.BluetoothAdvertiser
+import dev.bluefalcon.plugins.broadcast.DeviceBroadcastPlugin
 import dev.bluefalcon.plugins.clone.CloneConfig
 import dev.bluefalcon.plugins.clone.DeviceClonePlugin
 import dev.bluefalcon.plugins.nordicfota.FotaState
@@ -18,7 +20,8 @@ import kotlin.uuid.ExperimentalUuidApi
 @OptIn(ExperimentalUuidApi::class)
 class BluetoothDeviceViewModel(
     private val blueFalcon: BlueFalcon,
-    private val fotaPlugin: NordicFotaPlugin
+    private val fotaPlugin: NordicFotaPlugin,
+    private val advertiser: BluetoothAdvertiser
 ): ViewModel() {
 
     private val clonePlugin = DeviceClonePlugin(CloneConfig().apply {
@@ -26,6 +29,8 @@ class BluetoothDeviceViewModel(
         readDescriptorValues = true
         platform = "ComposeMultiplatform"
     })
+
+    private val broadcastPlugin = DeviceBroadcastPlugin()
 
     private val _deviceState: MutableStateFlow<BluetoothDeviceState> = MutableStateFlow(BluetoothDeviceState())
     val deviceState: StateFlow<BluetoothDeviceState> get() = _deviceState
@@ -88,6 +93,13 @@ class BluetoothDeviceViewModel(
                     updatedDevices[selectedId] = device.copy(fotaState = fotaState)
                     currentState.copy(devices = HashMap(updatedDevices))
                 }
+            }
+        }
+
+        // Mirror broadcast plugin state into device state
+        CoroutineScope(Dispatchers.IO).launch {
+            broadcastPlugin.broadcastState.collect { broadcastState ->
+                _deviceState.update { it.copy(broadcastState = broadcastState) }
             }
         }
     }
@@ -355,7 +367,8 @@ class BluetoothDeviceViewModel(
                                 updateDevices[event.macId] = device.copy(cloneInProgress = false)
                                 state.copy(
                                     devices = HashMap(updateDevices),
-                                    cloneResultJson = json
+                                    cloneResultJson = json,
+                                    currentClone = clone
                                 )
                             }
                         } catch (e: Exception) {
@@ -375,6 +388,24 @@ class BluetoothDeviceViewModel(
 
             UiEvent.OnDismissCloneResult -> {
                 _deviceState.update { it.copy(cloneResultJson = null) }
+            }
+
+            is UiEvent.OnStartBroadcast -> {
+                val clone = event.clone
+                _deviceState.update { it.copy(cloneResultJson = null) }
+                CoroutineScope(Dispatchers.IO).launch {
+                    try {
+                        broadcastPlugin.startBroadcast(clone, advertiser)
+                    } catch (e: Exception) {
+                        println("Failed to start broadcast: ${e.message}")
+                    }
+                }
+            }
+
+            UiEvent.OnStopBroadcast -> {
+                CoroutineScope(Dispatchers.IO).launch {
+                    broadcastPlugin.stopBroadcast()
+                }
             }
         }
     }

@@ -31,8 +31,8 @@ kotlin {
     sourceSets {
         val commonMain by getting {
             dependencies {
-                implementation(project(":core"))
-                implementation(project(":plugins:clone"))
+                api(project(":core"))
+                api(project(":plugins:clone"))
                 implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:$kotlinx_coroutines_version")
             }
         }
