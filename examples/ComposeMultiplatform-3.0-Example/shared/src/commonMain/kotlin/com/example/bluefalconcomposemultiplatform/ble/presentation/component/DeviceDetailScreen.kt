@@ -257,6 +257,12 @@ fun DeviceDetailScreen(
                         }
                     }
                     item {
+                        CloneCard(
+                            device = device,
+                            onEvent = onEvent
+                        )
+                    }
+                    item {
                         Text(
                             text = "SERVICES",
                             modifier = Modifier.padding(start = 16.dp, top = 12.dp, bottom = 8.dp),
@@ -948,6 +954,89 @@ fun FotaCard(
                     ) {
                         Text("RETRY", fontSize = 12.sp)
                     }
+                }
+            }
+        }
+    }
+}
+
+@OptIn(kotlin.uuid.ExperimentalUuidApi::class)
+@Composable
+fun CloneCard(
+    device: EnhancedBluetoothPeripheral,
+    onEvent: (UiEvent) -> Unit
+) {
+    val macId = device.peripheral.uuid
+
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 12.dp, vertical = 8.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+    ) {
+        Column(
+            modifier = Modifier.padding(12.dp)
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    imageVector = Icons.Default.FileDownload,
+                    contentDescription = "Clone Device",
+                    modifier = Modifier.size(20.dp),
+                    tint = MaterialTheme.colorScheme.primary
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = "DEVICE CLONE",
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary,
+                    letterSpacing = 1.sp
+                )
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            Text(
+                text = "Capture a complete snapshot of this device's GATT profile " +
+                    "(services, characteristics, descriptors) as JSON.",
+                fontSize = 13.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            if (device.cloneInProgress) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(20.dp),
+                        strokeWidth = 2.dp
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = "Cloning device…",
+                        fontSize = 13.sp,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                }
+            } else {
+                Button(
+                    onClick = { onEvent(UiEvent.OnCloneDevice(macId)) },
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.primary
+                    )
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.FileDownload,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("CLONE DEVICE", fontSize = 12.sp)
                 }
             }
         }

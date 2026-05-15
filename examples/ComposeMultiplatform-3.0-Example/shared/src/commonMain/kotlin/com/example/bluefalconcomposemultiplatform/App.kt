@@ -6,10 +6,24 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.example.bluefalconcomposemultiplatform.ble.presentation.BluetoothDeviceViewModel
+import com.example.bluefalconcomposemultiplatform.ble.presentation.UiEvent
 import com.example.bluefalconcomposemultiplatform.ble.presentation.component.DeviceDetailScreen
 import com.example.bluefalconcomposemultiplatform.ble.presentation.component.DeviceScanView
 import com.example.bluefalconcomposemultiplatform.core.presentation.BlueFalconTheme
@@ -65,6 +79,39 @@ fun App(
                     onEvent = viewModel::onEvent
                 )
             }
+        }
+
+        // Clone result dialog
+        state.cloneResultJson?.let { json ->
+            AlertDialog(
+                onDismissRequest = { viewModel.onEvent(UiEvent.OnDismissCloneResult) },
+                title = {
+                    Text(
+                        text = "Device Clone Result",
+                        style = MaterialTheme.typography.titleMedium
+                    )
+                },
+                text = {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(max = 400.dp)
+                            .verticalScroll(rememberScrollState())
+                    ) {
+                        Text(
+                            text = json,
+                            fontSize = 10.sp,
+                            fontFamily = FontFamily.Monospace,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                },
+                confirmButton = {
+                    TextButton(onClick = { viewModel.onEvent(UiEvent.OnDismissCloneResult) }) {
+                        Text("CLOSE")
+                    }
+                }
+            )
         }
     }
 }
