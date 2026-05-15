@@ -72,7 +72,7 @@ class MacosJvmEngine : BlueFalconEngine {
         val peripheral = connections[peripheralUuid] ?: return
         val services = serviceUuids.map { uuidStr ->
             MacosJvmBluetoothService(
-                uuid = Uuid.parse(uuidStr),
+                uuid = parseUuid(uuidStr),
                 name = null,
                 peripheralUuid = peripheralUuid
             )
@@ -92,10 +92,10 @@ class MacosJvmEngine : BlueFalconEngine {
             .find { it.uuid.toString().uppercase() == serviceUuid.uppercase() }
             as? MacosJvmBluetoothService ?: return
         val characteristic = MacosJvmBluetoothCharacteristic(
-            uuid = Uuid.parse(characteristicUuid),
+            uuid = parseUuid(characteristicUuid),
             name = null,
             peripheralUuid = peripheralUuid,
-            serviceUuid = Uuid.parse(serviceUuid),
+            serviceUuid = parseUuid(serviceUuid),
             properties = properties
         )
         service.addCharacteristic(characteristic)
@@ -347,6 +347,19 @@ class MacosJvmEngine : BlueFalconEngine {
     private fun BluetoothCharacteristic.asMacos(): MacosJvmBluetoothCharacteristic =
         this as? MacosJvmBluetoothCharacteristic
             ?: throw IllegalArgumentException("Characteristic must be a MacosJvmBluetoothCharacteristic")
+
+    /**
+     * Expands a short Bluetooth SIG UUID (4 or 8 hex chars) to the full 128-bit canonical
+     * form before parsing, so `Uuid.parse` never receives a 4-char string like "180A".
+     */
+    private fun parseUuid(uuidStr: String): Uuid {
+        val s = uuidStr.trim()
+        return when (s.length) {
+            4  -> Uuid.parse("0000${s}-0000-1000-8000-00805F9B34FB")
+            8  -> Uuid.parse("${s}-0000-1000-8000-00805F9B34FB")
+            else -> Uuid.parse(s)
+        }
+    }
 
     // -------------------------------------------------------------------------
     // Native declarations
