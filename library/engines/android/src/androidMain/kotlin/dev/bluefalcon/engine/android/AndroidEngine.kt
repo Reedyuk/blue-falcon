@@ -26,7 +26,7 @@ import java.util.concurrent.CopyOnWriteArrayList
  * Provides full BLE support including bonding, L2CAP, connection priority, and GATT operations.
  */
 class AndroidEngine(
-    private val context: Context,
+    internal val context: Context,
     private val logger: Logger? = null,
     private val autoDiscoverAllServicesAndCharacteristics: Boolean = true
 ) : BlueFalconEngine {

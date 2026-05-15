@@ -1,6 +1,10 @@
 package com.example.bluefalconcomposemultiplatform.ble.presentation
 
 import dev.bluefalcon.core.BlueFalcon
+import dev.bluefalcon.core.BluetoothAdvertiser
+import dev.bluefalcon.plugins.broadcast.DeviceBroadcastPlugin
+import dev.bluefalcon.plugins.clone.CloneConfig
+import dev.bluefalcon.plugins.clone.DeviceClonePlugin
 import dev.bluefalcon.plugins.nordicfota.FotaState
 import dev.bluefalcon.plugins.nordicfota.NordicFotaPlugin
 import dev.icerock.moko.mvvm.viewmodel.ViewModel
@@ -16,8 +20,17 @@ import kotlin.uuid.ExperimentalUuidApi
 @OptIn(ExperimentalUuidApi::class)
 class BluetoothDeviceViewModel(
     private val blueFalcon: BlueFalcon,
-    private val fotaPlugin: NordicFotaPlugin
+    private val fotaPlugin: NordicFotaPlugin,
+    private val advertiser: BluetoothAdvertiser
 ): ViewModel() {
+
+    private val clonePlugin = DeviceClonePlugin(CloneConfig().apply {
+        readCharacteristicValues = true
+        readDescriptorValues = true
+        platform = "ComposeMultiplatform"
+    })
+
+    private val broadcastPlugin = DeviceBroadcastPlugin()
 
     private val _deviceState: MutableStateFlow<BluetoothDeviceState> = MutableStateFlow(BluetoothDeviceState())
     val deviceState: StateFlow<BluetoothDeviceState> get() = _deviceState
@@ -80,6 +93,13 @@ class BluetoothDeviceViewModel(
                     updatedDevices[selectedId] = device.copy(fotaState = fotaState)
                     currentState.copy(devices = HashMap(updatedDevices))
                 }
+            }
+        }
+
+        // Mirror broadcast plugin state into device state
+        CoroutineScope(Dispatchers.IO).launch {
+            broadcastPlugin.broadcastState.collect { broadcastState ->
+                _deviceState.update { it.copy(broadcastState = broadcastState) }
             }
         }
     }
@@ -162,7 +182,11 @@ class BluetoothDeviceViewModel(
                                 val state = blueFalcon.connectionState(device.peripheral)
                                 if (state == dev.bluefalcon.core.BluetoothPeripheralState.Connected) {
                                     blueFalcon.discoverServices(device.peripheral)
-                                    // Peripheral update will be handled automatically by the peripherals flow
+                                    // Wait for services to be populated, then discover characteristics
+                                    kotlinx.coroutines.delay(1000)
+                                    device.peripheral.services.forEach { service ->
+                                        blueFalcon.discoverCharacteristics(device.peripheral, service)
+                                    }
                                 }
                             } catch (e: Exception) {
                                 println("Failed to discover services: ${e.message}")
@@ -182,6 +206,11 @@ class BluetoothDeviceViewModel(
                         try {
                             // Re-discover services to refresh data
                             blueFalcon.discoverServices(device.peripheral)
+                            // Wait for services, then discover characteristics
+                            kotlinx.coroutines.delay(1000)
+                            device.peripheral.services.forEach { service ->
+                                blueFalcon.discoverCharacteristics(device.peripheral, service)
+                            }
                         } catch (e: Exception) {
                             println("Failed to refresh device: ${e.message}")
                         }
@@ -310,6 +339,73 @@ class BluetoothDeviceViewModel(
 
             is UiEvent.OnCancelFota -> {
                 fotaPlugin.cancelUpdate()
+            }
+
+            is UiEvent.OnCloneDevice -> {
+                _deviceState.value.devices[event.macId]?.let { device ->
+                    _deviceState.update { state ->
+                        val updateDevices = state.devices.toMutableMap()
+                        updateDevices[event.macId] = device.copy(cloneInProgress = true)
+                        state.copy(devices = HashMap(updateDevices))
+                    }
+                    CoroutineScope(Dispatchers.IO).launch {
+                        try {
+                            // Ensure characteristics are discovered for all services
+                            // (required on iOS/macOS where discoverServices doesn't include characteristics)
+                            device.peripheral.services.forEach { service ->
+                                if (service.characteristics.isEmpty()) {
+                                    blueFalcon.discoverCharacteristics(device.peripheral, service)
+                                }
+                            }
+                            // Allow time for async characteristic discovery to complete
+                            kotlinx.coroutines.delay(1500)
+
+                            val clone = clonePlugin.cloneDevice(device.peripheral, blueFalcon.engine)
+                            val json = clonePlugin.exportToJson(clone)
+                            _deviceState.update { state ->
+                                val updateDevices = state.devices.toMutableMap()
+                                updateDevices[event.macId] = device.copy(cloneInProgress = false)
+                                state.copy(
+                                    devices = HashMap(updateDevices),
+                                    cloneResultJson = json,
+                                    currentClone = clone
+                                )
+                            }
+                        } catch (e: Exception) {
+                            println("Failed to clone device: ${e.message}")
+                            _deviceState.update { state ->
+                                val updateDevices = state.devices.toMutableMap()
+                                updateDevices[event.macId] = device.copy(cloneInProgress = false)
+                                state.copy(
+                                    devices = HashMap(updateDevices),
+                                    cloneResultJson = "Error: ${e.message}"
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
+            UiEvent.OnDismissCloneResult -> {
+                _deviceState.update { it.copy(cloneResultJson = null) }
+            }
+
+            is UiEvent.OnStartBroadcast -> {
+                val clone = event.clone
+                _deviceState.update { it.copy(cloneResultJson = null) }
+                CoroutineScope(Dispatchers.IO).launch {
+                    try {
+                        broadcastPlugin.startBroadcast(clone, advertiser)
+                    } catch (e: Exception) {
+                        println("Failed to start broadcast: ${e.message}")
+                    }
+                }
+            }
+
+            UiEvent.OnStopBroadcast -> {
+                CoroutineScope(Dispatchers.IO).launch {
+                    broadcastPlugin.stopBroadcast()
+                }
             }
         }
     }

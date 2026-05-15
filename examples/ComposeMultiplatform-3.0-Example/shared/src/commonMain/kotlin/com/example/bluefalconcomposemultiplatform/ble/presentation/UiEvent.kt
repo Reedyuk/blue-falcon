@@ -2,6 +2,7 @@ package com.example.bluefalconcomposemultiplatform.ble.presentation
 
 import dev.bluefalcon.core.BluetoothCharacteristic
 import dev.bluefalcon.core.BluetoothCharacteristicDescriptor
+import dev.bluefalcon.plugins.clone.DeviceClone
 
 sealed interface UiEvent {
     object OnScanClick: UiEvent
@@ -25,4 +26,12 @@ sealed interface UiEvent {
     // Nordic FOTA events
     data class OnStartFota(val macId: String, val firmwareData: ByteArray): UiEvent
     data class OnCancelFota(val macId: String): UiEvent
+
+    // Clone events
+    data class OnCloneDevice(val macId: String): UiEvent
+    object OnDismissCloneResult: UiEvent
+
+    // Broadcast events
+    data class OnStartBroadcast(val clone: DeviceClone): UiEvent
+    object OnStopBroadcast: UiEvent
 }

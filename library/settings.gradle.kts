@@ -4,6 +4,9 @@ pluginManagement {
         gradlePluginPortal()
         mavenCentral()
     }
+    plugins {
+        id("com.vanniktech.maven.publish") version "0.34.0"
+    }
     resolutionStrategy {
         eachPlugin {
             if (requested.id.namespace == "com.android") {
@@ -35,3 +38,5 @@ include(":plugins:logging")
 include(":plugins:retry")
 include(":plugins:caching")
 include(":plugins:nordic-fota")
+include(":plugins:clone")
+include(":plugins:broadcast")

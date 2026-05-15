@@ -60,3 +60,5 @@ ADRs can have the following statuses:
 - [ADR 0002: Adopt Plugin-Based Engine Architecture](0002-adopt-plugin-based-engine-architecture.md) - **Proposed** - 2026-04-10
 - [ADR 0003: Add Nordic FOTA Plugin Using SMP Protocol](0003-nordic-fota-plugin.md) - **Accepted** - 2026-04-12
 - [ADR 0004: Expose Characteristic Notification Events to Consumers and Plugins](0004-expose-characteristic-notification-events.md) - **Accepted** - 2026-04-18
+- [ADR 0005: BLE Device Cloning Plugin](0005-ble-device-cloning-plugin.md) - **Proposed** - 2026-05-15
+- [ADR 0006: BLE Device Broadcast Plugin](0006-ble-device-broadcast-plugin.md) - **Accepted** - 2026-05-15

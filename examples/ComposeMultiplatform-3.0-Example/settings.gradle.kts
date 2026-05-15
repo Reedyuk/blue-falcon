@@ -26,7 +26,13 @@ pluginManagement {
 
 dependencyResolutionManagement {
     repositories {
-        mavenLocal()
+        // Restrict mavenLocal to only blue-falcon artifacts to avoid KMP resolution issues
+        // with other libraries (e.g. kotlinx-coroutines) that lack .module files in local cache
+        mavenLocal {
+            content {
+                includeGroup("dev.bluefalcon")
+            }
+        }
         google()
         mavenCentral()
         maven("https://maven.pkg.jetbrains.space/public/p/compose/dev")

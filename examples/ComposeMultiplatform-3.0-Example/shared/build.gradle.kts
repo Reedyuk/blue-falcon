@@ -5,7 +5,8 @@ plugins {
     id("org.jetbrains.kotlin.plugin.compose")
 }
 
-val falconVersion = "3.2.0"
+val falconVersion = "3.3.0"
+val coroutinesVersion = "1.9.0"
 
 kotlin {
     jvmToolchain(21)
@@ -55,6 +56,9 @@ kotlin {
                 implementation(compose.material3)
                 implementation(compose.materialIconsExtended)
 
+                // Coroutines (must be explicit — blue-falcon-core uses implementation, not api)
+                implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:$coroutinesVersion")
+
                 // Use api() for mvvm-core since it's exported in iOS framework
                 api("dev.icerock.moko:mvvm-core:0.16.1")
                 implementation("dev.icerock.moko:mvvm-compose:0.16.1")
@@ -66,6 +70,8 @@ kotlin {
                 implementation("dev.bluefalcon:blue-falcon-plugin-logging:$falconVersion")
                 implementation("dev.bluefalcon:blue-falcon-plugin-retry:$falconVersion")
                 implementation("dev.bluefalcon:blue-falcon-plugin-nordic-fota:$falconVersion")
+                implementation("dev.bluefalcon:blue-falcon-plugin-clone:$falconVersion")
+                implementation("dev.bluefalcon:blue-falcon-plugin-broadcast:$falconVersion")
             }
         }
         val commonTest by getting {
@@ -130,6 +136,10 @@ kotlin {
             macosX64Main.dependsOn(this)
         }
     }
+}
+
+kotlin.sourceSets.all {
+    languageSettings.optIn("kotlin.uuid.ExperimentalUuidApi")
 }
 
 android {
