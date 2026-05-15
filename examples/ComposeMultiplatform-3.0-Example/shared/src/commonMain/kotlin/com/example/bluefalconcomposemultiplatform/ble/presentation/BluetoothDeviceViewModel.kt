@@ -170,7 +170,11 @@ class BluetoothDeviceViewModel(
                                 val state = blueFalcon.connectionState(device.peripheral)
                                 if (state == dev.bluefalcon.core.BluetoothPeripheralState.Connected) {
                                     blueFalcon.discoverServices(device.peripheral)
-                                    // Peripheral update will be handled automatically by the peripherals flow
+                                    // Wait for services to be populated, then discover characteristics
+                                    kotlinx.coroutines.delay(1000)
+                                    device.peripheral.services.forEach { service ->
+                                        blueFalcon.discoverCharacteristics(device.peripheral, service)
+                                    }
                                 }
                             } catch (e: Exception) {
                                 println("Failed to discover services: ${e.message}")
@@ -190,6 +194,11 @@ class BluetoothDeviceViewModel(
                         try {
                             // Re-discover services to refresh data
                             blueFalcon.discoverServices(device.peripheral)
+                            // Wait for services, then discover characteristics
+                            kotlinx.coroutines.delay(1000)
+                            device.peripheral.services.forEach { service ->
+                                blueFalcon.discoverCharacteristics(device.peripheral, service)
+                            }
                         } catch (e: Exception) {
                             println("Failed to refresh device: ${e.message}")
                         }
@@ -329,6 +338,16 @@ class BluetoothDeviceViewModel(
                     }
                     CoroutineScope(Dispatchers.IO).launch {
                         try {
+                            // Ensure characteristics are discovered for all services
+                            // (required on iOS/macOS where discoverServices doesn't include characteristics)
+                            device.peripheral.services.forEach { service ->
+                                if (service.characteristics.isEmpty()) {
+                                    blueFalcon.discoverCharacteristics(device.peripheral, service)
+                                }
+                            }
+                            // Allow time for async characteristic discovery to complete
+                            kotlinx.coroutines.delay(1500)
+
                             val clone = clonePlugin.cloneDevice(device.peripheral, blueFalcon.engine)
                             val json = clonePlugin.exportToJson(clone)
                             _deviceState.update { state ->
