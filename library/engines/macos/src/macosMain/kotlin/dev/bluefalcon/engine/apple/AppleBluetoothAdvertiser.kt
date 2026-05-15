@@ -205,12 +205,18 @@ class AppleBluetoothAdvertiser(
                     characteristicValues[charConfig.uuid.lowercase()] = it.toData()
                 }
 
-                val mutableDescriptors = charConfig.descriptors.map { descConfig ->
-                    CBMutableDescriptor(
-                        type = CBUUID.UUIDWithString(descConfig.uuid),
-                        value = descConfig.initialValue?.toData()
-                    )
-                }
+                // CoreBluetooth automatically adds the CCCD (0x2902) for notify/indicate
+                // characteristics, so we must NOT add it manually — doing so crashes.
+                // For any other 128-bit UUID descriptor, CBMutableDescriptor requires a
+                // non-nil NSData value; never pass nil.
+                val mutableDescriptors = charConfig.descriptors
+                    .filterNot { isCccdUuid(it.uuid) }
+                    .map { descConfig ->
+                        CBMutableDescriptor(
+                            type = CBUUID.UUIDWithString(descConfig.uuid),
+                            value = descConfig.initialValue?.toData() ?: NSData()
+                        )
+                    }
                 if (mutableDescriptors.isNotEmpty()) {
                     mutableChar.setDescriptors(mutableDescriptors)
                 }
@@ -308,5 +314,12 @@ class AppleBluetoothAdvertiser(
             }
         }
         return perms
+    }
+
+    /** Returns true for any form of the CCCD UUID (16-bit or 128-bit canonical form). */
+    private fun isCccdUuid(uuid: String): Boolean {
+        val upper = uuid.uppercase()
+        return upper == "2902" ||
+            upper == "00002902-0000-1000-8000-00805F9B34FB"
     }
 }
