@@ -44,7 +44,7 @@ data class AdvertisementClone(
         if (this === other) return true
         if (other !is AdvertisementClone) return false
         return localName == other.localName &&
-            manufacturerData.contentEquals(other.manufacturerData) &&
+            (manufacturerData?.contentEquals(other.manufacturerData) ?: (other.manufacturerData == null)) &&
             serviceUuids == other.serviceUuids &&
             txPowerLevel == other.txPowerLevel
     }
@@ -92,7 +92,7 @@ data class CharacteristicClone(
         if (other !is CharacteristicClone) return false
         return uuid == other.uuid &&
             name == other.name &&
-            value.contentEquals(other.value) &&
+            (value?.contentEquals(other.value) ?: (other.value == null)) &&
             isNotifying == other.isNotifying &&
             descriptors == other.descriptors
     }
@@ -120,7 +120,8 @@ data class DescriptorClone(
     override fun equals(other: Any?): Boolean {
         if (this === other) return true
         if (other !is DescriptorClone) return false
-        return uuid == other.uuid && value.contentEquals(other.value)
+        return uuid == other.uuid &&
+            (value?.contentEquals(other.value) ?: (other.value == null))
     }
 
     override fun hashCode(): Int {
@@ -128,17 +129,4 @@ data class DescriptorClone(
         result = 31 * result + (value?.contentHashCode() ?: 0)
         return result
     }
-}
-
-/**
- * Extension to check if a byte array is null-equals-safe
- */
-private fun ByteArray?.contentEquals(other: ByteArray?): Boolean {
-    if (this == null && other == null) return true
-    if (this == null || other == null) return false
-    return this.contentEquals(other)
-}
-
-private fun ByteArray?.contentHashCode(): Int {
-    return this?.contentHashCode() ?: 0
 }

@@ -252,7 +252,8 @@ class DeviceClonePlugin(
 }
 
 /**
- * Factory interface for creating plugins
+ * Factory interface for creating plugins via configuration DSL.
+ * Each plugin defines its own factory following the established pattern.
  */
 interface PluginFactory {
     fun create(config: PluginConfig): BlueFalconPlugin
