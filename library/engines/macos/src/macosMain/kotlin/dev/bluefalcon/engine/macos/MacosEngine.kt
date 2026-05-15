@@ -1,6 +1,7 @@
 package dev.bluefalcon.engine.macos
 
 import dev.bluefalcon.core.*
+import dev.bluefalcon.engine.apple.AppleBluetoothAdvertiser
 import dev.bluefalcon.engine.apple.AppleEngine
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.SharedFlow
@@ -120,3 +121,12 @@ class MacosEngine : BlueFalconEngine {
     override suspend fun removeBond(peripheral: BluetoothPeripheral) =
         appleEngine.removeBond(peripheral)
 }
+
+/**
+ * Create an [AppleBluetoothAdvertiser] backed by [CBPeripheralManager].
+ *
+ * On macOS the full advertisement packet (local name, service UUIDs) is supported.
+ * Note: manufacturer data is not exposed via CBPeripheralManager's public API.
+ */
+fun MacosEngine.createAdvertiser(logger: Logger? = null): BluetoothAdvertiser =
+    AppleBluetoothAdvertiser(logger)
