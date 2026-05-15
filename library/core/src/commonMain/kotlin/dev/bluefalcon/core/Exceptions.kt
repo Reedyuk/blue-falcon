@@ -34,3 +34,12 @@ class BluetoothResettingException(
 class BluetoothUnknownException(
     message: String = "Unknown error happened"
 ) : Exception(message)
+
+/**
+ * L2CAP channel open/IO failure. Gives callers a typed failure instead of a
+ * raw platform exception.
+ */
+class L2capException(
+    message: String = "L2CAP channel error",
+    cause: Throwable? = null
+) : Exception(message, cause)

@@ -6,6 +6,7 @@ import com.welie.blessed.bluez.DbusHelper
 import dev.bluefalcon.core.*
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -242,8 +243,31 @@ class RpiEngine : BlueFalconEngine {
         return false
     }
     
-    override suspend fun openL2capChannel(peripheral: dev.bluefalcon.core.BluetoothPeripheral, psm: Int) {
-        throw UnsupportedOperationException("openL2capChannel is not supported on RPi")
+    override suspend fun openL2capChannel(
+        peripheral: dev.bluefalcon.core.BluetoothPeripheral,
+        psm: Int,
+        secure: Boolean
+    ): BluetoothSocket {
+        val rpiPeripheral = peripheral as? RpiBluetoothPeripheral
+            ?: throw L2capException("Peripheral must be an RpiBluetoothPeripheral")
+
+        val address = rpiPeripheral.nativePeripheral.address
+        // BlueZ Device1.AddressType — "public" or "random". Default to public if
+        // blessed can't surface it (e.g. device object not yet resolved).
+        val addressType = runCatching {
+            rpiPeripheral.nativePeripheral.device?.addressType
+        }.getOrNull() ?: "public"
+
+        return withContext(Dispatchers.IO) {
+            try {
+                val fd = LinuxL2cap.connect(address, addressType, psm, secure)
+                RpiL2CapSocket(fd, psm, rpiPeripheral, scope)
+            } catch (e: L2capException) {
+                throw e
+            } catch (e: Exception) {
+                throw L2capException("Failed to open L2CAP channel on PSM $psm", e)
+            }
+        }
     }
     
     override suspend fun createBond(peripheral: dev.bluefalcon.core.BluetoothPeripheral) {

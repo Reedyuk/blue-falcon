@@ -111,8 +111,11 @@ class MacosEngine : BlueFalconEngine {
     override fun refreshGattCache(peripheral: BluetoothPeripheral): Boolean =
         appleEngine.refreshGattCache(peripheral)
     
-    override suspend fun openL2capChannel(peripheral: BluetoothPeripheral, psm: Int) =
-        appleEngine.openL2capChannel(peripheral, psm)
+    override suspend fun openL2capChannel(
+        peripheral: BluetoothPeripheral,
+        psm: Int,
+        secure: Boolean
+    ): BluetoothSocket = appleEngine.openL2capChannel(peripheral, psm, secure)
     
     override suspend fun createBond(peripheral: BluetoothPeripheral) =
         appleEngine.createBond(peripheral)

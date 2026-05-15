@@ -2,6 +2,7 @@ package dev.bluefalcon.engine.apple
 
 import dev.bluefalcon.core.*
 import kotlinx.cinterop.BetaInteropApi
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -43,6 +44,10 @@ class AppleEngine : BlueFalconEngine, CBCentralManagerCallback, CBPeripheralCall
     
     // Map to track connected peripherals
     private val connectedPeripherals = mutableMapOf<String, AppleBluetoothPeripheral>()
+
+    // Pending L2CAP channel opens, keyed by peripheral identifier, bridged from
+    // the async openL2CAPChannel(...) / onL2CAPChannelOpened(...) callback pair.
+    private val l2capDeferreds = mutableMapOf<String, CompletableDeferred<CBL2CAPChannel>>()
     
     override suspend fun scan(filters: List<ServiceFilter>) {
         isScanning = true
@@ -304,12 +309,29 @@ class AppleEngine : BlueFalconEngine, CBCentralManagerCallback, CBPeripheralCall
         return false
     }
     
-    override suspend fun openL2capChannel(peripheral: BluetoothPeripheral, psm: Int) {
+    override suspend fun openL2capChannel(
+        peripheral: BluetoothPeripheral,
+        psm: Int,
+        secure: Boolean
+    ): BluetoothSocket {
         val applePeripheral = peripheral as? AppleBluetoothPeripheral
-            ?: throw IllegalArgumentException("Peripheral must be an AppleBluetoothPeripheral")
-        
-        applePeripheral.cbPeripheral.delegate = peripheralDelegate
-        applePeripheral.cbPeripheral.openL2CAPChannel(psm.toUShort())
+            ?: throw L2capException("Peripheral must be an AppleBluetoothPeripheral")
+
+        val cbPeripheral = applePeripheral.cbPeripheral
+        cbPeripheral.delegate = peripheralDelegate
+
+        val identifier = cbPeripheral.identifier.UUIDString
+        val deferred = CompletableDeferred<CBL2CAPChannel>()
+        l2capDeferreds[identifier] = deferred
+
+        val channel = try {
+            cbPeripheral.openL2CAPChannel(psm.toUShort())
+            deferred.await()
+        } finally {
+            l2capDeferreds.remove(identifier)
+        }
+
+        return AppleL2CapSocket(channel, psm, peripheral)
     }
     
     override suspend fun createBond(peripheral: BluetoothPeripheral) {
@@ -418,7 +440,16 @@ class AppleEngine : BlueFalconEngine, CBCentralManagerCallback, CBPeripheralCall
     }
     
     override fun onL2CAPChannelOpened(peripheral: CBPeripheral, channel: CBL2CAPChannel?, error: NSError?) {
-        // L2CAP channel opened - could expose this through a callback if needed
+        val deferred = l2capDeferreds[peripheral.identifier.UUIDString] ?: return
+        when {
+            error != null ->
+                deferred.completeExceptionally(
+                    L2capException("Failed to open L2CAP channel: ${error.localizedDescription}")
+                )
+            channel == null ->
+                deferred.completeExceptionally(L2capException("L2CAP channel was null"))
+            else -> deferred.complete(channel)
+        }
     }
     
     override fun onDescriptorWritten(peripheral: CBPeripheral, descriptor: CBDescriptor, error: NSError?) {

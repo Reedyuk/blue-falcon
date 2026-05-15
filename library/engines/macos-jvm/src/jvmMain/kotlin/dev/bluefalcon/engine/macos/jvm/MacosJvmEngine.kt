@@ -1,6 +1,7 @@
 package dev.bluefalcon.engine.macos.jvm
 
 import dev.bluefalcon.core.*
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -8,6 +9,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import java.util.concurrent.ConcurrentHashMap
 
 /**
  * macOS JVM implementation of [BlueFalconEngine] for Compose Desktop.
@@ -30,6 +32,11 @@ class MacosJvmEngine : BlueFalconEngine {
         private set
 
     private val connections = mutableMapOf<String, MacosJvmBluetoothPeripheral>()
+
+    // L2CAP open is async: native delivers the handle later via onL2capChannelOpened.
+    private val l2capOpenDeferreds = ConcurrentHashMap<String, CompletableDeferred<Long>>()
+    // Live sockets keyed by native channel handle, so data/close callbacks can route.
+    private val l2capSockets = ConcurrentHashMap<Long, MacosJvmL2CapSocket>()
 
     init {
         try {
@@ -155,6 +162,26 @@ class MacosJvmEngine : BlueFalconEngine {
     @Suppress("unused")
     private fun onMtuChanged(peripheralUuid: String, mtu: Int) {
         connections[peripheralUuid]?.mtuSize = mtu
+    }
+
+    @Suppress("unused")
+    private fun onL2capChannelOpened(peripheralUuid: String, handle: Long, error: String?) {
+        val deferred = l2capOpenDeferreds[peripheralUuid] ?: return
+        if (error != null || handle < 0) {
+            deferred.completeExceptionally(L2capException(error ?: "Failed to open L2CAP channel"))
+        } else {
+            deferred.complete(handle)
+        }
+    }
+
+    @Suppress("unused")
+    private fun onL2capDataReceived(handle: Long, data: ByteArray) {
+        l2capSockets[handle]?.onDataReceived(data)
+    }
+
+    @Suppress("unused")
+    private fun onL2capChannelClosed(handle: Long) {
+        l2capSockets.remove(handle)?.onClosed()
     }
 
     // -------------------------------------------------------------------------
@@ -302,8 +329,31 @@ class MacosJvmEngine : BlueFalconEngine {
 
     override fun refreshGattCache(peripheral: BluetoothPeripheral): Boolean = false
 
-    override suspend fun openL2capChannel(peripheral: BluetoothPeripheral, psm: Int) {
-        throw UnsupportedOperationException("L2CAP is not yet supported in the macOS JVM engine")
+    override suspend fun openL2capChannel(
+        peripheral: BluetoothPeripheral,
+        psm: Int,
+        secure: Boolean
+    ): BluetoothSocket {
+        // CoreBluetooth determines channel security from the peripheral; the
+        // `secure` flag has no separate API here (same as the macOS-native engine).
+        val p = peripheral.asMacos()
+        val deferred = CompletableDeferred<Long>()
+        l2capOpenDeferreds[p.uuid] = deferred
+        val handle = try {
+            nativeOpenL2capChannel(p.uuid, psm)
+            deferred.await()
+        } finally {
+            l2capOpenDeferreds.remove(p.uuid)
+        }
+        val socket = MacosJvmL2CapSocket(
+            handle = handle,
+            psm = psm,
+            peripheral = p,
+            nativeWrite = this::nativeL2capWrite,
+            nativeClose = this::nativeL2capClose
+        )
+        l2capSockets[handle] = socket
+        return socket
     }
 
     override suspend fun createBond(peripheral: BluetoothPeripheral) {
@@ -366,6 +416,9 @@ class MacosJvmEngine : BlueFalconEngine {
     private external fun nativeReadDescriptor(peripheralUuid: String, serviceUuid: String, characteristicUuid: String, descriptorUuid: String)
     private external fun nativeWriteDescriptor(peripheralUuid: String, serviceUuid: String, characteristicUuid: String, descriptorUuid: String, value: ByteArray)
     private external fun nativeChangeMTU(peripheralUuid: String, mtuSize: Int)
+    private external fun nativeOpenL2capChannel(peripheralUuid: String, psm: Int)
+    private external fun nativeL2capWrite(handle: Long, data: ByteArray)
+    private external fun nativeL2capClose(handle: Long)
 
     companion object {
         init {

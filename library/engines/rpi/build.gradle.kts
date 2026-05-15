@@ -31,6 +31,8 @@ kotlin {
                 // Blessed library for Raspberry Pi BLE
                 implementation("com.github.weliem.blessed-bluez:blessed:0.65")
                 implementation("com.github.hypfvieh:dbus-java-transport-native-unixsocket:4.3.2")
+                // JNA: raw AF_BLUETOOTH L2CAP socket access (no JVM-native API exists)
+                implementation("net.java.dev.jna:jna:5.14.0")
             }
         }
     }
