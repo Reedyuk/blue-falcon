@@ -1,7 +1,9 @@
 package com.example.bluefalconcomposemultiplatform.di
 
 import dev.bluefalcon.core.BlueFalcon
+import dev.bluefalcon.core.BluetoothAdvertiser
 import dev.bluefalcon.engine.ios.IosEngine
+import dev.bluefalcon.engine.ios.createAdvertiser
 import dev.bluefalcon.plugins.logging.LoggingPlugin
 import dev.bluefalcon.plugins.logging.LogLevel
 import dev.bluefalcon.plugins.retry.RetryPlugin
@@ -14,8 +16,11 @@ actual class AppModule {
         autoReset = true
     }
 
+    private val engine = IosEngine()
+    actual val advertiser: BluetoothAdvertiser = engine.createAdvertiser()
+
     actual val blueFalcon: BlueFalcon = BlueFalcon(
-        engine = IosEngine()
+        engine = engine
     ).apply {
         // Install logging plugin for debugging
         plugins.install(LoggingPlugin(LoggingPlugin.Config().apply {

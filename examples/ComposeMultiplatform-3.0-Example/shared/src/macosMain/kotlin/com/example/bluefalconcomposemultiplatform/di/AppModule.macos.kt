@@ -1,7 +1,9 @@
 package com.example.bluefalconcomposemultiplatform.di
 
 import dev.bluefalcon.core.BlueFalcon
+import dev.bluefalcon.core.BluetoothAdvertiser
 import dev.bluefalcon.engine.macos.MacosEngine
+import dev.bluefalcon.engine.macos.createAdvertiser
 import dev.bluefalcon.plugins.logging.LogLevel
 import dev.bluefalcon.plugins.logging.LoggingPlugin
 import dev.bluefalcon.plugins.nordicfota.NordicFotaPlugin
@@ -14,8 +16,11 @@ actual class AppModule {
         autoReset = true
     }
 
+    private val engine = MacosEngine()
+    actual val advertiser: BluetoothAdvertiser = engine.createAdvertiser()
+
     actual val blueFalcon: BlueFalcon = BlueFalcon(
-        engine = MacosEngine()
+        engine = engine
     ).apply {
         plugins.install(LoggingPlugin(LoggingPlugin.Config().apply {
             level = LogLevel.DEBUG
