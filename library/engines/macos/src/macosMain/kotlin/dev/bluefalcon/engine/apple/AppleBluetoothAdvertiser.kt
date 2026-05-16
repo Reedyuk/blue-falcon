@@ -60,6 +60,17 @@ class AppleBluetoothAdvertiser(
 
         override fun peripheralManagerDidUpdateState(peripheral: CBPeripheralManager) {
             logger?.debug("AppleAdvertiser: peripheral manager state ${peripheral.state}")
+            when (peripheral.state) {
+                CBManagerStateUnsupported -> {
+                    logger?.error("AppleAdvertiser: BLE peripheral role not supported on this device/platform")
+                    _state.value = AdvertiserState.Error
+                }
+                CBManagerStateUnauthorized -> {
+                    logger?.error("AppleAdvertiser: not authorized to use BLE peripheral role")
+                    _state.value = AdvertiserState.Error
+                }
+                else -> { /* handled by start/stop callbacks */ }
+            }
         }
 
         override fun peripheralManager(
@@ -165,7 +176,11 @@ class AppleBluetoothAdvertiser(
         }
     }
 
-    private val peripheralManager = CBPeripheralManager(peripheralManagerDelegate, null)
+    // CBPeripheralManager is created lazily on first use to avoid triggering
+    // Bluetooth permission prompts (and entitlement checks) at app startup.
+    private val peripheralManager: CBPeripheralManager by lazy {
+        CBPeripheralManager(peripheralManagerDelegate, null)
+    }
 
     // -------------------------------------------------------------------------
     // BluetoothAdvertiser implementation

@@ -126,7 +126,9 @@ class IosEngine : BlueFalconEngine {
  * Create an [AppleBluetoothAdvertiser] backed by [CBPeripheralManager].
  *
  * Note: on iOS, the advertisement packet is restricted to local name and service UUIDs.
- * Manufacturer data is silently dropped by the OS.
+ * Manufacturer data is silently dropped by the OS. When running as an iPad app on Mac
+ * (Designed for iPad), [CBPeripheralManager] will report an unsupported state and the
+ * advertiser will surface [AdvertiserState.Error] without crashing.
  */
 fun IosEngine.createAdvertiser(logger: Logger? = null): BluetoothAdvertiser =
     AppleBluetoothAdvertiser(logger)
