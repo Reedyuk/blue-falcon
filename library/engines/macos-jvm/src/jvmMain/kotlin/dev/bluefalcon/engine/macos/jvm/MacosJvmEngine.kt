@@ -177,6 +177,7 @@ class MacosJvmEngine : BlueFalconEngine {
 
     override suspend fun connect(peripheral: BluetoothPeripheral, autoConnect: Boolean) {
         val p = peripheral.asMacos()
+        p.updateServices(emptyList())
         connections[p.uuid] = p
         nativeConnect(p.uuid)
     }
