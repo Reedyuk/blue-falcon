@@ -13,6 +13,9 @@ static CBCentralManager *gCentralManager = NULL;
 static BlueFalconBLEBridge *gBridge = NULL;
 // All discovered/connected peripherals keyed by NSUUID string
 static NSMutableDictionary<NSString*, CBPeripheral*> *gPeripherals = NULL;
+// Keys of in-flight explicit reads: "<peripheralUUID>:<characteristicUUID>".
+// Accessed only on gBLEQueue, so no locking is needed.
+static NSMutableSet<NSString*> *gPendingReads = NULL;
 static dispatch_queue_t gBLEQueue = NULL;
 
 // ---------------------------------------------------------------------------
@@ -289,8 +292,15 @@ didUpdateValueForCharacteristic:(CBCharacteristic *)characteristic
     jboolean att; JNIEnv *env = getEnv(&att);
     if (!env || !gEngineRef) { releaseEnv(att); return; }
 
-    // Notify path for subscribed characteristics; read path for one-shot reads
-    const char *cbName = characteristic.isNotifying ? "onCharacteristicChanged" : "onCharacteristicRead";
+    // Route to onCharacteristicRead for explicit reads, onCharacteristicChanged for
+    // everything else (subscribed notifications, or values that arrive while isNotifying
+    // is still NO — i.e., between setNotifyValue:YES and the CCCD ACK).
+    // gPendingReads is accessed only on gBLEQueue, so no locking is needed.
+    NSString *key = [NSString stringWithFormat:@"%@:%@",
+        peripheral.identifier.UUIDString, characteristic.UUID.UUIDString];
+    BOOL isExplicitRead = [gPendingReads containsObject:key];
+    if (isExplicitRead) [gPendingReads removeObject:key];
+    const char *cbName = isExplicitRead ? "onCharacteristicRead" : "onCharacteristicChanged";
 
     jclass cls = (*env)->GetObjectClass(env, gEngineRef);
     jmethodID m = (*env)->GetMethodID(env, cls, cbName,
@@ -402,6 +412,7 @@ Java_dev_bluefalcon_engine_macos_jvm_MacosJvmEngine_nativeInitialize(JNIEnv *env
     gEngineRef = (*env)->NewGlobalRef(env, thiz);
 
     gPeripherals = [NSMutableDictionary dictionary];
+    gPendingReads = [NSMutableSet set];
     gBLEQueue = dispatch_queue_create("dev.bluefalcon.ble", DISPATCH_QUEUE_SERIAL);
     gBridge = [[BlueFalconBLEBridge alloc] init];
     gCentralManager = [[CBCentralManager alloc] initWithDelegate:gBridge queue:gBLEQueue];
@@ -498,7 +509,11 @@ Java_dev_bluefalcon_engine_macos_jvm_MacosJvmEngine_nativeReadCharacteristic(JNI
         CBPeripheral *p = gPeripherals[puuid];
         if (!p) return;
         CBCharacteristic *c = findCharacteristic(p, suuid, cuuid);
-        if (c) [p readValueForCharacteristic:c];
+        if (c) {
+            NSString *key = [NSString stringWithFormat:@"%@:%@", puuid, c.UUID.UUIDString];
+            [gPendingReads addObject:key];
+            [p readValueForCharacteristic:c];
+        }
     });
 }
 
