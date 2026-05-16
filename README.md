@@ -16,34 +16,22 @@
 
 Blue Falcon provides a unified API for Bluetooth LE operations across all platforms. Each platform implementation compiles to native code, ensuring optimal performance and seamless integration with platform-specific APIs.
 
-> **🎉 Version 3.0** introduces a plugin-based engine architecture inspired by Ktor, enabling extensibility while maintaining 100% backward compatibility with 2.x.
+> **🎉 Version 3.0+** introduces a plugin-based engine architecture inspired by Ktor, enabling extensibility. The 2.x API is still available via a compatibility layer — see the [Migration Guide](docs/MIGRATION_GUIDE.md).
 
 ## ✨ Features
 
 - **🔌 Plugin Architecture** - Extensible engine system with official and community plugins
 - **📱 Cross-Platform** - Single API for iOS, Android, macOS, JavaScript, Windows, and Raspberry Pi
-- **🔄 Backward Compatible** - Drop-in replacement for 2.x users
+- **🔄 Legacy Support** - 2.x API available via compatibility layer (see [Migration Guide](docs/MIGRATION_GUIDE.md))
 - **⚡ Native Performance** - Compiles to platform-native code (Obj-C, JVM, JS, etc.)
 - **🔧 Flexible APIs** - Choose between Flow-based reactive API or delegate callbacks
 - **🎯 Type-Safe** - Full Kotlin type safety across all platforms
 
 ## 📦 Installation
 
-### For 2.x Users (Easiest Upgrade Path)
+> **Upgrading from 2.x?** See the [Migration Guide](docs/MIGRATION_GUIDE.md) — most apps require zero code changes.
 
-Simply update your version - **no code changes required**:
-
-```kotlin
-commonMain.dependencies {
-    implementation("dev.bluefalcon:blue-falcon:3.0.0")
-}
-```
-
-Your existing 2.x code continues to work unchanged! See the [Migration Guide](docs/MIGRATION_GUIDE.md) for details.
-
-### For New Projects (3.0 API)
-
-#### Core + Engine
+### Core + Engine
 
 ```kotlin
 commonMain.dependencies {
@@ -76,29 +64,6 @@ commonMain.dependencies {
 ```
 
 ## 🚀 Quick Start
-
-### Legacy API (2.x Compatible)
-
-```kotlin
-// Create instance
-val blueFalcon = BlueFalcon(log = null, ApplicationContext())
-
-// Register delegate
-blueFalcon.delegates.add(object : BlueFalconDelegate {
-    override fun didDiscoverDevice(peripheral: BluetoothPeripheral, advertisementData: Map<AdvertisementDataRetrievalKeys, Any>) {
-        println("Found device: ${peripheral.name}")
-    }
-    
-    override fun didConnect(peripheral: BluetoothPeripheral) {
-        println("Connected to: ${peripheral.name}")
-    }
-})
-
-// Start scanning
-blueFalcon.scan()
-```
-
-### Modern API (3.0)
 
 ```kotlin
 import dev.bluefalcon.core.*
@@ -133,7 +98,7 @@ blueFalcon.scan()
 
 ## 📚 Documentation
 
-- **[Migration Guide](docs/MIGRATION_GUIDE.md)** - Upgrading from 2.x to 3.0
+- **[Migration Guide](docs/MIGRATION_GUIDE.md)** - Upgrading from 2.x (legacy API reference)
 - **[API Reference](docs/API_REFERENCE.md)** - Complete API documentation
 - **[Plugin Development](docs/PLUGIN_DEVELOPMENT_GUIDE.md)** - Creating custom plugins
 - **[Testing Guide](docs/TESTING_GUIDE.md)** - Testing your BLE code

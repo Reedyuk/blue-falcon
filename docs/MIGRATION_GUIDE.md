@@ -1,4 +1,7 @@
-# Blue Falcon 3.0 Migration Guide
+# Blue Falcon Migration Guide
+
+> **Note:** The 2.x API is considered legacy. New projects should use the 3.0 API directly.
+> See the [README](../README.md) for the current installation instructions.
 
 ## Table of Contents
 
@@ -12,6 +15,43 @@
 8. [Platform-Specific Considerations](#platform-specific-considerations)
 9. [Plugin Usage](#plugin-usage)
 10. [FAQ](#faq)
+
+---
+
+## Quick Reference
+
+### Installing with 2.x Compatibility
+
+If you have existing 2.x code and want the simplest possible upgrade, just update the version — **no code changes required**:
+
+```kotlin
+commonMain.dependencies {
+    implementation("dev.bluefalcon:blue-falcon:3.3.0")
+}
+```
+
+Your existing delegate-based code continues to work unchanged.
+
+### Legacy API (2.x Style)
+
+```kotlin
+// Create instance
+val blueFalcon = BlueFalcon(log = null, ApplicationContext())
+
+// Register delegate
+blueFalcon.delegates.add(object : BlueFalconDelegate {
+    override fun didDiscoverDevice(peripheral: BluetoothPeripheral, advertisementData: Map<AdvertisementDataRetrievalKeys, Any>) {
+        println("Found device: ${peripheral.name}")
+    }
+
+    override fun didConnect(peripheral: BluetoothPeripheral) {
+        println("Connected to: ${peripheral.name}")
+    }
+})
+
+// Start scanning
+blueFalcon.scan()
+```
 
 ---
 
