@@ -6,7 +6,7 @@ plugins {
 }
 
 val falconVersion = "3.3.0"
-val coroutinesVersion = "1.9.0"
+val coroutinesVersion = "1.11.0"
 
 kotlin {
     jvmToolchain(21)
