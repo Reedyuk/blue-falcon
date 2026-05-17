@@ -50,7 +50,8 @@ class BluetoothDeviceViewModel(
                             peripheral = peripheral,
                             mtuStatus = existingDevice?.mtuStatus,
                             notificationData = existingDevice?.notificationData ?: emptyMap(),
-                            fotaState = existingDevice?.fotaState ?: FotaState.Idle
+                            fotaState = existingDevice?.fotaState ?: FotaState.Idle,
+                            rssi = peripheral.rssi ?: existingDevice?.rssi
                         )
                     }
                     
@@ -77,6 +78,19 @@ class BluetoothDeviceViewModel(
                             notificationData = updatedNotifications,
                             updateCount = device.updateCount + 1
                         )
+                    }
+                    state.copy(devices = HashMap(updatedDevices))
+                }
+            }
+        }
+
+        // Collect RSSI updates so the scan list stays current without a full peripherals re-emission
+        CoroutineScope(Dispatchers.IO).launch {
+            blueFalcon.rssiUpdates.collect { (uuid, rssi) ->
+                _deviceState.update { state ->
+                    val updatedDevices = state.devices.toMutableMap()
+                    updatedDevices[uuid]?.let { device ->
+                        updatedDevices[uuid] = device.copy(rssi = rssi)
                     }
                     state.copy(devices = HashMap(updatedDevices))
                 }

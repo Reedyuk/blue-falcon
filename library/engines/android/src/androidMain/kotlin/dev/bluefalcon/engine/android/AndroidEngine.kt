@@ -41,6 +41,9 @@ class AndroidEngine(
 
     private val _characteristicNotifications = MutableSharedFlow<CharacteristicNotification>(extraBufferCapacity = 64)
     override val characteristicNotifications: SharedFlow<CharacteristicNotification> = _characteristicNotifications
+
+    private val _rssiUpdates = MutableSharedFlow<Pair<String, Float>>(extraBufferCapacity = 64)
+    override val rssiUpdates: SharedFlow<Pair<String, Float>> = _rssiUpdates
     
     override var isScanning: Boolean = false
         private set
@@ -395,8 +398,15 @@ class AndroidEngine(
             logger?.debug("addScanResult $result")
             result?.device?.let { device ->
                 val bluetoothPeripheral = AndroidBluetoothPeripheral(device)
-                bluetoothPeripheral.rssi = result.rssi.toFloat()
-                _peripherals.value = _peripherals.value + setOf(bluetoothPeripheral)
+                val newRssi = result.rssi.toFloat()
+                bluetoothPeripheral.rssi = newRssi
+                val existing = _peripherals.value.find { it.uuid == bluetoothPeripheral.uuid }
+                if (existing != null) {
+                    (existing as? AndroidBluetoothPeripheral)?.rssi = newRssi
+                    _rssiUpdates.tryEmit(bluetoothPeripheral.uuid to newRssi)
+                } else {
+                    _peripherals.value = _peripherals.value + setOf(bluetoothPeripheral)
+                }
             }
         }
     }

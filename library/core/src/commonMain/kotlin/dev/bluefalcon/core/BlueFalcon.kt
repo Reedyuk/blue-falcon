@@ -2,6 +2,7 @@ package dev.bluefalcon.core
 
 import dev.bluefalcon.core.plugin.*
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 
 /**
@@ -36,6 +37,7 @@ class BlueFalcon(
     val peripherals: StateFlow<Set<BluetoothPeripheral>> get() = engine.peripherals
     val managerState: StateFlow<BluetoothManagerState> get() = engine.managerState
     val isScanning: Boolean get() = engine.isScanning
+    val rssiUpdates: SharedFlow<Pair<String, Float>> get() = engine.rssiUpdates
     
     /**
      * Scan for BLE devices
