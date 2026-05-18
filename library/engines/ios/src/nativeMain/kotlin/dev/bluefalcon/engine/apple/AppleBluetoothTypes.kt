@@ -71,7 +71,9 @@ class AppleBluetoothCharacteristic(
     
     override val value: ByteArray?
         get() = cbCharacteristic.value?.let { data ->
-            ByteArray(data.length.toInt()).apply {
+            val length = data.length.toInt()
+            if (length == 0) return@let ByteArray(0)
+            ByteArray(length).apply {
                 usePinned {
                     memcpy(it.addressOf(0), data.bytes, data.length)
                 }
