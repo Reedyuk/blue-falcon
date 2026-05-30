@@ -30,6 +30,9 @@ class AppleEngine : BlueFalconEngine, CBCentralManagerCallback, CBPeripheralCall
 
     private val _characteristicNotifications = MutableSharedFlow<CharacteristicNotification>(extraBufferCapacity = 64)
     override val characteristicNotifications: SharedFlow<CharacteristicNotification> = _characteristicNotifications
+
+    private val _rssiUpdates = MutableSharedFlow<Pair<String, Float>>(extraBufferCapacity = 64)
+    override val rssiUpdates: SharedFlow<Pair<String, Float>> = _rssiUpdates
     
     override var isScanning: Boolean = false
         private set
@@ -379,8 +382,16 @@ class AppleEngine : BlueFalconEngine, CBCentralManagerCallback, CBPeripheralCall
         rssi: NSNumber
     ) {
         if (isScanning) {
-            val device = AppleBluetoothPeripheral(peripheral, rssi.floatValue)
-            _peripherals.value = _peripherals.value + device
+            val uuid = peripheral.identifier.UUIDString
+            val rssiValue = rssi.floatValue
+            val existing = _peripherals.value.find { it.uuid == uuid } as? AppleBluetoothPeripheral
+            if (existing != null) {
+                existing.rssi = rssiValue
+                _rssiUpdates.tryEmit(uuid to rssiValue)
+            } else {
+                val device = AppleBluetoothPeripheral(peripheral, rssiValue)
+                _peripherals.value = _peripherals.value + device
+            }
         }
     }
     

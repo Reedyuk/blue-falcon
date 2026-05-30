@@ -125,13 +125,14 @@ fun DeviceScanView(
                     modifier = Modifier.fillMaxSize()
                 ) {
                     items(
-                        state.devices.values.toList().sortedByDescending { it.peripheral.rssi }
+                        state.devices.values.toList().sortedByDescending { it.rssi ?: it.peripheral.rssi }
                     ) { device ->
                         @OptIn(kotlin.uuid.ExperimentalUuidApi::class)
                         ScanResultCard(
                             deviceName = device.peripheral.name,
                             macId = device.peripheral.uuid,
-                            rssi = device.peripheral.rssi,
+                            rssi = device.rssi ?: device.peripheral.rssi,
+                            serviceUuids = device.peripheral.services.map { it.uuid.toString() },
                             connected = device.connected,
                             onConnect = { onEvent(UiEvent.OnConnectClick(device.peripheral.uuid)) },
                             onSelect = { onEvent(UiEvent.OnDeviceSelected(device.peripheral.uuid)) }

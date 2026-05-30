@@ -1,6 +1,7 @@
 package dev.bluefalcon.core
 
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 
@@ -28,6 +29,16 @@ interface BlueFalconEngine {
      * Characteristic notification/indication events emitted by platform callbacks.
      */
     val characteristicNotifications: SharedFlow<CharacteristicNotification>
+
+    /**
+     * RSSI update events emitted whenever a peripheral's signal strength is refreshed.
+     * Emits a pair of (peripheralUuid, rssi) so collectors can update UI without waiting
+     * for a structural change to the [peripherals] StateFlow.
+     *
+     * Engines that do not support this may leave the default no-op implementation.
+     */
+    val rssiUpdates: SharedFlow<Pair<String, Float>>
+        get() = MutableSharedFlow()
     
     /**
      * Check if currently scanning
