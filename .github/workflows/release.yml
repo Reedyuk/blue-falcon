@@ -3,6 +3,7 @@ name: Release
 on:
   release:
     types: [released]
+  workflow_dispatch: # Allows manual trigger from the GitHub UI for testing
 
 permissions:
   contents: read
@@ -14,8 +15,9 @@ env:
   ORG_GRADLE_PROJECT_signingInMemoryKeyPassword: ${{ secrets.GPG_KEY_PASS }}
 
 jobs:
-  build-and-publish:
-    runs-on: macos-latest
+  build-windows-dll:
+    name: Build Windows JNI DLL
+    runs-on: windows-latest
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
@@ -29,11 +31,47 @@ jobs:
     - name: Setup Gradle
       uses: gradle/gradle-build-action@v2
       
+    - name: Compile Native DLL
+      run: ./gradlew.bat -p ./library :engines:windows:compileNativeWindows --no-daemon
+      
+    - name: Upload Windows DLL
+      uses: actions/upload-artifact@v4
+      with:
+        name: bluefalcon-windows-dll
+        path: library/engines/windows/build/generated-resources/natives/bluefalcon-windows.dll
+
+  build-and-publish:
+    runs-on: macos-latest
+    needs: build-windows-dll
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up JDK 17
+      uses: actions/setup-java@v4
+      with:
+        java-version: 17
+        distribution: 'temurin'
+        
+    - name: Setup Gradle
+      uses: gradle/gradle-build-action@v2
+
+    - name: Download Windows DLL
+      uses: actions/download-artifact@v4
+      with:
+        name: bluefalcon-windows-dll
+        path: library/engines/windows/build/generated-resources/natives
+        
     - name: Build all modules
       run: ./gradlew -p ./library build --parallel --no-daemon
       
     - name: Publish to Maven Central
+      if: env.ORG_GRADLE_PROJECT_mavenCentralUsername != ''
       run: ./gradlew -p ./library publishAllPublicationsToMavenCentralRepository --no-daemon
+
+    - name: Publish to Maven Local (for testing)
+      if: env.ORG_GRADLE_PROJECT_mavenCentralUsername == ''
+      run: ./gradlew -p ./library publishToMavenLocal --no-daemon
       
     - name: Print published artifacts
       run: |

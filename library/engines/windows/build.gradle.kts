@@ -1,3 +1,5 @@
+import org.gradle.nativeplatform.platform.internal.DefaultNativePlatform
+
 plugins {
     kotlin("multiplatform") version "2.3.0"
     id("com.vanniktech.maven.publish")
@@ -12,6 +14,42 @@ repositories {
 val kotlinx_coroutines_version: String by project
 val versionEngines: String by project
 
+val isWindows = DefaultNativePlatform.getCurrentOperatingSystem().isWindows
+val generatedResourcesDir = layout.buildDirectory.dir("generated-resources")
+
+val compileNativeWindows by tasks.registering {
+    enabled = isWindows
+
+    val nativeSrcDir = project(":").file("src/windowsMain/cpp")
+    val cmakeBuildDir = file("${layout.buildDirectory.get().asFile}/cmake-build")
+    val outputDir = file("${generatedResourcesDir.get().asFile}/natives")
+
+    inputs.dir(nativeSrcDir)
+    outputs.dir(outputDir)
+
+    doLast {
+        cmakeBuildDir.mkdirs()
+        outputDir.mkdirs()
+
+        exec {
+            workingDir = cmakeBuildDir
+            commandLine = listOf("cmake", nativeSrcDir.absolutePath, "-A", "x64")
+        }
+
+        exec {
+            workingDir = cmakeBuildDir
+            commandLine = listOf("cmake", "--build", ".", "--config", "Release")
+        }
+
+        val dllFile = File(cmakeBuildDir, "Release/bluefalcon-windows.dll")
+        if (dllFile.exists()) {
+            dllFile.copyTo(File(outputDir, "bluefalcon-windows.dll"), overwrite = true)
+        } else {
+            throw GradleException("Failed to find compiled DLL at ${dllFile.absolutePath}")
+        }
+    }
+}
+
 kotlin {
     jvmToolchain(17)
     
@@ -19,11 +57,18 @@ kotlin {
     
     sourceSets {
         val jvmMain by getting {
+            resources.srcDir(generatedResourcesDir)
             dependencies {
                 implementation(project(":core"))
                 implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:$kotlinx_coroutines_version")
             }
         }
+    }
+}
+
+tasks.named("jvmProcessResources") {
+    if (isWindows) {
+        dependsOn(compileNativeWindows)
     }
 }
 

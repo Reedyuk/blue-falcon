@@ -32,8 +32,22 @@ actual class BlueFalcon actual constructor(
             _managerState.value = BluetoothManagerState.Ready
             log?.info("Windows Bluetooth initialized successfully")
         } catch (e: UnsatisfiedLinkError) {
-            log?.error("Failed to load native library: ${e.message}")
-            _managerState.value = BluetoothManagerState.NotReady
+            try {
+                // Try loading from classpath resources
+                val resourcePath = "natives/bluefalcon-windows.dll"
+                val stream = BlueFalcon::class.java.classLoader?.getResourceAsStream(resourcePath)
+                    ?: throw e
+                val tmp = java.io.File.createTempFile("bluefalcon-windows", ".dll")
+                tmp.deleteOnExit()
+                stream.use { it.copyTo(tmp.outputStream()) }
+                System.load(tmp.absolutePath)
+                nativeInitialize()
+                _managerState.value = BluetoothManagerState.Ready
+                log?.info("Windows Bluetooth initialized successfully from packaged resource")
+            } catch (ex: Exception) {
+                log?.error("Failed to load native library: ${e.message} and fallback: ${ex.message}")
+                _managerState.value = BluetoothManagerState.NotReady
+            }
         } catch (e: Exception) {
             log?.error("Failed to initialize Windows Bluetooth: ${e.message}")
             _managerState.value = BluetoothManagerState.NotReady

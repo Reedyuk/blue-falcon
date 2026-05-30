@@ -38,7 +38,13 @@ class WindowsEngine : BlueFalconEngine {
             nativeInitialize()
             _managerState.value = BluetoothManagerState.Ready
         } catch (e: UnsatisfiedLinkError) {
-            _managerState.value = BluetoothManagerState.NotReady
+            try {
+                NativeLibLoader.load("natives/bluefalcon-windows.dll")
+                nativeInitialize()
+                _managerState.value = BluetoothManagerState.Ready
+            } catch (ex: Exception) {
+                _managerState.value = BluetoothManagerState.NotReady
+            }
         } catch (e: Exception) {
             _managerState.value = BluetoothManagerState.NotReady
         }
