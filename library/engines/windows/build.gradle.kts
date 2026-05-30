@@ -20,30 +20,42 @@ val generatedResourcesDir = layout.buildDirectory.dir("generated-resources")
 val compileNativeWindows by tasks.registering {
     enabled = isWindows
 
-    val nativeSrcDir = project(":").file("src/windowsMain/cpp")
-    val cmakeBuildDir = file("${layout.buildDirectory.get().asFile}/cmake-build")
-    val outputDir = file("${generatedResourcesDir.get().asFile}/natives")
+    val nativeSrc = project(":").file("src/windowsMain/cpp")
+    val cmakeBuild = file("${layout.buildDirectory.get().asFile}/cmake-build")
+    val output = file("${generatedResourcesDir.get().asFile}/natives")
 
-    inputs.dir(nativeSrcDir)
-    outputs.dir(outputDir)
+    inputs.dir(nativeSrc)
+    outputs.dir(output)
 
     doLast {
-        cmakeBuildDir.mkdirs()
-        outputDir.mkdirs()
+        val srcDir = nativeSrc
+        val buildDir = cmakeBuild
+        val destDir = output
 
-        exec {
-            workingDir = cmakeBuildDir
-            commandLine = listOf("cmake", nativeSrcDir.absolutePath, "-A", "x64")
+        buildDir.mkdirs()
+        destDir.mkdirs()
+
+        val configureExit = ProcessBuilder("cmake", srcDir.absolutePath, "-A", "x64")
+            .directory(buildDir)
+            .inheritIO()
+            .start()
+            .waitFor()
+        if (configureExit != 0) {
+            throw GradleException("CMake configure failed with exit code $configureExit")
         }
 
-        exec {
-            workingDir = cmakeBuildDir
-            commandLine = listOf("cmake", "--build", ".", "--config", "Release")
+        val buildExit = ProcessBuilder("cmake", "--build", ".", "--config", "Release")
+            .directory(buildDir)
+            .inheritIO()
+            .start()
+            .waitFor()
+        if (buildExit != 0) {
+            throw GradleException("CMake build failed with exit code $buildExit")
         }
 
-        val dllFile = File(cmakeBuildDir, "Release/bluefalcon-windows.dll")
+        val dllFile = File(buildDir, "Release/bluefalcon-windows.dll")
         if (dllFile.exists()) {
-            dllFile.copyTo(File(outputDir, "bluefalcon-windows.dll"), overwrite = true)
+            dllFile.copyTo(File(destDir, "bluefalcon-windows.dll"), overwrite = true)
         } else {
             throw GradleException("Failed to find compiled DLL at ${dllFile.absolutePath}")
         }
