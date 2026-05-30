@@ -16,20 +16,8 @@ kotlin {
     jvm()
 
     // macOS native
-    macosArm64 {
-        binaries {
-            executable {
-                entryPoint = "main"
-            }
-        }
-    }
-    macosX64 {
-        binaries {
-            executable {
-                entryPoint = "main"
-            }
-        }
-    }
+    macosArm64()
+    macosX64()
 
     targets.withType(org.jetbrains.kotlin.gradle.plugin.mpp.KotlinNativeTarget::class.java).all {
         binaries.withType(org.jetbrains.kotlin.gradle.plugin.mpp.Framework::class.java).all {
@@ -144,7 +132,7 @@ kotlin.sourceSets.all {
 
 android {
     namespace = "com.plcoding.contactscomposemultiplatform"
-    compileSdk = 34
+    compileSdk = 35
     defaultConfig {
         minSdk = 24
     }
