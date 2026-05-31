@@ -35,22 +35,24 @@ val compileNativeWindows by tasks.registering {
         buildDir.mkdirs()
         destDir.mkdirs()
 
-        val configureExit = ProcessBuilder("cmake", srcDir.absolutePath, "-A", "x64")
+        val configureProc = ProcessBuilder("cmake", srcDir.absolutePath, "-A", "x64")
             .directory(buildDir)
             .redirectOutput(ProcessBuilder.Redirect.INHERIT)
             .redirectError(ProcessBuilder.Redirect.INHERIT)
             .start()
-            .waitFor()
+        configureProc.outputStream.close()
+        val configureExit = configureProc.waitFor()
         if (configureExit != 0) {
             throw GradleException("CMake configure failed with exit code $configureExit")
         }
 
-        val buildExit = ProcessBuilder("cmake", "--build", ".", "--config", "Release")
+        val buildProc = ProcessBuilder("cmake", "--build", ".", "--config", "Release")
             .directory(buildDir)
             .redirectOutput(ProcessBuilder.Redirect.INHERIT)
             .redirectError(ProcessBuilder.Redirect.INHERIT)
             .start()
-            .waitFor()
+        buildProc.outputStream.close()
+        val buildExit = buildProc.waitFor()
         if (buildExit != 0) {
             throw GradleException("CMake build failed with exit code $buildExit")
         }
