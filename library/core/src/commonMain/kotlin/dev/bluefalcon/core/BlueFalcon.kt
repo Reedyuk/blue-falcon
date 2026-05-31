@@ -222,10 +222,14 @@ class BlueFalcon(
     }
     
     /**
-     * Open L2CAP channel
+     * Open an L2CAP connection-oriented channel and return the connected socket.
      */
-    suspend fun openL2capChannel(peripheral: BluetoothPeripheral, psm: Int) {
-        engine.openL2capChannel(peripheral, psm)
+    suspend fun openL2capChannel(
+        peripheral: BluetoothPeripheral,
+        psm: Int,
+        secure: Boolean = false
+    ): BluetoothSocket {
+        return engine.openL2capChannel(peripheral, psm, secure)
     }
     
     /**

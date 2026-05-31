@@ -290,8 +290,16 @@ class WindowsEngine : BlueFalconEngine {
     
     override fun refreshGattCache(peripheral: BluetoothPeripheral): Boolean = false
     
-    override suspend fun openL2capChannel(peripheral: BluetoothPeripheral, psm: Int) {
-        throw UnsupportedOperationException("L2CAP is not supported on Windows")
+    override suspend fun openL2capChannel(
+        peripheral: BluetoothPeripheral,
+        psm: Int,
+        secure: Boolean
+    ): BluetoothSocket {
+        // AF_BTH/BTHPROTO_L2CAP does not expose a BLE CoC client path on Windows 11
+        // (verified empirically with a standalone WSASocket probe).
+        throw UnsupportedOperationException(
+            "L2CAP is not supported on Windows. Use the Android, iOS, macOS, or Linux engine."
+        )
     }
     
     override suspend fun createBond(peripheral: BluetoothPeripheral) {

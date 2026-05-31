@@ -227,7 +227,11 @@ class JsEngine : BlueFalconEngine {
         return false
     }
     
-    override suspend fun openL2capChannel(peripheral: BluetoothPeripheral, psm: Int) {
+    override suspend fun openL2capChannel(
+        peripheral: BluetoothPeripheral,
+        psm: Int,
+        secure: Boolean
+    ): BluetoothSocket {
         throw UnsupportedOperationException("openL2capChannel is not supported in Web Bluetooth API")
     }
     
