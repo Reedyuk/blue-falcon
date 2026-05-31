@@ -37,7 +37,8 @@ val compileNativeWindows by tasks.registering {
 
         val configureExit = ProcessBuilder("cmake", srcDir.absolutePath, "-A", "x64")
             .directory(buildDir)
-            .inheritIO()
+            .redirectOutput(ProcessBuilder.Redirect.INHERIT)
+            .redirectError(ProcessBuilder.Redirect.INHERIT)
             .start()
             .waitFor()
         if (configureExit != 0) {
@@ -46,7 +47,8 @@ val compileNativeWindows by tasks.registering {
 
         val buildExit = ProcessBuilder("cmake", "--build", ".", "--config", "Release")
             .directory(buildDir)
-            .inheritIO()
+            .redirectOutput(ProcessBuilder.Redirect.INHERIT)
+            .redirectError(ProcessBuilder.Redirect.INHERIT)
             .start()
             .waitFor()
         if (buildExit != 0) {
