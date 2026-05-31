@@ -1,6 +1,10 @@
 import org.gradle.nativeplatform.platform.internal.DefaultNativePlatform
 import org.gradle.process.ExecOperations
 import javax.inject.Inject
+import org.gradle.api.tasks.CacheableTask
+import org.gradle.api.tasks.PathSensitive
+import org.gradle.api.tasks.PathSensitivity
+
 
 plugins {
     kotlin("multiplatform") version "2.3.0"
@@ -8,11 +12,13 @@ plugins {
     id("signing")
 }
 
+@CacheableTask
 abstract class CompileNativeWindowsTask @Inject constructor(
     private val execOperations: ExecOperations
 ) : DefaultTask() {
 
     @get:InputDirectory
+    @get:PathSensitive(PathSensitivity.RELATIVE)
     abstract val nativeSrcDir: DirectoryProperty
 
     @get:OutputDirectory
@@ -41,7 +47,7 @@ abstract class CompileNativeWindowsTask @Inject constructor(
 
         val buildResult = execOperations.exec {
             workingDir = buildDir
-            commandLine = listOf("cmake", "--build", ".", "--config", "Release")
+            commandLine = listOf("cmake", "--build", ".", "--config", "Release", "--parallel")
             isIgnoreExitValue = true
         }
         if (buildResult.exitValue != 0) {

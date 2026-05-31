@@ -29,10 +29,10 @@ jobs:
         distribution: 'temurin'
         
     - name: Setup Gradle
-      uses: gradle/gradle-build-action@v2
+      uses: gradle/actions/setup-gradle@v4
       
     - name: Compile Native DLL
-      run: ./gradlew.bat -p ./library :engines:windows:compileNativeWindows --no-daemon
+      run: ./gradlew.bat -p ./library :engines:windows:compileNativeWindows
       
     - name: Upload Windows DLL
       uses: actions/upload-artifact@v4
@@ -54,7 +54,7 @@ jobs:
         distribution: 'temurin'
         
     - name: Setup Gradle
-      uses: gradle/gradle-build-action@v2
+      uses: gradle/actions/setup-gradle@v4
 
     - name: Download Windows DLL
       uses: actions/download-artifact@v4
@@ -63,11 +63,11 @@ jobs:
         path: library/engines/windows/build/generated-resources/natives
         
     - name: Build all modules
-      run: ./gradlew -p ./library build --parallel --no-daemon
+      run: ./gradlew -p ./library build --parallel
       
     - name: Publish to Maven Central
       if: env.ORG_GRADLE_PROJECT_mavenCentralUsername != ''
-      run: ./gradlew -p ./library publishAllPublicationsToMavenCentralRepository --no-daemon
+      run: ./gradlew -p ./library publishAllPublicationsToMavenCentralRepository
       
     - name: Print published artifacts
       run: |
