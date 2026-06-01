@@ -1,6 +1,7 @@
 package com.example.bluefalconcomposemultiplatform.ble.presentation
 
 import dev.bluefalcon.core.BlueFalcon
+import dev.bluefalcon.core.BluetoothPeripheral
 import dev.bluefalcon.core.BluetoothAdvertiser
 import dev.bluefalcon.plugins.broadcast.DeviceBroadcastPlugin
 import dev.bluefalcon.plugins.clone.CloneConfig
@@ -34,11 +35,13 @@ class BluetoothDeviceViewModel(
 
     private val _deviceState: MutableStateFlow<BluetoothDeviceState> = MutableStateFlow(BluetoothDeviceState())
     val deviceState: StateFlow<BluetoothDeviceState> get() = _deviceState
+    private val discoveredPeripheralsSnapshot = MutableStateFlow<Set<BluetoothPeripheral>>(emptySet())
 
     init {
         // Collect peripherals from BlueFalcon's StateFlow
         CoroutineScope(Dispatchers.IO).launch {
             blueFalcon.peripherals.collect { peripherals ->
+                discoveredPeripheralsSnapshot.value = peripherals
                 _deviceState.update { currentState ->
                     currentState.copy(
                         devices = buildFilteredDevices(
@@ -117,6 +120,7 @@ class BluetoothDeviceViewModel(
                         runCatching { blueFalcon.stopScanning() }
                             .onFailure { println("Failed to stop existing scan: ${it.message}") }
                         blueFalcon.clearPeripherals()
+                        discoveredPeripheralsSnapshot.value = emptySet()
                         _deviceState.update {
                             it.copy(
                                 devices = hashMapOf(),
@@ -142,7 +146,7 @@ class BluetoothDeviceViewModel(
             }
 
             is UiEvent.OnScanUuidFilterChanged -> {
-                val peripheralsSnapshot = blueFalcon.peripherals.value
+                val peripheralsSnapshot = discoveredPeripheralsSnapshot.value
                 _deviceState.update { state ->
                     val updatedState = state.copy(scanUuidFilter = event.value)
                     updatedState.copy(
@@ -156,7 +160,7 @@ class BluetoothDeviceViewModel(
             }
 
             is UiEvent.OnScanAdvertisementFilterChanged -> {
-                val peripheralsSnapshot = blueFalcon.peripherals.value
+                val peripheralsSnapshot = discoveredPeripheralsSnapshot.value
                 _deviceState.update { state ->
                     val updatedState = state.copy(scanAdvertisementFilter = event.value)
                     updatedState.copy(
