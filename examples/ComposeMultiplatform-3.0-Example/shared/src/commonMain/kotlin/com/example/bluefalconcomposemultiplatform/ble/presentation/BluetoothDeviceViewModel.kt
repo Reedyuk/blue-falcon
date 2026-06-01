@@ -40,10 +40,11 @@ class BluetoothDeviceViewModel(
         CoroutineScope(Dispatchers.IO).launch {
             blueFalcon.peripherals.collect { peripherals ->
                 _deviceState.update { currentState ->
-                    val updatedDevices = HashMap<String, EnhancedBluetoothPeripheral>()
+                    val updatedDevices = HashMap<String, EnhancedBluetoothPeripheral>(peripherals.size)
+                    val matchingPeripherals = peripherals
+                        .filter { peripheralMatchesFilters(it, currentState) }
 
-                    peripherals.forEach { peripheral ->
-                        if (!peripheralMatchesFilters(peripheral, currentState)) return@forEach
+                    matchingPeripherals.forEach { peripheral ->
                         val existingDevice = currentState.devices[peripheral.uuid]
                         // Update peripheral data while preserving connection state
                         updatedDevices[peripheral.uuid] = EnhancedBluetoothPeripheral(
@@ -126,7 +127,7 @@ class BluetoothDeviceViewModel(
                     try {
                         _deviceState.update {
                             it.copy(
-                                devices = HashMap(),
+                                devices = hashMapOf(),
                                 isScanning = true
                             )
                         }
@@ -150,12 +151,10 @@ class BluetoothDeviceViewModel(
 
             is UiEvent.OnScanUuidFilterChanged -> {
                 _deviceState.update { it.copy(scanUuidFilter = event.value) }
-                restartScanWithFiltersIfNeeded()
             }
 
             is UiEvent.OnScanAdvertisementFilterChanged -> {
                 _deviceState.update { it.copy(scanAdvertisementFilter = event.value) }
-                restartScanWithFiltersIfNeeded()
             }
 
             is UiEvent.OnConnectClick -> {
@@ -440,20 +439,6 @@ class BluetoothDeviceViewModel(
         }
     }
 
-    private fun restartScanWithFiltersIfNeeded() {
-        if (!_deviceState.value.isScanning) return
-
-        CoroutineScope(Dispatchers.IO).launch {
-            try {
-                blueFalcon.stopScanning()
-                _deviceState.update { it.copy(devices = HashMap()) }
-                blueFalcon.scan()
-            } catch (e: Exception) {
-                println("Failed to restart scan with filters: ${e.message}")
-            }
-        }
-    }
-
     private fun peripheralMatchesFilters(
         peripheral: dev.bluefalcon.core.BluetoothPeripheral,
         state: BluetoothDeviceState
@@ -466,12 +451,12 @@ class BluetoothDeviceViewModel(
         }
 
         if (state.scanAdvertisementFilter.isBlank()) return true
-        val advertisementText = buildString {
-            append(peripheral.name.orEmpty())
-            append(' ')
-            append(peripheral.services.joinToString(separator = " ") { it.uuid.toString() })
+        if (peripheral.name.orEmpty().contains(state.scanAdvertisementFilter, ignoreCase = true)) {
+            return true
         }
-        return advertisementText.contains(state.scanAdvertisementFilter, ignoreCase = true)
+        return peripheral.services.any {
+            it.uuid.toString().contains(state.scanAdvertisementFilter, ignoreCase = true)
+        }
     }
 
     private fun findSmpCharacteristic(
