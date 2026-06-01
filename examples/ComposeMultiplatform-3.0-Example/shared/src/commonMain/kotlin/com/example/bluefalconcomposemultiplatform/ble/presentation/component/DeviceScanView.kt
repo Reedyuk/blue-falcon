@@ -199,8 +199,7 @@ fun DeviceScanView(
                         tint = MaterialTheme.colorScheme.outline
                     )
                     if (state.isScanning) {
-                       Spacer(modifier = Modifier.height(16.dp))
-                       CircularProgressIndicator()
+                       CircularProgressIndicator(modifier = Modifier.padding(top = 16.dp))
                     }
                     Spacer(modifier = Modifier.height(16.dp))
                     Text(
