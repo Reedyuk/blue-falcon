@@ -1,6 +1,7 @@
 #import <Foundation/Foundation.h>
 #import <CoreBluetooth/CoreBluetooth.h>
 #include <jni.h>
+#include <unistd.h>
 
 // Forward declaration
 @interface BlueFalconBLEBridge : NSObject <CBCentralManagerDelegate, CBPeripheralDelegate>
@@ -17,6 +18,33 @@ static NSMutableDictionary<NSString*, CBPeripheral*> *gPeripherals = NULL;
 // Accessed only on gBLEQueue, so no locking is needed.
 static NSMutableSet<NSString*> *gPendingReads = NULL;
 static dispatch_queue_t gBLEQueue = NULL;
+
+// ---------------------------------------------------------------------------
+// L2CAP channel support
+// ---------------------------------------------------------------------------
+
+// Owns one CBL2CAPChannel and pumps its NSStream pair on a dedicated run loop.
+@interface L2CapChannelHolder : NSObject <NSStreamDelegate>
+@property (assign) jlong handle;
+@property (retain) CBL2CAPChannel *channel;
+@property (retain) NSInputStream *input;
+@property (retain) NSOutputStream *output;
+@property (retain) NSMutableData *outBuffer;
+@property (assign) BOOL outputHasSpace;
+@property (assign) BOOL torndown;
+- (id)initWithHandle:(jlong)h channel:(CBL2CAPChannel *)channel;
+- (void)scheduleStreams;
+- (void)enqueueWrite:(NSData *)data;
+- (void)teardown;
+@end
+
+// handle (jlong) -> L2CapChannelHolder
+static NSMutableDictionary<NSNumber*, L2CapChannelHolder*> *gL2capChannels = NULL;
+static jlong gL2capNextHandle = 1;
+static NSThread *gL2capThread = NULL;
+static NSRunLoop *gL2capRunLoop = NULL;
+
+static void ensureL2capThread(void);
 
 // ---------------------------------------------------------------------------
 // JNI thread helpers
@@ -117,6 +145,144 @@ static void callVoid0(JNIEnv *env, const char *name, const char *sig) {
     jmethodID m = (*env)->GetMethodID(env, cls, name, sig);
     (*env)->DeleteLocalRef(env, cls);
     if (m) (*env)->CallVoidMethod(env, gEngineRef, m);
+}
+
+// ---------------------------------------------------------------------------
+// L2CAP channel holder
+// ---------------------------------------------------------------------------
+
+@implementation L2CapChannelHolder
+
+- (id)initWithHandle:(jlong)h channel:(CBL2CAPChannel *)channel {
+    self = [super init];
+    if (self) {
+        _handle = h;
+        _channel = [channel retain];
+        _input = [[channel inputStream] retain];
+        _output = [[channel outputStream] retain];
+        _outBuffer = [[NSMutableData alloc] init];
+        _outputHasSpace = NO;
+        _torndown = NO;
+    }
+    return self;
+}
+
+// Runs on the dedicated L2CAP run-loop thread.
+- (void)scheduleStreams {
+    [_input setDelegate:self];
+    [_output setDelegate:self];
+    [_input scheduleInRunLoop:[NSRunLoop currentRunLoop] forMode:NSDefaultRunLoopMode];
+    [_output scheduleInRunLoop:[NSRunLoop currentRunLoop] forMode:NSDefaultRunLoopMode];
+    [_input open];
+    [_output open];
+}
+
+- (void)drainOutput {
+    while (_outputHasSpace && [_outBuffer length] > 0) {
+        NSInteger written = [_output write:(const uint8_t *)[_outBuffer bytes]
+                                 maxLength:[_outBuffer length]];
+        if (written > 0) {
+            [_outBuffer replaceBytesInRange:NSMakeRange(0, written) withBytes:NULL length:0];
+        } else {
+            _outputHasSpace = NO;
+            break;
+        }
+    }
+}
+
+// Runs on the L2CAP run-loop thread (via performSelector:onThread:).
+- (void)enqueueWrite:(NSData *)data {
+    if (_torndown || data == nil) return;
+    [_outBuffer appendData:data];
+    [self drainOutput];
+}
+
+// Runs on the L2CAP run-loop thread (via performSelector:onThread:).
+- (void)teardown {
+    if (_torndown) return;
+    _torndown = YES;
+    [_input setDelegate:nil];
+    [_output setDelegate:nil];
+    [_input removeFromRunLoop:[NSRunLoop currentRunLoop] forMode:NSDefaultRunLoopMode];
+    [_output removeFromRunLoop:[NSRunLoop currentRunLoop] forMode:NSDefaultRunLoopMode];
+    [_input close];
+    [_output close];
+}
+
+- (void)notifyClosed {
+    jboolean att; JNIEnv *env = getEnv(&att);
+    if (env && gEngineRef) {
+        jclass cls = (*env)->GetObjectClass(env, gEngineRef);
+        jmethodID m = (*env)->GetMethodID(env, cls, "onL2capChannelClosed", "(J)V");
+        (*env)->DeleteLocalRef(env, cls);
+        if (m) (*env)->CallVoidMethod(env, gEngineRef, m, _handle);
+    }
+    releaseEnv(att);
+}
+
+- (void)stream:(NSStream *)stream handleEvent:(NSStreamEvent)event {
+    switch (event) {
+        case NSStreamEventHasBytesAvailable: {
+            if (stream != _input) break;
+            uint8_t buf[4096];
+            while ([_input hasBytesAvailable]) {
+                NSInteger n = [_input read:buf maxLength:sizeof(buf)];
+                if (n <= 0) break;
+                jboolean att; JNIEnv *env = getEnv(&att);
+                if (env && gEngineRef) {
+                    jbyteArray arr = (*env)->NewByteArray(env, (jsize)n);
+                    if (arr) {
+                        (*env)->SetByteArrayRegion(env, arr, 0, (jsize)n, (const jbyte *)buf);
+                        jclass cls = (*env)->GetObjectClass(env, gEngineRef);
+                        jmethodID m = (*env)->GetMethodID(env, cls, "onL2capDataReceived", "(J[B)V");
+                        (*env)->DeleteLocalRef(env, cls);
+                        if (m) (*env)->CallVoidMethod(env, gEngineRef, m, _handle, arr);
+                        (*env)->DeleteLocalRef(env, arr);
+                    }
+                }
+                releaseEnv(att);
+            }
+            break;
+        }
+        case NSStreamEventHasSpaceAvailable: {
+            if (stream != _output) break;
+            _outputHasSpace = YES;
+            [self drainOutput];
+            break;
+        }
+        case NSStreamEventEndEncountered:
+        case NSStreamEventErrorOccurred: {
+            [self notifyClosed];
+            break;
+        }
+        default:
+            break;
+    }
+}
+
+- (void)dealloc {
+    [_outBuffer release];
+    [_input release];
+    [_output release];
+    [_channel release];
+    [super dealloc];
+}
+
+@end
+
+// Lazily starts a dedicated thread whose run loop drives all L2CAP streams.
+// Called only from the serial gBLEQueue, so no extra locking is needed.
+static void ensureL2capThread(void) {
+    if (gL2capThread) return;
+    gL2capThread = [[NSThread alloc] initWithBlock:^{
+        gL2capRunLoop = [NSRunLoop currentRunLoop];
+        [gL2capRunLoop addPort:[NSMachPort port] forMode:NSDefaultRunLoopMode];
+        while (1) {
+            [gL2capRunLoop runMode:NSDefaultRunLoopMode beforeDate:[NSDate distantFuture]];
+        }
+    }];
+    [gL2capThread start];
+    while (!gL2capRunLoop) { usleep(1000); }
 }
 
 // ---------------------------------------------------------------------------
@@ -398,6 +564,51 @@ didUpdateNotificationStateForCharacteristic:(CBCharacteristic *)characteristic
     // Notification state is reflected in characteristic.isNotifying; no extra callback needed
 }
 
+- (void)peripheral:(CBPeripheral *)peripheral
+didOpenL2CAPChannel:(CBL2CAPChannel *)channel
+             error:(NSError *)error {
+    NSString *puuid = peripheral.identifier.UUIDString;
+
+    jboolean att; JNIEnv *env = getEnv(&att);
+    if (!env || !gEngineRef) { releaseEnv(att); return; }
+
+    jclass cls = (*env)->GetObjectClass(env, gEngineRef);
+    jmethodID m = (*env)->GetMethodID(env, cls, "onL2capChannelOpened",
+        "(Ljava/lang/String;JLjava/lang/String;)V");
+    (*env)->DeleteLocalRef(env, cls);
+
+    if (error || !channel) {
+        if (m) {
+            jstring jpuuid = toJString(env, puuid);
+            NSString *msg = error ? [error localizedDescription] : @"L2CAP channel was null";
+            jstring jerr = toJString(env, msg);
+            (*env)->CallVoidMethod(env, gEngineRef, m, jpuuid, (jlong)-1, jerr);
+            if (jpuuid) (*env)->DeleteLocalRef(env, jpuuid);
+            if (jerr) (*env)->DeleteLocalRef(env, jerr);
+        }
+        releaseEnv(att);
+        return;
+    }
+
+    jlong handle = gL2capNextHandle++;
+    L2CapChannelHolder *holder = [[L2CapChannelHolder alloc] initWithHandle:handle channel:channel];
+    gL2capChannels[@(handle)] = holder;
+    [holder release]; // the dictionary now owns it
+
+    ensureL2capThread();
+    [holder performSelector:@selector(scheduleStreams)
+                   onThread:gL2capThread
+                 withObject:nil
+              waitUntilDone:NO];
+
+    if (m) {
+        jstring jpuuid = toJString(env, puuid);
+        (*env)->CallVoidMethod(env, gEngineRef, m, jpuuid, handle, NULL);
+        if (jpuuid) (*env)->DeleteLocalRef(env, jpuuid);
+    }
+    releaseEnv(att);
+}
+
 @end
 
 // ---------------------------------------------------------------------------
@@ -412,6 +623,7 @@ Java_dev_bluefalcon_engine_macos_jvm_MacosJvmEngine_nativeInitialize(JNIEnv *env
     gEngineRef = (*env)->NewGlobalRef(env, thiz);
 
     gPeripherals = [NSMutableDictionary dictionary];
+    gL2capChannels = [[NSMutableDictionary alloc] init];
     gPendingReads = [NSMutableSet set];
     gBLEQueue = dispatch_queue_create("dev.bluefalcon.ble", DISPATCH_QUEUE_SERIAL);
     gBridge = [[BlueFalconBLEBridge alloc] init];
@@ -618,4 +830,53 @@ Java_dev_bluefalcon_engine_macos_jvm_MacosJvmEngine_nativeChangeMTU(JNIEnv *env,
         }
         releaseEnv(att);
     });
+}
+
+// ---------------------------------------------------------------------------
+// L2CAP JNI entry points
+// ---------------------------------------------------------------------------
+
+JNIEXPORT void JNICALL
+Java_dev_bluefalcon_engine_macos_jvm_MacosJvmEngine_nativeOpenL2capChannel(JNIEnv *env, jobject thiz,
+                                                                            jstring peripheralUuid,
+                                                                            jint psm) {
+    NSString *puuid = toString(env, peripheralUuid);
+    uint16_t psmValue = (uint16_t)psm;
+    dispatch_async(gBLEQueue, ^{
+        CBPeripheral *p = gPeripherals[puuid];
+        if (p) {
+            p.delegate = gBridge;
+            [p openL2CAPChannel:psmValue];
+        }
+    });
+}
+
+JNIEXPORT void JNICALL
+Java_dev_bluefalcon_engine_macos_jvm_MacosJvmEngine_nativeL2capWrite(JNIEnv *env, jobject thiz,
+                                                                      jlong handle, jbyteArray data) {
+    L2CapChannelHolder *holder = [gL2capChannels[@(handle)] retain];
+    if (!holder) return;
+    if (gL2capThread) {
+        NSData *nsdata = toNSData(env, data);
+        [holder performSelector:@selector(enqueueWrite:)
+                       onThread:gL2capThread
+                     withObject:nsdata
+                  waitUntilDone:NO];
+    }
+    [holder release];
+}
+
+JNIEXPORT void JNICALL
+Java_dev_bluefalcon_engine_macos_jvm_MacosJvmEngine_nativeL2capClose(JNIEnv *env, jobject thiz,
+                                                                      jlong handle) {
+    L2CapChannelHolder *holder = [gL2capChannels[@(handle)] retain];
+    if (!holder) return;
+    [gL2capChannels removeObjectForKey:@(handle)];
+    if (gL2capThread) {
+        [holder performSelector:@selector(teardown)
+                       onThread:gL2capThread
+                     withObject:nil
+                  waitUntilDone:NO];
+    }
+    [holder release];
 }

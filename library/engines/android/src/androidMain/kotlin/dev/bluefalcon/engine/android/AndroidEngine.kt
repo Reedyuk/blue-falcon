@@ -18,7 +18,7 @@ import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.util.concurrent.CopyOnWriteArrayList
 
 /**
@@ -296,19 +296,31 @@ class AndroidEngine(
         return result
     }
     
-    override suspend fun openL2capChannel(peripheral: BluetoothPeripheral, psm: Int) {
-        val device = (peripheral as? AndroidBluetoothPeripheral)?.device ?: return
+    override suspend fun openL2capChannel(
+        peripheral: BluetoothPeripheral,
+        psm: Int,
+        secure: Boolean
+    ): dev.bluefalcon.core.BluetoothSocket {
+        val device = (peripheral as? AndroidBluetoothPeripheral)?.device
+            ?: throw L2capException("Peripheral must be an AndroidBluetoothPeripheral")
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
-            logger?.error("L2Cap channels require Android 10 (API 29) or higher")
-            return
+            throw L2capException("L2CAP channels require Android 10 (API 29) or higher")
         }
-        scope.launch(Dispatchers.IO) {
+        return withContext(Dispatchers.IO) {
             try {
-                val socket = device.createL2capChannel(psm)
+                val socket = if (secure) {
+                    device.createL2capChannel(psm)
+                } else {
+                    device.createInsecureL2capChannel(psm)
+                }
                 socket.connect()
-                logger?.info("L2CAP channel opened on PSM $psm")
+                logger?.info("L2CAP channel opened on PSM $psm (secure=$secure)")
+                L2CapSocket(socket, psm, peripheral, scope)
+            } catch (e: L2capException) {
+                throw e
             } catch (e: Exception) {
                 logger?.error("Failed to open L2Cap channel: ${e.message}")
+                throw L2capException("Failed to open L2CAP channel on PSM $psm", e)
             }
         }
     }

@@ -165,8 +165,17 @@ class FakeBlueFalconEngine : BlueFalconEngine {
         return true
     }
     
-    override suspend fun openL2capChannel(peripheral: BluetoothPeripheral, psm: Int) {
-        // No-op for testing
+    var lastL2capPsm: Int? = null
+    var lastL2capSecure: Boolean? = null
+
+    override suspend fun openL2capChannel(
+        peripheral: BluetoothPeripheral,
+        psm: Int,
+        secure: Boolean
+    ): BluetoothSocket {
+        lastL2capPsm = psm
+        lastL2capSecure = secure
+        return FakeBluetoothSocket(psm, peripheral)
     }
     
     override suspend fun createBond(peripheral: BluetoothPeripheral) {

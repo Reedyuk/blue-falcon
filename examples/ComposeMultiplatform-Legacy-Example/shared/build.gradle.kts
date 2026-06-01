@@ -93,3 +93,8 @@ android {
         targetCompatibility = JavaVersion.VERSION_21
     }
 }
+
+kotlin.sourceSets.all {
+    languageSettings.optIn("kotlin.uuid.ExperimentalUuidApi")
+}
+

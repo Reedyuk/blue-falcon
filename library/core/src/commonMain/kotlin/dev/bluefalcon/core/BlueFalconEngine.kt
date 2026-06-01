@@ -184,9 +184,18 @@ interface BlueFalconEngine {
     fun refreshGattCache(peripheral: BluetoothPeripheral): Boolean
     
     /**
-     * Open an L2CAP channel
+     * Open an L2CAP connection-oriented channel.
+     * @param peripheral The peripheral to open the channel to
+     * @param psm The Protocol/Service Multiplexer to connect on
+     * @param secure Whether to open a bonded/encrypted channel; boards are typically unbonded
+     * @return A connected, readable/writable [BluetoothSocket]
+     * @throws L2capException if the channel cannot be opened
      */
-    suspend fun openL2capChannel(peripheral: BluetoothPeripheral, psm: Int)
+    suspend fun openL2capChannel(
+        peripheral: BluetoothPeripheral,
+        psm: Int,
+        secure: Boolean = false
+    ): BluetoothSocket
     
     /**
      * Create a bond/pairing with a peripheral
