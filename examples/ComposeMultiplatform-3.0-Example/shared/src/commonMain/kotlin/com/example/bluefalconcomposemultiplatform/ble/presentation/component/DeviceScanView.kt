@@ -16,6 +16,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.BluetoothSearching
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -197,6 +198,10 @@ fun DeviceScanView(
                         modifier = Modifier.size(64.dp),
                         tint = MaterialTheme.colorScheme.outline
                     )
+                    if (state.isScanning) {
+                       Spacer(modifier = Modifier.height(16.dp))
+                       CircularProgressIndicator()
+                    }
                     Spacer(modifier = Modifier.height(16.dp))
                     Text(
                         text = if (state.devices.isEmpty()) {
