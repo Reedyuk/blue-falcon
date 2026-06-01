@@ -25,6 +25,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
@@ -40,22 +41,24 @@ fun DeviceScanView(
     state: BluetoothDeviceState,
     onEvent: (UiEvent) -> Unit
 ) {
-    val filteredDevices = state.devices.values
-        .asSequence()
-        .filter { device ->
-            state.scanUuidFilter.isBlank() || device.peripheral.uuid.contains(
-                other = state.scanUuidFilter,
-                ignoreCase = true
-            )
-        }
-        .filter { device ->
-            state.scanAdvertisementFilter.isBlank() || advertisementSearchText(device.peripheral).contains(
-                other = state.scanAdvertisementFilter,
-                ignoreCase = true
-            )
-        }
-        .sortedByDescending { it.rssi ?: it.peripheral.rssi }
-        .toList()
+    val filteredDevices = remember(state.devices, state.scanUuidFilter, state.scanAdvertisementFilter) {
+        state.devices.values
+            .asSequence()
+            .filter { device ->
+                state.scanUuidFilter.isBlank() || device.peripheral.uuid.contains(
+                    other = state.scanUuidFilter,
+                    ignoreCase = true
+                )
+            }
+            .filter { device ->
+                state.scanAdvertisementFilter.isBlank() || advertisementSearchText(device.peripheral).contains(
+                    other = state.scanAdvertisementFilter,
+                    ignoreCase = true
+                )
+            }
+            .sortedByDescending { it.rssi ?: it.peripheral.rssi }
+            .toList()
+    }
 
     Scaffold(
         topBar = {
@@ -186,23 +189,11 @@ fun DeviceScanView(
                 }
             }
 
-            private fun advertisementSearchText(peripheral: BluetoothPeripheral): String {
-                val fields = buildList {
-                    add(peripheral.name.orEmpty())
-                    add(peripheral.localName.orEmpty())
-                    add(peripheral.manufacturerData.orEmpty())
-                    add(peripheral.txPowerLevel?.toString().orEmpty())
-                    add(peripheral.isConnectable?.toString().orEmpty())
-                    add(peripheral.uuid)
-                    peripheral.overflowServiceUUIDs?.let { addAll(it) }
-                    peripheral.serviceUUIDs?.let { addAll(it) }
-                    peripheral.serviceData?.forEach { (uuid, data) ->
-                        add(uuid)
-                        add(data)
-                    }
-                }
-                return fields.joinToString(separator = " ").trim()
-            }
         }
     }
+}
+
+private fun advertisementSearchText(peripheral: BluetoothPeripheral): String {
+    val serviceText = peripheral.services.joinToString(separator = " ") { it.uuid.toString() }
+    return "${peripheral.name.orEmpty()} $serviceText".trim()
 }
