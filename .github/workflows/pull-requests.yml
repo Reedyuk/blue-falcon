@@ -22,13 +22,13 @@ jobs:
         distribution: 'temurin'
         
     - name: Setup Gradle
-      uses: gradle/gradle-build-action@v2
+      uses: gradle/actions/setup-gradle@v4
       
     - name: Build all modules
-      run: ./gradlew -p ./library build --parallel --no-daemon
+      run: ./gradlew -p ./library build --parallel
       
     - name: Run tests
-      run: ./gradlew -p ./library test --no-daemon
+      run: ./gradlew -p ./library test
 
   build-windows:
     name: Build (Windows)
@@ -44,10 +44,10 @@ jobs:
         distribution: 'temurin'
         
     - name: Setup Gradle
-      uses: gradle/gradle-build-action@v2
+      uses: gradle/actions/setup-gradle@v4
       
     - name: Build Windows engine
-      run: ./gradlew.bat -p ./library :engines:windows:build --no-daemon
+      run: ./gradlew.bat -p ./library :engines:windows:build
       
   verify-structure:
     name: Verify Module Structure
