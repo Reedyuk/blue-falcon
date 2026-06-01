@@ -9,7 +9,11 @@ internal object NativeLibLoader {
         val ext = resourcePath.substringAfterLast('.')
         val tmp = File.createTempFile("bluefalcon-native", ".$ext")
         tmp.deleteOnExit()
-        stream.use { it.copyTo(tmp.outputStream()) }
+        stream.use { input ->
+            tmp.outputStream().use { output ->
+                input.copyTo(output)
+            }
+        }
         System.load(tmp.absolutePath)
     }
 }

@@ -39,13 +39,17 @@ actual class BlueFalcon actual constructor(
                     ?: throw e
                 val tmp = java.io.File.createTempFile("bluefalcon-windows", ".dll")
                 tmp.deleteOnExit()
-                stream.use { it.copyTo(tmp.outputStream()) }
+                stream.use { input ->
+                    tmp.outputStream().use { output ->
+                        input.copyTo(output)
+                    }
+                }
                 System.load(tmp.absolutePath)
                 nativeInitialize()
                 _managerState.value = BluetoothManagerState.Ready
                 log?.info("Windows Bluetooth initialized successfully from packaged resource")
-            } catch (ex: Exception) {
-                log?.error("Failed to load native library: ${e.message} and fallback: ${ex.message}")
+            } catch (ex: Throwable) {
+                log?.error("Failed to load native library: ${e.message} and fallback: ${ex.message}", cause = ex)
                 _managerState.value = BluetoothManagerState.NotReady
             }
         } catch (e: Exception) {

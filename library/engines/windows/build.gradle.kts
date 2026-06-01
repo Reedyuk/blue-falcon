@@ -4,6 +4,7 @@ import javax.inject.Inject
 import org.gradle.api.tasks.CacheableTask
 import org.gradle.api.tasks.PathSensitive
 import org.gradle.api.tasks.PathSensitivity
+import org.gradle.api.tasks.LocalState
 
 
 plugins {
@@ -24,7 +25,7 @@ abstract class CompileNativeWindowsTask @Inject constructor(
     @get:OutputDirectory
     abstract val outputDir: DirectoryProperty
 
-    @get:Internal
+    @get:LocalState
     abstract val cmakeBuildDir: DirectoryProperty
 
     @TaskAction
