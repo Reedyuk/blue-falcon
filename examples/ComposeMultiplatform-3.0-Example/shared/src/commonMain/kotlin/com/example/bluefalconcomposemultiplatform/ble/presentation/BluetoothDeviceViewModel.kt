@@ -40,24 +40,13 @@ class BluetoothDeviceViewModel(
         CoroutineScope(Dispatchers.IO).launch {
             blueFalcon.peripherals.collect { peripherals ->
                 _deviceState.update { currentState ->
-                    val updatedDevices = HashMap<String, EnhancedBluetoothPeripheral>(peripherals.size)
-                    val matchingPeripherals = peripherals
-                        .filter { peripheralMatchesFilters(it, currentState) }
-
-                    matchingPeripherals.forEach { peripheral ->
-                        val existingDevice = currentState.devices[peripheral.uuid]
-                        // Update peripheral data while preserving connection state
-                        updatedDevices[peripheral.uuid] = EnhancedBluetoothPeripheral(
-                            connected = existingDevice?.connected ?: false,
-                            peripheral = peripheral,
-                            mtuStatus = existingDevice?.mtuStatus,
-                            notificationData = existingDevice?.notificationData ?: emptyMap(),
-                            fotaState = existingDevice?.fotaState ?: FotaState.Idle,
-                            rssi = peripheral.rssi ?: existingDevice?.rssi
+                    currentState.copy(
+                        devices = buildFilteredDevices(
+                            peripherals = peripherals,
+                            currentState = currentState,
+                            previousDevices = currentState.devices
                         )
-                    }
-                    
-                    currentState.copy(devices = HashMap(updatedDevices))
+                    )
                 }
             }
         }
@@ -125,6 +114,7 @@ class BluetoothDeviceViewModel(
             UiEvent.OnScanClick -> {
                 CoroutineScope(Dispatchers.IO).launch {
                     try {
+                        blueFalcon.clearPeripherals()
                         _deviceState.update {
                             it.copy(
                                 devices = hashMapOf(),
@@ -150,11 +140,29 @@ class BluetoothDeviceViewModel(
             }
 
             is UiEvent.OnScanUuidFilterChanged -> {
-                _deviceState.update { it.copy(scanUuidFilter = event.value) }
+                _deviceState.update { state ->
+                    val updatedState = state.copy(scanUuidFilter = event.value)
+                    updatedState.copy(
+                        devices = buildFilteredDevices(
+                            peripherals = blueFalcon.peripherals.value,
+                            currentState = updatedState,
+                            previousDevices = state.devices
+                        )
+                    )
+                }
             }
 
             is UiEvent.OnScanAdvertisementFilterChanged -> {
-                _deviceState.update { it.copy(scanAdvertisementFilter = event.value) }
+                _deviceState.update { state ->
+                    val updatedState = state.copy(scanAdvertisementFilter = event.value)
+                    updatedState.copy(
+                        devices = buildFilteredDevices(
+                            peripherals = blueFalcon.peripherals.value,
+                            currentState = updatedState,
+                            previousDevices = state.devices
+                        )
+                    )
+                }
             }
 
             is UiEvent.OnConnectClick -> {
@@ -457,6 +465,28 @@ class BluetoothDeviceViewModel(
         return peripheral.services.any {
             it.uuid.toString().contains(state.scanAdvertisementFilter, ignoreCase = true)
         }
+    }
+
+    private fun buildFilteredDevices(
+        peripherals: Set<dev.bluefalcon.core.BluetoothPeripheral>,
+        currentState: BluetoothDeviceState,
+        previousDevices: Map<String, EnhancedBluetoothPeripheral>
+    ): HashMap<String, EnhancedBluetoothPeripheral> {
+        val updatedDevices = HashMap<String, EnhancedBluetoothPeripheral>(peripherals.size)
+        val matchingPeripherals = peripherals.filter { peripheralMatchesFilters(it, currentState) }
+
+        matchingPeripherals.forEach { peripheral ->
+            val existingDevice = previousDevices[peripheral.uuid]
+            updatedDevices[peripheral.uuid] = EnhancedBluetoothPeripheral(
+                connected = existingDevice?.connected ?: false,
+                peripheral = peripheral,
+                mtuStatus = existingDevice?.mtuStatus,
+                notificationData = existingDevice?.notificationData ?: emptyMap(),
+                fotaState = existingDevice?.fotaState ?: FotaState.Idle,
+                rssi = peripheral.rssi ?: existingDevice?.rssi
+            )
+        }
+        return HashMap(updatedDevices)
     }
 
     private fun findSmpCharacteristic(
