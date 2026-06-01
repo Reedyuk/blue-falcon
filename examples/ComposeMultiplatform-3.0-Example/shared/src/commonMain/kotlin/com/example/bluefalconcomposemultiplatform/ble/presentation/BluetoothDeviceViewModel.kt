@@ -114,6 +114,8 @@ class BluetoothDeviceViewModel(
             UiEvent.OnScanClick -> {
                 CoroutineScope(Dispatchers.IO).launch {
                     try {
+                        runCatching { blueFalcon.stopScanning() }
+                            .onFailure { println("Failed to stop existing scan: ${it.message}") }
                         blueFalcon.clearPeripherals()
                         _deviceState.update {
                             it.copy(
@@ -140,11 +142,12 @@ class BluetoothDeviceViewModel(
             }
 
             is UiEvent.OnScanUuidFilterChanged -> {
+                val peripheralsSnapshot = blueFalcon.peripherals.value
                 _deviceState.update { state ->
                     val updatedState = state.copy(scanUuidFilter = event.value)
                     updatedState.copy(
                         devices = buildFilteredDevices(
-                            peripherals = blueFalcon.peripherals.value,
+                            peripherals = peripheralsSnapshot,
                             currentState = updatedState,
                             previousDevices = state.devices
                         )
@@ -153,11 +156,12 @@ class BluetoothDeviceViewModel(
             }
 
             is UiEvent.OnScanAdvertisementFilterChanged -> {
+                val peripheralsSnapshot = blueFalcon.peripherals.value
                 _deviceState.update { state ->
                     val updatedState = state.copy(scanAdvertisementFilter = event.value)
                     updatedState.copy(
                         devices = buildFilteredDevices(
-                            peripherals = blueFalcon.peripherals.value,
+                            peripherals = peripheralsSnapshot,
                             currentState = updatedState,
                             previousDevices = state.devices
                         )
@@ -486,7 +490,7 @@ class BluetoothDeviceViewModel(
                 rssi = peripheral.rssi ?: existingDevice?.rssi
             )
         }
-        return HashMap(updatedDevices)
+        return updatedDevices
     }
 
     private fun findSmpCharacteristic(
