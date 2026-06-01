@@ -1,6 +1,7 @@
 package com.example.bluefalconcomposemultiplatform.ble.presentation.component
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -15,8 +16,12 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.BluetoothSearching
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
+import androidx.compose.material.icons.filled.ArrowDropDown
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -25,7 +30,10 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
@@ -41,6 +49,30 @@ fun DeviceScanView(
     state: BluetoothDeviceState,
     onEvent: (UiEvent) -> Unit
 ) {
+    val commonUuidFilters = remember(state.devices) {
+        state.devices.values
+            .asSequence()
+            .map { it.peripheral.uuid.trim() }
+            .filter { it.isNotBlank() }
+            .distinct()
+            .sorted()
+            .take(8)
+            .toList()
+    }
+    val commonAdvertisementFilters = remember(state.devices) {
+        state.devices.values
+            .asSequence()
+            .flatMap { device ->
+                sequenceOf(device.peripheral.name.orEmpty().trim()) +
+                    device.peripheral.services.asSequence().map { it.uuid.toString() }
+            }
+            .map { it.trim() }
+            .filter { it.isNotBlank() }
+            .distinct()
+            .sorted()
+            .take(8)
+            .toList()
+    }
     val filteredDevices = remember(state.devices, state.scanUuidFilter, state.scanAdvertisementFilter) {
         state.devices.values
             .asSequence()
@@ -118,20 +150,18 @@ fun DeviceScanView(
                     .fillMaxWidth()
                     .padding(horizontal = 16.dp, vertical = 8.dp)
             ) {
-                OutlinedTextField(
+                FilterInputWithSuggestions(
                     value = state.scanUuidFilter,
-                    onValueChange = { onEvent(UiEvent.OnScanUuidFilterChanged(it)) },
                     label = { Text("UUID filter") },
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true
+                    suggestions = commonUuidFilters,
+                    onValueChange = { onEvent(UiEvent.OnScanUuidFilterChanged(it)) }
                 )
                 Spacer(modifier = Modifier.height(8.dp))
-                OutlinedTextField(
+                FilterInputWithSuggestions(
                     value = state.scanAdvertisementFilter,
-                    onValueChange = { onEvent(UiEvent.OnScanAdvertisementFilterChanged(it)) },
                     label = { Text("Advertisement data filter") },
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true
+                    suggestions = commonAdvertisementFilters,
+                    onValueChange = { onEvent(UiEvent.OnScanAdvertisementFilterChanged(it)) }
                 )
             }
 
@@ -189,6 +219,50 @@ fun DeviceScanView(
                 }
             }
 
+        }
+    }
+}
+
+@Composable
+private fun FilterInputWithSuggestions(
+    value: String,
+    onValueChange: (String) -> Unit,
+    label: @Composable () -> Unit,
+    suggestions: List<String>
+) {
+    var expanded by remember { mutableStateOf(false) }
+
+    Box(modifier = Modifier.fillMaxWidth()) {
+        OutlinedTextField(
+            value = value,
+            onValueChange = onValueChange,
+            label = label,
+            modifier = Modifier.fillMaxWidth(),
+            singleLine = true,
+            trailingIcon = {
+                if (suggestions.isNotEmpty()) {
+                    IconButton(onClick = { expanded = !expanded }) {
+                        Icon(
+                            imageVector = Icons.Default.ArrowDropDown,
+                            contentDescription = "Show common filters"
+                        )
+                    }
+                }
+            }
+        )
+        DropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false }
+        ) {
+            suggestions.forEach { suggestion ->
+                DropdownMenuItem(
+                    text = { Text(suggestion) },
+                    onClick = {
+                        onValueChange(suggestion)
+                        expanded = false
+                    }
+                )
+            }
         }
     }
 }
