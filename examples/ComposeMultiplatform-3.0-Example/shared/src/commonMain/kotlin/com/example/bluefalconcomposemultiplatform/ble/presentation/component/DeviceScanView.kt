@@ -19,6 +19,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
@@ -31,6 +32,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.bluefalconcomposemultiplatform.ble.presentation.BluetoothDeviceState
 import com.example.bluefalconcomposemultiplatform.ble.presentation.UiEvent
+import dev.bluefalcon.core.BluetoothPeripheral
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -38,6 +40,23 @@ fun DeviceScanView(
     state: BluetoothDeviceState,
     onEvent: (UiEvent) -> Unit
 ) {
+    val filteredDevices = state.devices.values
+        .asSequence()
+        .filter { device ->
+            state.scanUuidFilter.isBlank() || device.peripheral.uuid.contains(
+                other = state.scanUuidFilter,
+                ignoreCase = true
+            )
+        }
+        .filter { device ->
+            state.scanAdvertisementFilter.isBlank() || advertisementSearchText(device.peripheral).contains(
+                other = state.scanAdvertisementFilter,
+                ignoreCase = true
+            )
+        }
+        .sortedByDescending { it.rssi ?: it.peripheral.rssi }
+        .toList()
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -91,7 +110,29 @@ fun DeviceScanView(
                 .fillMaxSize()
                 .padding(paddingValues)
         ) {
-            if (state.devices.isEmpty()) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 8.dp)
+            ) {
+                OutlinedTextField(
+                    value = state.scanUuidFilter,
+                    onValueChange = { onEvent(UiEvent.OnScanUuidFilterChanged(it)) },
+                    label = { Text("UUID filter") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                OutlinedTextField(
+                    value = state.scanAdvertisementFilter,
+                    onValueChange = { onEvent(UiEvent.OnScanAdvertisementFilterChanged(it)) },
+                    label = { Text("Advertisement data filter") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true
+                )
+            }
+
+            if (filteredDevices.isEmpty()) {
                 Column(
                     modifier = Modifier
                         .fillMaxSize()
@@ -107,14 +148,18 @@ fun DeviceScanView(
                     )
                     Spacer(modifier = Modifier.height(16.dp))
                     Text(
-                        text = if (state.isScanning) "Scanning for devices..." else "Press SCAN to find nearby devices",
+                        text = if (state.devices.isEmpty()) {
+                            if (state.isScanning) "Scanning for devices..." else "Press SCAN to find nearby devices"
+                        } else {
+                            "No devices match the current filters"
+                        },
                         color = MaterialTheme.colorScheme.outline,
                         fontSize = 16.sp
                     )
                 }
             } else {
                 Text(
-                    text = "DISCOVERED DEVICES (${state.devices.size})",
+                    text = "DISCOVERED DEVICES (${filteredDevices.size}/${state.devices.size})",
                     modifier = Modifier.padding(start = 16.dp, top = 12.dp, bottom = 4.dp),
                     fontSize = 12.sp,
                     fontWeight = FontWeight.Bold,
@@ -125,7 +170,7 @@ fun DeviceScanView(
                     modifier = Modifier.fillMaxSize()
                 ) {
                     items(
-                        state.devices.values.toList().sortedByDescending { it.rssi ?: it.peripheral.rssi }
+                        filteredDevices
                     ) { device ->
                         @OptIn(kotlin.uuid.ExperimentalUuidApi::class)
                         ScanResultCard(
@@ -139,6 +184,24 @@ fun DeviceScanView(
                         )
                     }
                 }
+            }
+
+            private fun advertisementSearchText(peripheral: BluetoothPeripheral): String {
+                val fields = buildList {
+                    add(peripheral.name.orEmpty())
+                    add(peripheral.localName.orEmpty())
+                    add(peripheral.manufacturerData.orEmpty())
+                    add(peripheral.txPowerLevel?.toString().orEmpty())
+                    add(peripheral.isConnectable?.toString().orEmpty())
+                    add(peripheral.uuid)
+                    peripheral.overflowServiceUUIDs?.let { addAll(it) }
+                    peripheral.serviceUUIDs?.let { addAll(it) }
+                    peripheral.serviceData?.forEach { (uuid, data) ->
+                        add(uuid)
+                        add(data)
+                    }
+                }
+                return fields.joinToString(separator = " ").trim()
             }
         }
     }

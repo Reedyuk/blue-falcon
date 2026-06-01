@@ -142,6 +142,14 @@ class BluetoothDeviceViewModel(
                 }
             }
 
+            is UiEvent.OnScanUuidFilterChanged -> {
+                _deviceState.update { it.copy(scanUuidFilter = event.value) }
+            }
+
+            is UiEvent.OnScanAdvertisementFilterChanged -> {
+                _deviceState.update { it.copy(scanAdvertisementFilter = event.value) }
+            }
+
             is UiEvent.OnConnectClick -> {
                 _deviceState.value.devices[event.macId]?.let { device ->
                     CoroutineScope(Dispatchers.IO).launch {
