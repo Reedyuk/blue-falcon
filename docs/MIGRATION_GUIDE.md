@@ -26,7 +26,7 @@ If you have existing 2.x code and want the simplest possible upgrade, just updat
 
 ```kotlin
 commonMain.dependencies {
-    implementation("dev.bluefalcon:blue-falcon:3.4.0")
+    implementation("dev.bluefalcon:blue-falcon:3.4.1")
 }
 ```
 

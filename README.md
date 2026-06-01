@@ -35,16 +35,16 @@ Blue Falcon provides a unified API for Bluetooth LE operations across all platfo
 
 ```kotlin
 commonMain.dependencies {
-    implementation("dev.bluefalcon:blue-falcon-core:3.4.0")
+    implementation("dev.bluefalcon:blue-falcon-core:3.4.1")
 }
 
 // Add platform-specific engines
 androidMain.dependencies {
-    implementation("dev.bluefalcon:blue-falcon-engine-android:3.4.0")
+    implementation("dev.bluefalcon:blue-falcon-engine-android:3.4.1")
 }
 
 iosMain.dependencies {
-    implementation("dev.bluefalcon:blue-falcon-engine-ios:3.4.0")
+    implementation("dev.bluefalcon:blue-falcon-engine-ios:3.4.1")
 }
 ```
 
@@ -53,13 +53,13 @@ iosMain.dependencies {
 ```kotlin
 commonMain.dependencies {
     // Logging support
-    implementation("dev.bluefalcon:blue-falcon-plugin-logging:3.4.0")
+    implementation("dev.bluefalcon:blue-falcon-plugin-logging:3.4.1")
     
     // Automatic retry with exponential backoff
-    implementation("dev.bluefalcon:blue-falcon-plugin-retry:3.4.0")
+    implementation("dev.bluefalcon:blue-falcon-plugin-retry:3.4.1")
     
     // Service/characteristic caching
-    implementation("dev.bluefalcon:blue-falcon-plugin-caching:3.4.0")
+    implementation("dev.bluefalcon:blue-falcon-plugin-caching:3.4.1")
 }
 ```
 
