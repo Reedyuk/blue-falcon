@@ -7,6 +7,8 @@ import dev.bluefalcon.plugins.clone.DeviceClone
 sealed interface UiEvent {
     object OnScanClick: UiEvent
     object OnStopScanClick: UiEvent
+    data class OnScanUuidFilterChanged(val value: String): UiEvent
+    data class OnScanAdvertisementFilterChanged(val value: String): UiEvent
     data class OnConnectClick(val macId: String): UiEvent
     data class OnDisconnectClick(val macId: String): UiEvent
     data class OnDeviceSelected(val macId: String): UiEvent
