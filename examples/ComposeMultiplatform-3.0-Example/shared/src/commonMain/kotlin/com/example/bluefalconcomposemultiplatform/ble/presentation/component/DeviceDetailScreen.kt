@@ -303,6 +303,11 @@ fun DeviceInfoCard(
     device: EnhancedBluetoothPeripheral,
     onRequestMtu: () -> Unit
 ) {
+    val advertisedName = device.peripheral.name?.takeIf { it.isNotBlank() } ?: "—"
+    val advertisedServices = device.peripheral.services
+        .map { it.uuid.toString().lowercase() }
+        .sorted()
+
     Card(
         modifier = Modifier
             .fillMaxWidth()
@@ -380,6 +385,30 @@ fun DeviceInfoCard(
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            Text(
+                text = "ADVERTISEMENT",
+                fontSize = 10.sp,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Spacer(modifier = Modifier.height(2.dp))
+            Text(
+                text = "Name: $advertisedName",
+                fontSize = 12.sp,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+            Text(
+                text = if (advertisedServices.isEmpty()) {
+                    "Service UUIDs: —"
+                } else {
+                    "Service UUIDs: ${advertisedServices.joinToString()}"
+                },
+                fontSize = 12.sp,
+                color = MaterialTheme.colorScheme.onSurface
+            )
 
             Spacer(modifier = Modifier.height(8.dp))
 
