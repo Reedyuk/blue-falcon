@@ -66,7 +66,6 @@ fun DeviceScanView(
                 sequenceOf(device.peripheral.name.orEmpty().trim()) +
                     device.peripheral.services.asSequence().map { it.uuid.toString() }
             }
-            .map { it.trim() }
             .filter { it.isNotBlank() }
             .distinct()
             .sorted()
@@ -230,7 +229,7 @@ private fun FilterInputWithSuggestions(
     label: @Composable () -> Unit,
     suggestions: List<String>
 ) {
-    var expanded by remember { mutableStateOf(false) }
+    var isDropdownExpanded by remember { mutableStateOf(false) }
 
     Box(modifier = Modifier.fillMaxWidth()) {
         OutlinedTextField(
@@ -241,7 +240,7 @@ private fun FilterInputWithSuggestions(
             singleLine = true,
             trailingIcon = {
                 if (suggestions.isNotEmpty()) {
-                    IconButton(onClick = { expanded = !expanded }) {
+                    IconButton(onClick = { isDropdownExpanded = !isDropdownExpanded }) {
                         Icon(
                             imageVector = Icons.Default.ArrowDropDown,
                             contentDescription = "Show common filters"
@@ -251,15 +250,15 @@ private fun FilterInputWithSuggestions(
             }
         )
         DropdownMenu(
-            expanded = expanded,
-            onDismissRequest = { expanded = false }
+            expanded = isDropdownExpanded,
+            onDismissRequest = { isDropdownExpanded = false }
         ) {
             suggestions.forEach { suggestion ->
                 DropdownMenuItem(
                     text = { Text(suggestion) },
                     onClick = {
                         onValueChange(suggestion)
-                        expanded = false
+                        isDropdownExpanded = false
                     }
                 )
             }
