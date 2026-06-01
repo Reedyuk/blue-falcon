@@ -62,6 +62,8 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -303,6 +305,12 @@ fun DeviceInfoCard(
     device: EnhancedBluetoothPeripheral,
     onRequestMtu: () -> Unit
 ) {
+    val clipboardManager = LocalClipboardManager.current
+    val advertisedName = device.peripheral.name?.takeIf { it.isNotBlank() } ?: "—"
+    val advertisedServices = device.peripheral.services
+        .map { it.uuid.toString().lowercase() }
+        .sorted()
+
     Card(
         modifier = Modifier
             .fillMaxWidth()
@@ -379,6 +387,45 @@ fun DeviceInfoCard(
                     fontSize = 11.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            Text(
+                text = "ADVERTISEMENT",
+                fontSize = 10.sp,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Spacer(modifier = Modifier.height(2.dp))
+            Text(
+                text = "Name: $advertisedName",
+                fontSize = 12.sp,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+            if (advertisedServices.isEmpty()) {
+                Text(
+                    text = "Service UUIDs: —",
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+            } else {
+                Text(
+                    text = "Service UUIDs:",
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                advertisedServices.forEach { serviceUuid ->
+                    Text(
+                        text = serviceUuid,
+                        modifier = Modifier.clickable(onClickLabel = "Copy service UUID") {
+                            clipboardManager.setText(AnnotatedString(serviceUuid))
+                        },
+                        fontSize = 12.sp,
+                        fontFamily = FontFamily.Monospace,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
             }
 
             Spacer(modifier = Modifier.height(8.dp))

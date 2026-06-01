@@ -40,22 +40,12 @@ class BluetoothDeviceViewModel(
         CoroutineScope(Dispatchers.IO).launch {
             blueFalcon.peripherals.collect { peripherals ->
                 _deviceState.update { currentState ->
-                    val updatedDevices = currentState.devices.toMutableMap()
-                    
-                    peripherals.forEach { peripheral ->
-                        val existingDevice = updatedDevices[peripheral.uuid]
-                        // Update peripheral data while preserving connection state
-                        updatedDevices[peripheral.uuid] = EnhancedBluetoothPeripheral(
-                            connected = existingDevice?.connected ?: false,
-                            peripheral = peripheral,
-                            mtuStatus = existingDevice?.mtuStatus,
-                            notificationData = existingDevice?.notificationData ?: emptyMap(),
-                            fotaState = existingDevice?.fotaState ?: FotaState.Idle,
-                            rssi = peripheral.rssi ?: existingDevice?.rssi
+                    currentState.copy(
+                        devices = buildDevices(
+                            peripherals = peripherals,
+                            previousDevices = currentState.devices
                         )
-                    }
-                    
-                    currentState.copy(devices = HashMap(updatedDevices))
+                    )
                 }
             }
         }
@@ -123,8 +113,16 @@ class BluetoothDeviceViewModel(
             UiEvent.OnScanClick -> {
                 CoroutineScope(Dispatchers.IO).launch {
                     try {
+                        runCatching { blueFalcon.stopScanning() }
+                            .onFailure { println("Failed to stop existing scan: ${it.message}") }
+                        blueFalcon.clearPeripherals()
+                        _deviceState.update {
+                            it.copy(
+                                devices = hashMapOf(),
+                                isScanning = true
+                            )
+                        }
                         blueFalcon.scan()
-                        _deviceState.update { it.copy(isScanning = true) }
                     } catch (e: Exception) {
                         println("Failed to start scan: ${e.message}")
                     }
@@ -139,6 +137,18 @@ class BluetoothDeviceViewModel(
                     } catch (e: Exception) {
                         println("Failed to stop scan: ${e.message}")
                     }
+                }
+            }
+
+            is UiEvent.OnScanUuidFilterChanged -> {
+                _deviceState.update { state ->
+                    state.copy(scanUuidFilter = event.value)
+                }
+            }
+
+            is UiEvent.OnScanAdvertisementFilterChanged -> {
+                _deviceState.update { state ->
+                    state.copy(scanAdvertisementFilter = event.value)
                 }
             }
 
@@ -422,6 +432,26 @@ class BluetoothDeviceViewModel(
                 }
             }
         }
+    }
+
+    private fun buildDevices(
+        peripherals: Set<dev.bluefalcon.core.BluetoothPeripheral>,
+        previousDevices: Map<String, EnhancedBluetoothPeripheral>
+    ): HashMap<String, EnhancedBluetoothPeripheral> {
+        val updatedDevices = HashMap<String, EnhancedBluetoothPeripheral>(peripherals.size)
+
+        peripherals.forEach { peripheral ->
+            val existingDevice = previousDevices[peripheral.uuid]
+            updatedDevices[peripheral.uuid] = EnhancedBluetoothPeripheral(
+                connected = existingDevice?.connected ?: false,
+                peripheral = peripheral,
+                mtuStatus = existingDevice?.mtuStatus,
+                notificationData = existingDevice?.notificationData ?: emptyMap(),
+                fotaState = existingDevice?.fotaState ?: FotaState.Idle,
+                rssi = peripheral.rssi ?: existingDevice?.rssi
+            )
+        }
+        return updatedDevices
     }
 
     private fun findSmpCharacteristic(
