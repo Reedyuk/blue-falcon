@@ -2,6 +2,7 @@ package com.example.bluefalconcomposemultiplatform.ble.presentation
 
 import dev.bluefalcon.core.BlueFalcon
 import dev.bluefalcon.core.BluetoothAdvertiser
+import dev.bluefalcon.core.ServiceFilter
 import dev.bluefalcon.core.toUuid
 import dev.bluefalcon.plugins.broadcast.DeviceBroadcastPlugin
 import dev.bluefalcon.plugins.clone.CloneConfig
@@ -126,7 +127,7 @@ class BluetoothDeviceViewModel(
                         val currentFilter = _deviceState.value.scanUuidFilter.trim()
                         if (currentFilter.isNotBlank()) {
                             try {
-                                val serviceFilter = dev.bluefalcon.core.ServiceFilter(
+                                val serviceFilter = ServiceFilter(
                                     currentFilter.toUuid()
                                 )
                                 blueFalcon.scan(filters = listOf(serviceFilter))
