@@ -94,7 +94,9 @@ jobs:
       run: |
         while IFS= read -r file; do
           [ -n "$file" ] || continue
-          cp "version-updates/$file" "$file"
+          source="version-updates/$file"
+          [ -f "$source" ] || { echo "Missing version update file: $source"; exit 1; }
+          cp "$source" "$file" || { echo "Failed to copy $source to $file"; exit 1; }
         done <<< "$VERSION_UPDATE_FILES"
       
     - name: Set up JDK 17
@@ -135,7 +137,9 @@ jobs:
       run: |
         while IFS= read -r file; do
           [ -n "$file" ] || continue
-          cp "version-updates/$file" "$file"
+          source="version-updates/$file"
+          [ -f "$source" ] || { echo "Missing version update file: $source"; exit 1; }
+          cp "$source" "$file" || { echo "Failed to copy $source to $file"; exit 1; }
         done <<< "$VERSION_UPDATE_FILES"
       
     - name: Set up JDK 17
