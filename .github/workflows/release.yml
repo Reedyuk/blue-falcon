@@ -13,6 +13,10 @@ env:
   ORG_GRADLE_PROJECT_mavenCentralPassword: ${{ secrets.SONATYPEPASSWORD }}
   ORG_GRADLE_PROJECT_signingInMemoryKey: ${{ secrets.GPG_KEY }}
   ORG_GRADLE_PROJECT_signingInMemoryKeyPassword: ${{ secrets.GPG_KEY_PASS }}
+  VERSION_UPDATE_FILES: |
+    library/gradle.properties
+    README.md
+    examples/ComposeMultiplatform-3.0-Example/shared/build.gradle.kts
 
 jobs:
   update-versions:
@@ -57,10 +61,7 @@ jobs:
       uses: actions/upload-artifact@v4
       with:
         name: version-updates
-        path: |
-          library/gradle.properties
-          README.md
-          examples/ComposeMultiplatform-3.0-Example/shared/build.gradle.kts
+        path: ${{ env.VERSION_UPDATE_FILES }}
 
     - name: Verify version updates
       run: |
@@ -91,9 +92,10 @@ jobs:
     - name: Apply updated version files
       shell: bash
       run: |
-        cp version-updates/library/gradle.properties library/gradle.properties
-        cp version-updates/README.md README.md
-        cp version-updates/examples/ComposeMultiplatform-3.0-Example/shared/build.gradle.kts examples/ComposeMultiplatform-3.0-Example/shared/build.gradle.kts
+        while IFS= read -r file; do
+          [ -n "$file" ] || continue
+          cp "version-updates/$file" "$file"
+        done <<< "$VERSION_UPDATE_FILES"
       
     - name: Set up JDK 17
       uses: actions/setup-java@v4
@@ -131,9 +133,10 @@ jobs:
     - name: Apply updated version files
       shell: bash
       run: |
-        cp version-updates/library/gradle.properties library/gradle.properties
-        cp version-updates/README.md README.md
-        cp version-updates/examples/ComposeMultiplatform-3.0-Example/shared/build.gradle.kts examples/ComposeMultiplatform-3.0-Example/shared/build.gradle.kts
+        while IFS= read -r file; do
+          [ -n "$file" ] || continue
+          cp "version-updates/$file" "$file"
+        done <<< "$VERSION_UPDATE_FILES"
       
     - name: Set up JDK 17
       uses: actions/setup-java@v4
