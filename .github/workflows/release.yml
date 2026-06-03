@@ -86,7 +86,14 @@ jobs:
       uses: actions/download-artifact@v4
       with:
         name: version-updates
-        path: .
+        path: version-updates
+
+    - name: Apply updated version files
+      shell: bash
+      run: |
+        cp version-updates/library/gradle.properties library/gradle.properties
+        cp version-updates/README.md README.md
+        cp version-updates/examples/ComposeMultiplatform-3.0-Example/shared/build.gradle.kts examples/ComposeMultiplatform-3.0-Example/shared/build.gradle.kts
       
     - name: Set up JDK 17
       uses: actions/setup-java@v4
@@ -119,7 +126,14 @@ jobs:
       uses: actions/download-artifact@v4
       with:
         name: version-updates
-        path: .
+        path: version-updates
+
+    - name: Apply updated version files
+      shell: bash
+      run: |
+        cp version-updates/library/gradle.properties library/gradle.properties
+        cp version-updates/README.md README.md
+        cp version-updates/examples/ComposeMultiplatform-3.0-Example/shared/build.gradle.kts examples/ComposeMultiplatform-3.0-Example/shared/build.gradle.kts
       
     - name: Set up JDK 17
       uses: actions/setup-java@v4
