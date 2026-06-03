@@ -61,14 +61,18 @@ jobs:
       uses: actions/upload-artifact@v4
       with:
         name: version-updates
-        path: ${{ env.VERSION_UPDATE_FILES }}
+        path: |
+          library/gradle.properties
+          README.md
+          examples/ComposeMultiplatform-3.0-Example/shared/build.gradle.kts
 
     - name: Verify version updates
       run: |
-        if git diff --quiet -- library/gradle.properties README.md examples/ComposeMultiplatform-3.0-Example/shared/build.gradle.kts; then
+        mapfile -t version_files <<< "$VERSION_UPDATE_FILES"
+        if git diff --quiet -- "${version_files[@]}"; then
           echo "No version changes needed"
         else
-          git diff --stat -- library/gradle.properties README.md examples/ComposeMultiplatform-3.0-Example/shared/build.gradle.kts
+          git diff --stat -- "${version_files[@]}"
           echo "Version updates prepared for downstream jobs"
         fi
 
@@ -95,8 +99,8 @@ jobs:
         while IFS= read -r file; do
           [ -n "$file" ] || continue
           source="version-updates/$file"
-          [ -f "$source" ] || { echo "Missing version update file: $source"; exit 1; }
-          cp "$source" "$file" || { echo "Failed to copy $source to $file"; exit 1; }
+          [ -f "$source" ] || { echo "Error in $GITHUB_JOB: missing version update file $source. Ensure update-versions uploaded all expected files."; exit 1; }
+          cp "$source" "$file" || { echo "Error in $GITHUB_JOB: failed to copy $source to $file"; exit 1; }
         done <<< "$VERSION_UPDATE_FILES"
       
     - name: Set up JDK 17
@@ -138,8 +142,8 @@ jobs:
         while IFS= read -r file; do
           [ -n "$file" ] || continue
           source="version-updates/$file"
-          [ -f "$source" ] || { echo "Missing version update file: $source"; exit 1; }
-          cp "$source" "$file" || { echo "Failed to copy $source to $file"; exit 1; }
+          [ -f "$source" ] || { echo "Error in $GITHUB_JOB: missing version update file $source. Ensure update-versions uploaded all expected files."; exit 1; }
+          cp "$source" "$file" || { echo "Error in $GITHUB_JOB: failed to copy $source to $file"; exit 1; }
         done <<< "$VERSION_UPDATE_FILES"
       
     - name: Set up JDK 17
