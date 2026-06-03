@@ -35,16 +35,14 @@ jobs:
       uses: github/codeql-action/init@v3
       with:
         languages: kotlin
-        # Only scan source directories, skip generated and build output
-        config: |
-          paths:
-            - library/core/src
-            - library/engines/android/src
-            - library/plugins
-            - library/legacy/src
+        build-mode: manual
 
-    - name: Build Android and JVM targets for CodeQL
-      run: ./gradlew -p ./library :core:compileDebugKotlinAndroid :engines:android:compileDebugKotlinAndroid --no-daemon
+    - name: Build JVM target for CodeQL
+      run: |
+        ./gradlew -p ./library \
+          :core:compileKotlinJvm \
+          :engines:android:compileDebugKotlinAndroid \
+          --no-daemon --stacktrace
       env:
         GRADLE_OPTS: "-Dorg.gradle.jvmargs=-Xmx4g -Dorg.gradle.daemon=false"
 
