@@ -155,19 +155,36 @@ actual class BlueFalcon actual constructor(
                 listOf(ScanFilter.Builder().build())
             }
             else -> {
-                filters.map { filter ->
-                    val filterBuilder = ScanFilter.Builder()
-                    filter.serviceUuids.forEach {
-                        filterBuilder.setServiceUuid(it)
+                filters.flatMap { filter ->
+                    if (filter.serviceUuids.isEmpty() && filter.serviceData.isEmpty()) {
+                        listOf(ScanFilter.Builder().build())
+                    } else if (filter.serviceUuids.size <= 1) {
+                        val filterBuilder = ScanFilter.Builder()
+                        filter.serviceUuids.firstOrNull()?.let {
+                            filterBuilder.setServiceUuid(it)
+                        }
+                        filter.serviceData.forEach {
+                            filterBuilder.setServiceData(it.key, it.value)
+                        }
+                        listOf(filterBuilder.build())
+                    } else {
+                        // Each ScanFilter only supports one service UUID,
+                        // so create a separate ScanFilter per UUID
+                        filter.serviceUuids.map { uuid ->
+                            val filterBuilder = ScanFilter.Builder()
+                            filterBuilder.setServiceUuid(uuid)
+                            filter.serviceData.forEach {
+                                filterBuilder.setServiceData(it.key, it.value)
+                            }
+                            filterBuilder.build()
+                        }
                     }
-                    filter.serviceData.forEach {
-                        filterBuilder.setServiceData(it.key, it.value)
-                    }
-                    filterBuilder.build()
                 }
             }
         }
-        val settings = ScanSettings.Builder().build()
+        val settings = ScanSettings.Builder()
+            .setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY)
+            .build()
         val bluetoothScanner = bluetoothManager.adapter?.bluetoothLeScanner
         bluetoothScanner?.startScan(formattedFilters, settings, mBluetoothScanCallBack)
     }

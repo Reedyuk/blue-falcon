@@ -107,7 +107,9 @@ class AndroidEngine(
             }
         }
         
-        val settings = ScanSettings.Builder().build()
+        val settings = ScanSettings.Builder()
+            .setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY)
+            .build()
         bluetoothManager.adapter?.bluetoothLeScanner?.startScan(scanFilters, settings, scanCallback)
     }
     

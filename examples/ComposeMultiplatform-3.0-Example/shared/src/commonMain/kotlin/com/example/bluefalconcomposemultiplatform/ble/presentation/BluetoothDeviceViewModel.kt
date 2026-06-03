@@ -2,6 +2,7 @@ package com.example.bluefalconcomposemultiplatform.ble.presentation
 
 import dev.bluefalcon.core.BlueFalcon
 import dev.bluefalcon.core.BluetoothAdvertiser
+import dev.bluefalcon.core.toUuid
 import dev.bluefalcon.plugins.broadcast.DeviceBroadcastPlugin
 import dev.bluefalcon.plugins.clone.CloneConfig
 import dev.bluefalcon.plugins.clone.DeviceClonePlugin
@@ -122,7 +123,21 @@ class BluetoothDeviceViewModel(
                                 isScanning = true
                             )
                         }
-                        blueFalcon.scan()
+                        val currentFilter = _deviceState.value.scanUuidFilter.trim()
+                        if (currentFilter.isNotBlank()) {
+                            try {
+                                val serviceFilter = dev.bluefalcon.core.ServiceFilter(
+                                    currentFilter.toUuid()
+                                )
+                                blueFalcon.scan(filters = listOf(serviceFilter))
+                            } catch (e: Exception) {
+                                // If UUID parsing fails, scan without filters
+                                println("Invalid UUID filter, scanning without filters: ${e.message}")
+                                blueFalcon.scan()
+                            }
+                        } else {
+                            blueFalcon.scan()
+                        }
                     } catch (e: Exception) {
                         println("Failed to start scan: ${e.message}")
                     }
