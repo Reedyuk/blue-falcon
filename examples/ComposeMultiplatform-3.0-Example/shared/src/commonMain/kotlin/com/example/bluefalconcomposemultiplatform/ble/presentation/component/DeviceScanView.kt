@@ -52,10 +52,12 @@ fun DeviceScanView(
     state: BluetoothDeviceState,
     onEvent: (UiEvent) -> Unit
 ) {
-    val commonUuidFilters = remember(state.devices) {
+    val commonServiceUuidSuggestions = remember(state.devices) {
         state.devices.values
             .asSequence()
-            .map { it.peripheral.uuid.trim() }
+            .flatMap { device ->
+                device.peripheral.services.asSequence().map { it.uuid.toString() }
+            }
             .filter { it.isNotBlank() }
             .distinct()
             .sorted()
@@ -75,15 +77,9 @@ fun DeviceScanView(
             .take(8)
             .toList()
     }
-    val filteredDevices = remember(state.devices, state.scanUuidFilter, state.scanAdvertisementFilter) {
+    val filteredDevices = remember(state.devices, state.scanAdvertisementFilter) {
         state.devices.values
             .asSequence()
-            .filter { device ->
-                state.scanUuidFilter.isBlank() || device.peripheral.uuid.contains(
-                    other = state.scanUuidFilter,
-                    ignoreCase = true
-                )
-            }
             .filter { device ->
                 state.scanAdvertisementFilter.isBlank() || advertisementSearchText(device.peripheral).contains(
                     other = state.scanAdvertisementFilter,
@@ -154,8 +150,8 @@ fun DeviceScanView(
             ) {
                 FilterInputWithSuggestions(
                     value = state.scanUuidFilter,
-                    label = { Text("UUID filter") },
-                    suggestions = commonUuidFilters,
+                    label = { Text("Service UUID filter (applied at scan level)") },
+                    suggestions = commonServiceUuidSuggestions,
                     onValueChange = { onEvent(UiEvent.OnScanUuidFilterChanged(it)) }
                 )
                 Spacer(modifier = Modifier.height(8.dp))
