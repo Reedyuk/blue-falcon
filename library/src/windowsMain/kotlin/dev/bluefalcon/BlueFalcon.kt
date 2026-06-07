@@ -416,6 +416,12 @@ actual class BlueFalcon actual constructor(
         
         peripheral._servicesFlow.tryEmit(services)
         delegates.forEach { it.didDiscoverServices(peripheral) }
+        
+        if (autoDiscoverAllServicesAndCharacteristics) {
+            services.forEach { service ->
+                discoverCharacteristics(peripheral, service, emptyList())
+            }
+        }
     }
     
     @Suppress("unused")
@@ -426,6 +432,22 @@ actual class BlueFalcon actual constructor(
         properties: Int
     ) {
         val peripheral = connections[address] ?: return
+        
+        val parsedServiceUuid = kotlin.uuid.Uuid.parse(serviceUuid)
+        val parsedCharUuid = kotlin.uuid.Uuid.parse(characteristicUuid)
+        
+        val service = peripheral.services[parsedServiceUuid] ?: return
+        
+        val nativeChar = NativeBluetoothCharacteristic(
+            uuid = parsedCharUuid,
+            name = null,
+            deviceAddress = address,
+            serviceUuid = parsedServiceUuid,
+            properties = properties
+        )
+        val characteristic = BluetoothCharacteristic(nativeChar)
+        characteristic.setService(service)
+        service.addCharacteristic(characteristic)
         
         delegates.forEach { it.didDiscoverCharacteristics(peripheral) }
     }
