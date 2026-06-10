@@ -1,7 +1,9 @@
 package dev.bluefalcon.engine.rpi
 
+import dev.bluefalcon.core.L2capException
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -35,6 +37,26 @@ class RpiL2CapSocketTest {
         assertEquals(0x2C, sdu[0].toInt() and 0xFF)
         assertEquals(0x01, sdu[1].toInt() and 0xFF)
         assertEquals(302, sdu.size)
+    }
+
+    @Test
+    fun `frameSdu accepts the maximum 65535-byte payload`() {
+        val payload = ByteArray(0xFFFF)
+        val sdu = RpiL2CapSocket.frameSdu(payload)
+
+        // 0xFFFF -> lo = 0xFF, hi = 0xFF
+        assertEquals(0xFF, sdu[0].toInt() and 0xFF)
+        assertEquals(0xFF, sdu[1].toInt() and 0xFF)
+        assertEquals(0xFFFF + 2, sdu.size)
+    }
+
+    @Test
+    fun `frameSdu fails fast when the payload exceeds the 16-bit L-field`() {
+        // 65536 bytes cannot be encoded in the 2-byte length field; framing it would
+        // wrap to 0 and corrupt the stream, so it must throw instead.
+        assertFailsWith<L2capException> {
+            RpiL2CapSocket.frameSdu(ByteArray(0x10000))
+        }
     }
 
     @Test
@@ -73,5 +95,20 @@ class RpiL2CapSocketTest {
     fun `stripSduLength of a buffer shorter than the length field is null`() {
         assertNull(RpiL2CapSocket.stripSduLength(byteArrayOf(0x01)))
         assertNull(RpiL2CapSocket.stripSduLength(ByteArray(0)))
+    }
+
+    @Test
+    fun `stripSduLength returns null when the declared length exceeds the received bytes`() {
+        // Declares 5 payload bytes but only 3 follow — a truncated SDU (e.g. it
+        // exceeded the read buffer). The partial payload must be dropped, not emitted.
+        val truncated = byteArrayOf(0x05, 0x00, 0x10, 0x20, 0x30)
+        assertNull(RpiL2CapSocket.stripSduLength(truncated))
+    }
+
+    @Test
+    fun `stripSduLength returns null when the declared length is shorter than the received bytes`() {
+        // Declares 1 payload byte but 3 follow — a malformed/over-long SDU.
+        val malformed = byteArrayOf(0x01, 0x00, 0x10, 0x20, 0x30)
+        assertNull(RpiL2CapSocket.stripSduLength(malformed))
     }
 }

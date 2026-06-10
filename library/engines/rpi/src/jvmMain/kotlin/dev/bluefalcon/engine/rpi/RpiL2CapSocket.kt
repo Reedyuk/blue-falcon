@@ -56,8 +56,9 @@ class RpiL2CapSocket(
                 while (isActive) {
                     val read = clib.read(fd, buffer, NativeLong(READ_BUFFER_SIZE.toLong())).toLong()
                     if (read <= 0L) break
-                    // One SEQPACKET read == one whole SDU; strip the leading
-                    // 2-byte LE SDU-length L-field and emit the raw payload.
+                    // One SEQPACKET read == one whole SDU; strip the leading 2-byte
+                    // LE SDU-length L-field and emit the raw payload. A truncated or
+                    // malformed SDU yields null and is skipped rather than emitted.
                     val payload = stripSduLength(buffer.getByteArray(0, read.toInt())) ?: continue
                     _incoming.emit(payload)
                 }
@@ -98,29 +99,59 @@ class RpiL2CapSocket(
     }
 
     companion object {
-        private const val READ_BUFFER_SIZE = 4096
+        /** Size of the 2-octet little-endian SDU-length L-field BlueZ frames each CoC SDU with. */
+        private const val SDU_LENGTH_FIELD = 2
+
+        /**
+         * Maximum L2CAP LE CoC SDU payload. The L-field is 16-bit, so a payload cannot
+         * exceed this (Bluetooth Core Spec, Vol 3, Part A, §3.4).
+         */
+        private const val MAX_SDU_PAYLOAD = 0xFFFF
+
+        /**
+         * Inbound read buffer, sized to hold a whole maximum-length SDU (payload + L-field)
+         * so a spec-compliant peer's SDU is never truncated by the SEQPACKET `read()`.
+         * [stripSduLength] still validates the declared length and drops anything short.
+         */
+        private const val READ_BUFFER_SIZE = MAX_SDU_PAYLOAD + SDU_LENGTH_FIELD
 
         /**
          * Frames [payload] as a BlueZ L2CAP CoC SDU by prepending the 2-octet
          * little-endian SDU-length L-field. The length is the payload length,
          * excluding the 2-byte field itself. Inverse of [stripSduLength].
+         *
+         * @throws L2capException if [payload] exceeds [MAX_SDU_PAYLOAD] — the 16-bit
+         *   L-field cannot encode it, so framing it would silently wrap and corrupt the
+         *   stream. Fail fast instead.
          */
         internal fun frameSdu(payload: ByteArray): ByteArray {
-            val sdu = ByteArray(payload.size + 2)
+            if (payload.size > MAX_SDU_PAYLOAD) {
+                throw L2capException(
+                    "L2CAP SDU payload of ${payload.size} bytes exceeds the maximum of $MAX_SDU_PAYLOAD"
+                )
+            }
+            val sdu = ByteArray(payload.size + SDU_LENGTH_FIELD)
             sdu[0] = (payload.size and 0xFF).toByte()
             sdu[1] = ((payload.size ushr 8) and 0xFF).toByte()
-            payload.copyInto(sdu, destinationOffset = 2)
+            payload.copyInto(sdu, destinationOffset = SDU_LENGTH_FIELD)
             return sdu
         }
 
         /**
          * Strips the leading 2-octet LE SDU-length L-field that the Linux kernel
-         * exposes on each inbound CoC SDU, returning the raw payload. Returns
-         * `null` for a malformed SDU shorter than the 2-byte field.
+         * exposes on each inbound CoC SDU, returning the raw payload.
+         *
+         * Returns `null` for an SDU shorter than the 2-byte field, or one whose declared
+         * length disagrees with the bytes actually received — the latter signals a
+         * truncated (e.g. larger than [READ_BUFFER_SIZE]) or otherwise malformed SDU, so
+         * the partial payload is dropped rather than emitted as if it were valid.
          */
         internal fun stripSduLength(sdu: ByteArray): ByteArray? {
-            if (sdu.size < 2) return null
-            return sdu.copyOfRange(2, sdu.size)
+            if (sdu.size < SDU_LENGTH_FIELD) return null
+            val declaredLength = (sdu[0].toInt() and 0xFF) or ((sdu[1].toInt() and 0xFF) shl 8)
+            val payloadLength = sdu.size - SDU_LENGTH_FIELD
+            if (declaredLength != payloadLength) return null
+            return sdu.copyOfRange(SDU_LENGTH_FIELD, sdu.size)
         }
     }
 }
