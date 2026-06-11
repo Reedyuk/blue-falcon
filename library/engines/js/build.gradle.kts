@@ -10,20 +10,49 @@ repositories {
 }
 
 val kotlinx_coroutines_version: String by project
+val kotlinx_browser_version: String by project
 val versionEngines: String by project
 
 kotlin {
     jvmToolchain(17)
-    
+
+    // The shared Web Bluetooth interop is modelled with expect/actual classes.
+    compilerOptions {
+        freeCompilerArgs.add("-Xexpect-actual-classes")
+    }
+
+    // Both browser backends share the same Web Bluetooth logic (see webMain below).
     js(IR) {
         browser()
     }
-    
+    @OptIn(org.jetbrains.kotlin.gradle.ExperimentalWasmDsl::class)
+    wasmJs {
+        browser()
+    }
+
     sourceSets {
-        val jsMain by getting {
+        val commonMain by getting
+
+        // Intermediate source set holding the shared engine orchestration. The
+        // platform-specific Web Bluetooth interop lives in jsMain / wasmJsMain
+        // behind the expect/actual surface declared here.
+        val webMain by creating {
+            dependsOn(commonMain)
             dependencies {
                 implementation(project(":core"))
                 implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:$kotlinx_coroutines_version")
+            }
+        }
+
+        val jsMain by getting {
+            dependsOn(webMain)
+        }
+        val wasmJsMain by getting {
+            dependsOn(webMain)
+            dependencies {
+                // org.w3c.dom / org.khronos.webgl ship in the JS stdlib but must be
+                // pulled in explicitly for the wasmJs target.
+                implementation("org.jetbrains.kotlinx:kotlinx-browser:$kotlinx_browser_version")
             }
         }
     }

@@ -117,7 +117,8 @@ blueFalcon.scan()
 | **Android** | `blue-falcon-engine-android` | ✅ Stable | Full BLE support including L2CAP, bonding |
 | **iOS** | `blue-falcon-engine-ios` | ✅ Stable | CoreBluetooth wrapper |
 | **macOS** | `blue-falcon-engine-macos` | ✅ Stable | CoreBluetooth wrapper |
-| **JavaScript** | `blue-falcon-engine-js` | ✅ Stable | Web Bluetooth API |
+| **JavaScript** | `blue-falcon-engine-js` | ✅ Stable | Web Bluetooth API (`js` browser target) |
+| **Wasm (browser)** | `blue-falcon-engine-js` | ✅ Stable | Web Bluetooth API (`wasmJs` browser target) |
 | **Windows** | `blue-falcon-engine-windows` | ✅ Stable | WinRT via JNI (Windows 10 1803+) |
 | **Raspberry Pi** | `blue-falcon-engine-rpi` | ✅ Stable | Blessed library (BlueZ) |
 
@@ -134,9 +135,11 @@ blueFalcon.scan()
 #### macOS
 - Minimum: macOS 10.15+
 
-#### JavaScript
+#### JavaScript / Wasm (browser)
 - Modern browsers with Web Bluetooth support
 - HTTPS required (security policy)
+- The `blue-falcon-engine-js` artifact ships both `js` and `wasmJs` browser variants; Gradle resolves the right one for your target automatically
+- `scan()` opens the browser's device chooser; dismissing it without picking a device is a no-op (no peripheral added), not an error
 
 #### Windows
 - Windows 10 version 1803 (April 2018 Update) or later

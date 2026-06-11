@@ -167,6 +167,34 @@ cd JS-Example
 
 ---
 
+### 8. WASM-Example
+
+**Platform**: WebAssembly (Web Browser)  
+**Language**: Kotlin/Wasm  
+**Description**: Web Bluetooth example running on the `wasmJs` target of the JS engine
+
+**Features**:
+- Scan, connect, discover, read, write
+- Subscribe to notifications (exercises the `characteristicvaluechanged` bridge)
+- Uses the modern engine API: `BlueFalcon(JsEngine())`
+
+**Location**: `WASM-Example/`  
+**See**: [WASM-Example/README.md](WASM-Example/README.md) for details
+
+**Running**:
+```bash
+# Publish the library locally first (see the example README), then:
+cd WASM-Example
+./gradlew wasmJsBrowserDevelopmentRun --continuous
+# Open the printed http://localhost URL
+```
+
+**Requirements**:
+- Chrome or Edge 119+ (Web Bluetooth + WasmGC)
+- HTTPS connection (or localhost)
+
+---
+
 ## 🎯 Quick Start Patterns
 
 ### Legacy API (2.x - Backward Compatible)
