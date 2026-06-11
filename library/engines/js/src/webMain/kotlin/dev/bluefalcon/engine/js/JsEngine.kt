@@ -1,133 +1,126 @@
 package dev.bluefalcon.engine.js
 
 import dev.bluefalcon.core.*
-import dev.bluefalcon.engine.js.external.*
-import kotlinx.browser.window
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableSharedFlow
-import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import org.w3c.dom.Navigator
-import kotlin.js.Promise
 
 /**
- * JavaScript/Web Bluetooth implementation of BlueFalconEngine
+ * Web Bluetooth implementation of [BlueFalconEngine].
+ *
+ * The orchestration here is target-agnostic; all browser interop is delegated to
+ * [WebBluetoothApi], which has separate `actual` implementations for the `js` and
+ * `wasmJs` targets. The class name is retained for backwards compatibility with
+ * existing Kotlin/JS consumers.
  */
 class JsEngine : BlueFalconEngine {
     override val scope = CoroutineScope(Dispatchers.Default)
-    
+
+    private val api = WebBluetoothApi()
+
     private val _peripherals = MutableStateFlow<Set<BluetoothPeripheral>>(emptySet())
     override val peripherals: StateFlow<Set<BluetoothPeripheral>> = _peripherals.asStateFlow()
-    
+
     private val _managerState = MutableStateFlow(BluetoothManagerState.Ready)
     override val managerState: StateFlow<BluetoothManagerState> = _managerState.asStateFlow()
 
     private val _characteristicNotifications = MutableSharedFlow<CharacteristicNotification>(extraBufferCapacity = 64)
     override val characteristicNotifications: SharedFlow<CharacteristicNotification> = _characteristicNotifications
-    
+
     override var isScanning: Boolean = false
         private set
-    
+
     private val peripheralMap = mutableMapOf<String, JsBluetoothPeripheral>()
-    
-    private inline val Navigator.bluetooth: Bluetooth get() = asDynamic().bluetooth as Bluetooth
-    
+
+    /**
+     * Prompts the user to pick a device via the Web Bluetooth chooser and adds the
+     * selection to [peripherals].
+     *
+     * Web Bluetooth has no continuous scan: each call opens the browser's device
+     * chooser and resolves with a single device. Dismissing the chooser without
+     * selecting (or no device matching) is treated as a no-op — no peripheral is added
+     * and no exception is thrown. Genuine failures (Web Bluetooth unavailable, blocked
+     * by permissions policy, etc.) still propagate to the caller.
+     *
+     * The filter UUIDs are declared as optional services so they're accessible after
+     * connecting; the chooser itself is not filtered, because Web Bluetooth can't match
+     * services a device doesn't advertise.
+     */
     override suspend fun scan(filters: List<ServiceFilter>) {
         isScanning = true
-        
-        val serviceUuids = filters.map { it.uuid.toString() }.toTypedArray()
-        
-        window.navigator.bluetooth.requestDevice(
-            BluetoothOptions(
-                acceptAllDevices = filters.isEmpty(),
-                filters = if (filters.isNotEmpty()) {
-                    arrayOf(BluetoothOptions.Filter.Services(serviceUuids))
-                } else {
-                    null
-                },
-                optionalServices = emptyArray()
-            )
-        ).then { bluetoothDevice ->
-            val peripheral = peripheralMap.getOrPut(bluetoothDevice.id) {
-                JsBluetoothPeripheral(bluetoothDevice)
+        try {
+            val serviceUuids = filters.map { it.uuid.toString() }
+            // Null means the user dismissed the chooser — leave peripherals untouched.
+            val device = api.requestDevice(serviceUuids) ?: return
+            val peripheral = peripheralMap.getOrPut(device.id) {
+                JsBluetoothPeripheral(device)
             }
-            
             _peripherals.value = _peripherals.value + peripheral
-            isScanning = false
-        }.catch {
+        } finally {
             isScanning = false
         }
     }
-    
+
     override suspend fun stopScanning() {
         isScanning = false
         // Web Bluetooth API doesn't support continuous scanning
     }
-    
+
     override fun clearPeripherals() {
         _peripherals.value = emptySet()
         peripheralMap.clear()
     }
-    
+
     override suspend fun connect(peripheral: BluetoothPeripheral, autoConnect: Boolean) {
         val jsPeripheral = peripheral as? JsBluetoothPeripheral
             ?: throw IllegalArgumentException("Peripheral must be a JsBluetoothPeripheral")
-        
-        if (jsPeripheral.device.gatt?.connected == true) {
+
+        if (jsPeripheral.device.isConnected) {
             return
         }
-        
-        jsPeripheral.device.gatt?.connect()?.then { gatt ->
-            // Connection successful
-        }
+
+        jsPeripheral.device.connect()
     }
-    
+
     override suspend fun disconnect(peripheral: BluetoothPeripheral) {
         val jsPeripheral = peripheral as? JsBluetoothPeripheral
             ?: throw IllegalArgumentException("Peripheral must be a JsBluetoothPeripheral")
-        
-        jsPeripheral.device.gatt?.disconnect()
+
+        jsPeripheral.device.disconnect()
     }
-    
+
     override fun connectionState(peripheral: BluetoothPeripheral): BluetoothPeripheralState {
         val jsPeripheral = peripheral as? JsBluetoothPeripheral
             ?: return BluetoothPeripheralState.Unknown
-        
-        return if (jsPeripheral.device.gatt?.connected == true) {
+
+        return if (jsPeripheral.device.isConnected) {
             BluetoothPeripheralState.Connected
         } else {
             BluetoothPeripheralState.Disconnected
         }
     }
-    
+
     override fun retrievePeripheral(identifier: String): BluetoothPeripheral? {
         // Web Bluetooth API doesn't support retrieving previously paired devices
         return peripheralMap[identifier]
     }
-    
+
     override fun requestConnectionPriority(peripheral: BluetoothPeripheral, priority: ConnectionPriority) {
         // Not supported in Web Bluetooth API
     }
-    
+
     override suspend fun discoverServices(peripheral: BluetoothPeripheral, serviceUUIDs: List<Uuid>) {
         val jsPeripheral = peripheral as? JsBluetoothPeripheral
             ?: throw IllegalArgumentException("Peripheral must be a JsBluetoothPeripheral")
-        
-        val serviceUuid = if (serviceUUIDs.isNotEmpty()) {
-            serviceUUIDs.joinToString(",") { it.toString() }
-        } else {
-            null
-        }
-        
-        jsPeripheral.device.gatt?.getPrimaryServices(serviceUuid)?.then { services ->
-            val jsServices = services.map { JsBluetoothService(it) }
-            jsPeripheral.updateServices(jsServices)
-        }
+
+        val services = jsPeripheral.device.getPrimaryServices(serviceUUIDs.map { it.toString() })
+        jsPeripheral.updateServices(services.map { JsBluetoothService(it) })
     }
-    
+
     override suspend fun discoverCharacteristics(
         peripheral: BluetoothPeripheral,
         service: BluetoothService,
@@ -135,29 +128,21 @@ class JsEngine : BlueFalconEngine {
     ) {
         val jsService = service as? JsBluetoothService
             ?: throw IllegalArgumentException("Service must be a JsBluetoothService")
-        
-        val characteristicUuid = if (characteristicUUIDs.isNotEmpty()) {
-            characteristicUUIDs.joinToString(",") { it.toString() }
-        } else {
-            null
-        }
-        
-        jsService.service.getCharacteristics(characteristicUuid).then { characteristics ->
-            val jsCharacteristics = characteristics.map { JsBluetoothCharacteristic(it, jsService) }
-            jsService.updateCharacteristics(jsCharacteristics)
-        }
+
+        val characteristics = jsService.service.getCharacteristics(characteristicUUIDs.map { it.toString() })
+        jsService.updateCharacteristics(characteristics.map { JsBluetoothCharacteristic(it, jsService) })
     }
-    
+
     override suspend fun readCharacteristic(
         peripheral: BluetoothPeripheral,
         characteristic: BluetoothCharacteristic
     ) {
         val jsCharacteristic = characteristic as? JsBluetoothCharacteristic
             ?: throw IllegalArgumentException("Characteristic must be a JsBluetoothCharacteristic")
-        
+
         jsCharacteristic.characteristic.readValue()
     }
-    
+
     override suspend fun writeCharacteristic(
         peripheral: BluetoothPeripheral,
         characteristic: BluetoothCharacteristic,
@@ -166,7 +151,7 @@ class JsEngine : BlueFalconEngine {
     ) {
         writeCharacteristic(peripheral, characteristic, value.encodeToByteArray(), writeType)
     }
-    
+
     override suspend fun writeCharacteristic(
         peripheral: BluetoothPeripheral,
         characteristic: BluetoothCharacteristic,
@@ -175,10 +160,10 @@ class JsEngine : BlueFalconEngine {
     ) {
         val jsCharacteristic = characteristic as? JsBluetoothCharacteristic
             ?: throw IllegalArgumentException("Characteristic must be a JsBluetoothCharacteristic")
-        
+
         jsCharacteristic.characteristic.writeValue(value)
     }
-    
+
     override suspend fun notifyCharacteristic(
         peripheral: BluetoothPeripheral,
         characteristic: BluetoothCharacteristic,
@@ -186,14 +171,23 @@ class JsEngine : BlueFalconEngine {
     ) {
         val jsCharacteristic = characteristic as? JsBluetoothCharacteristic
             ?: throw IllegalArgumentException("Characteristic must be a JsBluetoothCharacteristic")
-        
+
         if (notify) {
-            jsCharacteristic.characteristic.startNotifications()
+            jsCharacteristic.characteristic.startNotifications { value ->
+                jsCharacteristic.emitNotification(value)
+                _characteristicNotifications.tryEmit(
+                    CharacteristicNotification(
+                        peripheral = peripheral,
+                        characteristic = jsCharacteristic,
+                        value = value
+                    )
+                )
+            }
         } else {
             jsCharacteristic.characteristic.stopNotifications()
         }
     }
-    
+
     override suspend fun indicateCharacteristic(
         peripheral: BluetoothPeripheral,
         characteristic: BluetoothCharacteristic,
@@ -202,7 +196,7 @@ class JsEngine : BlueFalconEngine {
         // Web Bluetooth API uses the same mechanism for notifications and indications
         notifyCharacteristic(peripheral, characteristic, indicate)
     }
-    
+
     override suspend fun readDescriptor(
         peripheral: BluetoothPeripheral,
         characteristic: BluetoothCharacteristic,
@@ -210,7 +204,7 @@ class JsEngine : BlueFalconEngine {
     ) {
         throw UnsupportedOperationException("readDescriptor is not fully supported in Web Bluetooth API")
     }
-    
+
     override suspend fun writeDescriptor(
         peripheral: BluetoothPeripheral,
         descriptor: BluetoothCharacteristicDescriptor,
@@ -218,15 +212,15 @@ class JsEngine : BlueFalconEngine {
     ) {
         throw UnsupportedOperationException("writeDescriptor is not fully supported in Web Bluetooth API")
     }
-    
+
     override suspend fun changeMTU(peripheral: BluetoothPeripheral, mtuSize: Int) {
         throw UnsupportedOperationException("changeMTU is not supported in Web Bluetooth API")
     }
-    
+
     override fun refreshGattCache(peripheral: BluetoothPeripheral): Boolean {
         return false
     }
-    
+
     override suspend fun openL2capChannel(
         peripheral: BluetoothPeripheral,
         psm: Int,
@@ -234,11 +228,11 @@ class JsEngine : BlueFalconEngine {
     ): BluetoothSocket {
         throw UnsupportedOperationException("openL2capChannel is not supported in Web Bluetooth API")
     }
-    
+
     override suspend fun createBond(peripheral: BluetoothPeripheral) {
         throw UnsupportedOperationException("Bonding is not supported in Web Bluetooth API")
     }
-    
+
     override suspend fun removeBond(peripheral: BluetoothPeripheral) {
         throw UnsupportedOperationException("Bonding is not supported in Web Bluetooth API")
     }

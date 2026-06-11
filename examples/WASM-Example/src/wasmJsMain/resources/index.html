@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Blue Falcon — Kotlin/Wasm Web Bluetooth</title>
+    <style>
+        body { font-family: system-ui, sans-serif; margin: 2rem; max-width: 900px; }
+        h1 { font-size: 1.4rem; }
+        .row { display: flex; gap: .5rem; margin: .5rem 0; flex-wrap: wrap; }
+        input { padding: .4rem; }
+        #uuid { flex: 1; min-width: 320px; }
+        button { padding: .35rem .7rem; cursor: pointer; }
+        #results { margin-top: 1rem; }
+        .service { margin-top: .75rem; font-weight: 600; }
+        .char { margin: .35rem 0 .35rem 1rem; }
+        code { background: #f0f0f0; padding: .1rem .3rem; border-radius: 3px; }
+        #log {
+            margin-top: 1rem; background: #111; color: #b5e853; padding: 1rem;
+            border-radius: 6px; height: 260px; overflow: auto; white-space: pre-wrap;
+            font-family: ui-monospace, monospace; font-size: .85rem;
+        }
+    </style>
+</head>
+<body>
+<h1>Blue Falcon — Kotlin/Wasm Web Bluetooth example</h1>
+<p>
+    Enter the service UUID you want to access (e.g. <code>ffe0</code> / <code>0xffe0</code>,
+    or a full UUID). The chooser shows all nearby devices — pick yours; the service is
+    declared as accessible via <code>optionalServices</code>. <b>Subscribe</b> to a notifying
+    characteristic and watch the log — each <code>characteristicvaluechanged</code> event
+    appears as a 🔔 line.
+</p>
+
+<div class="row">
+    <input id="uuid" type="text" placeholder="Optional service UUID (blank = any device)">
+    <button id="scanBtn">Request device &amp; connect</button>
+</div>
+
+<div class="row">
+    <input id="writeValue" type="text" placeholder="Text to write (used by the Write buttons)">
+</div>
+
+<div id="results"></div>
+
+<h3>Log</h3>
+<pre id="log"></pre>
+
+<script src="blueFalconWasmExample.js"></script>
+</body>
+</html>
