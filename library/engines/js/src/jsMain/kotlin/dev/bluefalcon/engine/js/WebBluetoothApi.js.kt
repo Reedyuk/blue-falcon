@@ -119,7 +119,16 @@ internal class JsWebCharacteristic(val characteristic: BluetoothRemoteGATTCharac
         }
         valueChangedListener = listener
         characteristic.addEventListener(CHARACTERISTIC_VALUE_CHANGED, listener)
-        characteristic.startNotifications().await()
+        try {
+            characteristic.startNotifications().await()
+        } catch (error: Throwable) {
+            // The native enable rejected (device disconnected, notifications unsupported,
+            // …) — detach the listener we just attached so it and its closure don't leak,
+            // then surface the failure.
+            characteristic.removeEventListener(CHARACTERISTIC_VALUE_CHANGED, listener)
+            valueChangedListener = null
+            throw error
+        }
     }
 
     suspend fun stopNotifications() {
@@ -136,8 +145,12 @@ internal class JsWebCharacteristic(val characteristic: BluetoothRemoteGATTCharac
     }
 }
 
+// copyOf() detaches the result from the DataView's backing ArrayBuffer. Without it the
+// returned array is a live view: the browser reuses the buffer on the next notification,
+// so a previously-emitted value would mutate underneath any collector still holding it.
+// (The wasmJs actual copies element-by-element for the same reason.)
 private fun DataView.toByteArray(): ByteArray =
-    Int8Array(buffer, byteOffset, byteLength).unsafeCast<ByteArray>()
+    Int8Array(buffer, byteOffset, byteLength).unsafeCast<ByteArray>().copyOf()
 
 // "All services/characteristics" must call the method with NO argument — passing an
 // explicit null makes Web Bluetooth read it as a (invalid) service/characteristic name.

@@ -152,10 +152,20 @@ internal class WasmWebCharacteristic(val characteristic: GattCharacteristicJs) {
     suspend fun startNotifications(onValueChanged: (ByteArray) -> Unit) {
         // Replace any previous listener so repeated enables don't stack handlers.
         valueChangedCallback?.let { removeValueChangedListener(characteristic, it) }
-        valueChangedCallback = addValueChangedListener(characteristic) {
+        val callback = addValueChangedListener(characteristic) {
             characteristic.value?.toByteArray()?.let(onValueChanged)
         }
-        characteristic.startNotifications().await()
+        valueChangedCallback = callback
+        try {
+            characteristic.startNotifications().await()
+        } catch (error: Throwable) {
+            // The native enable rejected (device disconnected, notifications unsupported,
+            // …) — detach the callback we just attached so it and its closure don't leak,
+            // then surface the failure.
+            removeValueChangedListener(characteristic, callback)
+            valueChangedCallback = null
+            throw error
+        }
     }
 
     suspend fun stopNotifications() {

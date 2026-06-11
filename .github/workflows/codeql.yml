@@ -38,11 +38,15 @@ jobs:
         build-mode: manual
 
     - name: Build JVM target for CodeQL
+      # --no-build-cache --rerun-tasks force the Kotlin compiler to actually execute.
+      # Without them the compile tasks resolve FROM-CACHE (the Gradle build cache is
+      # restored by setup-gradle), so no compiler runs and CodeQL's tracer extracts no
+      # source — failing with "CodeQL could not process any code written in Java/Kotlin".
       run: |
         ./gradlew -p ./library \
           :core:compileKotlinJvm \
           :engines:android:compileDebugKotlinAndroid \
-          --no-daemon --stacktrace
+          --no-daemon --stacktrace --no-build-cache --rerun-tasks
       env:
         GRADLE_OPTS: "-Dorg.gradle.jvmargs=-Xmx4g -Dorg.gradle.daemon=false"
 

@@ -92,15 +92,18 @@ private fun parseFilters(raw: String): List<ServiceFilter> {
 private fun renderCharacteristics(peripheral: BluetoothPeripheral) {
     characteristics.clear()
     val html = StringBuilder()
-    html.append("<h3>").append(peripheral.name ?: "(unnamed device)").append("</h3>")
+    // Peripheral-supplied text (device name, and defensively the UUIDs) is escaped
+    // before going into innerHTML so a device advertising markup in its name can't
+    // inject HTML into the page.
+    html.append("<h3>").append(escapeHtml(peripheral.name ?: "(unnamed device)")).append("</h3>")
     peripheral.services.forEach { service ->
         html.append("<div class='service'>Service <code>")
-            .append(shortUuid(service.uuid.toString())).append("</code></div>")
+            .append(escapeHtml(shortUuid(service.uuid.toString()))).append("</code></div>")
         service.characteristics.forEach { characteristic ->
             val index = characteristics.size
             characteristics.add(characteristic)
             html.append("<div class='char'><code>")
-                .append(shortUuid(characteristic.uuid.toString())).append("</code> ")
+                .append(escapeHtml(shortUuid(characteristic.uuid.toString()))).append("</code> ")
             html.append(button("read", index, "Read"))
             html.append(button("subscribe", index, "Subscribe"))
             html.append(button("unsubscribe", index, "Unsubscribe"))
@@ -169,6 +172,15 @@ private fun render(value: ByteArray): String {
     val hex = value.joinToString(" ") { (it.toInt() and 0xFF).toString(16).padStart(2, '0') }
     return "[$hex] \"${value.decodeToString()}\""
 }
+
+/** Escapes the HTML-significant characters so peripheral-supplied text can't inject
+ *  markup when written via innerHTML. */
+private fun escapeHtml(text: String): String =
+    text.replace("&", "&amp;")
+        .replace("<", "&lt;")
+        .replace(">", "&gt;")
+        .replace("\"", "&quot;")
+        .replace("'", "&#39;")
 
 /** Collapses the Bluetooth base UUID to its 16-bit short form when applicable. */
 private fun shortUuid(uuid: String): String =
