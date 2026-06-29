@@ -142,9 +142,8 @@ class AndroidEngine(
         // wedge it (it stops completing any new connection until power-cycled). Registering here lets
         // the next connect()/disconnect() tear the orphan down, so at most one initiation is ever
         // outstanding per address.
-        if (gatt != null) {
-            gattCallback.trackConnecting(gatt)
-        }
+gatt?.let { gattCallback.trackConnecting(it) }
+    ?: logger?.warn("connectGatt returned null for ${androidPeripheral.device.address}")
     }
 
     private fun peripheralFor(address: String): AndroidBluetoothPeripheral? =
