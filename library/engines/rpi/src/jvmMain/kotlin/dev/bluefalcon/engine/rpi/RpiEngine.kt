@@ -46,6 +46,7 @@ class RpiEngine : BlueFalconEngine {
             }
             
             device.rssi = scanResult.rssi.toFloat()
+            device.manufacturerData = scanResult.manufacturerData ?: emptyMap()
             _peripherals.value = _peripherals.value + device
         }
     }

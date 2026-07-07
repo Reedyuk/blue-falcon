@@ -84,19 +84,44 @@ void BluetoothLEManager::startScan(JNIEnv* env, jobjectArray serviceUuids) {
                 BluetoothLEAdvertisementType::ConnectableUndirected ||
                 args.AdvertisementType() == 
                 BluetoothLEAdvertisementType::ConnectableDirected;
+
+            // Build manufacturer data bytes: [companyId LSB, companyId MSB, payload...]
+            // Use the first manufacturer-specific data entry if present.
+            std::vector<uint8_t> mfrBytes;
+            auto mfrDataList = args.Advertisement().ManufacturerData();
+            if (mfrDataList.Size() > 0) {
+                auto entry = mfrDataList.GetAt(0);
+                uint16_t companyId = entry.CompanyId();
+                mfrBytes.push_back(static_cast<uint8_t>(companyId & 0xFF));
+                mfrBytes.push_back(static_cast<uint8_t>((companyId >> 8) & 0xFF));
+                auto dataBuffer = entry.Data();
+                auto dataReader = winrt::Windows::Storage::Streams::DataReader::FromBuffer(dataBuffer);
+                while (dataReader.UnconsumedBufferLength() > 0) {
+                    mfrBytes.push_back(dataReader.ReadByte());
+                }
+            }
             
             // Call Java callback
             JNIEnv* env = nullptr;
             if (m_jvm->AttachCurrentThread((void**)&env, nullptr) == JNI_OK) {
                 jclass cls = env->GetObjectClass(m_javaObject);
-                jmethodID mid = env->GetMethodID(cls, "onDeviceDiscovered", "(JLjava/lang/String;FZ)V");
+                jmethodID mid = env->GetMethodID(cls, "onDeviceDiscovered", "(JLjava/lang/String;FZ[B)V");
                 
                 if (mid != nullptr) {
                     jstring jName = deviceName.empty() ? nullptr : 
                         env->NewStringUTF(deviceName.c_str());
-                    env->CallVoidMethod(m_javaObject, mid, (jlong)address, jName, 
-                                      (jfloat)rssi, (jboolean)isConnectable);
+                    jbyteArray jMfr = nullptr;
+                    if (!mfrBytes.empty()) {
+                        jMfr = env->NewByteArray(static_cast<jsize>(mfrBytes.size()));
+                        if (jMfr) {
+                            env->SetByteArrayRegion(jMfr, 0, static_cast<jsize>(mfrBytes.size()),
+                                                    reinterpret_cast<const jbyte*>(mfrBytes.data()));
+                        }
+                    }
+                    env->CallVoidMethod(m_javaObject, mid, (jlong)address, jName,
+                                      (jfloat)rssi, (jboolean)isConnectable, jMfr);
                     if (jName) env->DeleteLocalRef(jName);
+                    if (jMfr)  env->DeleteLocalRef(jMfr);
                 }
                 
                 env->DeleteLocalRef(cls);

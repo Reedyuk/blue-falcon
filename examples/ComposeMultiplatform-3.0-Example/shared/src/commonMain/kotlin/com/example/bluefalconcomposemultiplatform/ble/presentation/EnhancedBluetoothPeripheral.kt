@@ -14,5 +14,7 @@ data class EnhancedBluetoothPeripheral(
     /** Whether a clone operation is in progress. */
     val cloneInProgress: Boolean = false,
     /** Cached RSSI, kept fresh by rssiUpdates flow (falls back to peripheral.rssi on first discovery). */
-    val rssi: Float? = null
+    val rssi: Float? = null,
+    /** Manufacturer-specific data from scan advertisement: company ID → hex payload string. */
+    val manufacturerData: Map<Int, String> = emptyMap()
 )

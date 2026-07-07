@@ -18,6 +18,8 @@ class MacosJvmBluetoothPeripheral(
 
     override var mtuSize: Int? = null
 
+    override var manufacturerData: Map<Int, ByteArray> = emptyMap()
+
     override val services: List<BluetoothService>
         get() = _services.toList()
 

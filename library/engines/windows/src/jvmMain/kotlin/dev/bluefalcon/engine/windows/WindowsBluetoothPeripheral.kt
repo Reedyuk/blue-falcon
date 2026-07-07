@@ -30,6 +30,8 @@ class WindowsBluetoothPeripheral(
     override var mtuSize: Int?
         get() = _mtuSize
         set(value) { _mtuSize = value }
+
+    override var manufacturerData: Map<Int, ByteArray> = emptyMap()
     
     override val services: List<BluetoothService>
         get() = _services.toList()

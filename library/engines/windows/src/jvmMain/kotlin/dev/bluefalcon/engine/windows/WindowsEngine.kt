@@ -322,13 +322,29 @@ class WindowsEngine : BlueFalconEngine {
         address: Long,
         name: String?,
         rssi: Float,
-        isConnectable: Boolean
+        isConnectable: Boolean,
+        manufacturerDataBytes: ByteArray?
     ) {
-        val peripheral = WindowsBluetoothPeripheral(address, name).apply {
-            this.rssi = rssi
+        val mfData = parseManufacturerData(manufacturerDataBytes)
+        val existing = _peripherals.value.find { it.uuid == WindowsBluetoothPeripheral(address, null).uuid }
+                as? WindowsBluetoothPeripheral
+        if (existing != null) {
+            existing.rssi = rssi
+            if (mfData.isNotEmpty()) existing.manufacturerData = mfData
+        } else {
+            val peripheral = WindowsBluetoothPeripheral(address, name).apply {
+                this.rssi = rssi
+                this.manufacturerData = mfData
+            }
+            _peripherals.value = _peripherals.value + peripheral
         }
-        
-        _peripherals.value = _peripherals.value + peripheral
+    }
+
+    private fun parseManufacturerData(raw: ByteArray?): Map<Int, ByteArray> {
+        if (raw == null || raw.size < 2) return emptyMap()
+        val companyId = (raw[0].toInt() and 0xFF) or ((raw[1].toInt() and 0xFF) shl 8)
+        val payload = raw.copyOfRange(2, raw.size)
+        return mapOf(companyId to payload)
     }
     
     @Suppress("unused")

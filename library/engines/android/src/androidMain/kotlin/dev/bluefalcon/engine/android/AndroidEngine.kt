@@ -494,14 +494,48 @@ class AndroidEngine(
                 val bluetoothPeripheral = AndroidBluetoothPeripheral(device)
                 val newRssi = result.rssi.toFloat()
                 bluetoothPeripheral.rssi = newRssi
+                bluetoothPeripheral.manufacturerData = extractManufacturerData(result)
                 val existing = _peripherals.value.find { it.uuid == bluetoothPeripheral.uuid }
                 if (existing != null) {
                     (existing as? AndroidBluetoothPeripheral)?.rssi = newRssi
+                    (existing as? AndroidBluetoothPeripheral)?.manufacturerData =
+                        bluetoothPeripheral.manufacturerData
                     _rssiUpdates.tryEmit(bluetoothPeripheral.uuid to newRssi)
                 } else {
                     _peripherals.value = _peripherals.value + setOf(bluetoothPeripheral)
                 }
             }
+        }
+
+        private fun extractManufacturerData(result: ScanResult): Map<Int, ByteArray> {
+            val scanRecord = result.scanRecord ?: return emptyMap()
+            return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                val sparse = scanRecord.manufacturerSpecificData ?: return emptyMap()
+                (0 until sparse.size()).associate { i -> sparse.keyAt(i) to sparse.valueAt(i) }
+            } else {
+                @Suppress("DEPRECATION")
+                val raw = scanRecord.bytes ?: return emptyMap()
+                parseManufacturerDataLegacy(raw)
+            }
+        }
+
+        private fun parseManufacturerDataLegacy(raw: ByteArray): Map<Int, ByteArray> {
+            var index = 0
+            while (index < raw.size) {
+                val length = raw[index].toUByte().toInt()
+                index += 1
+                if (length == 0) break
+                if (index + length > raw.size) break
+                val type = raw[index].toUByte().toInt()
+                if (type == 0xFF && length >= 3) {
+                    val companyId = (raw[index + 1].toInt() and 0xFF) or
+                            ((raw[index + 2].toInt() and 0xFF) shl 8)
+                    val payload = raw.copyOfRange(index + 3, index + length)
+                    return mapOf(companyId to payload)
+                }
+                index += length
+            }
+            return emptyMap()
         }
     }
     

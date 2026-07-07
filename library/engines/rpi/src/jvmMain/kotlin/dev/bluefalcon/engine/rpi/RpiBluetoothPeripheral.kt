@@ -21,6 +21,8 @@ class RpiBluetoothPeripheral(
     override var rssi: Float? = null
     
     override var mtuSize: Int? = null
+
+    override var manufacturerData: Map<Int, ByteArray> = emptyMap()
     
     private var _services = emptyList<BluetoothService>()
     override val services: List<BluetoothService>

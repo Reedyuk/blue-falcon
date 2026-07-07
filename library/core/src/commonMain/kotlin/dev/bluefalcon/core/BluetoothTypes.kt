@@ -37,6 +37,16 @@ interface BluetoothPeripheral {
      * All discovered characteristics across all services
      */
     val characteristics: List<BluetoothCharacteristic>
+
+    /**
+     * Manufacturer-specific advertisement data, keyed by company ID (little-endian 16-bit value).
+     * Populated from scan results; empty when not advertised or not yet scanned.
+     *
+     * - Android: sourced from `ScanRecord.manufacturerSpecificData` (API 33+) or parsed from raw bytes
+     * - iOS/macOS: sourced from `kCBAdvDataManufacturerData` (NSData → company ID + payload)
+     */
+    val manufacturerData: Map<Int, ByteArray>
+        get() = emptyMap()
 }
 
 /**

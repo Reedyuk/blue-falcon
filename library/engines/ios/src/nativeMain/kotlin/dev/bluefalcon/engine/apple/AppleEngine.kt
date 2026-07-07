@@ -384,15 +384,26 @@ class AppleEngine : BlueFalconEngine, CBCentralManagerCallback, CBPeripheralCall
         if (isScanning) {
             val uuid = peripheral.identifier.UUIDString
             val rssiValue = rssi.floatValue
+            val mfData = parseManufacturerData(advertisementData)
             val existing = _peripherals.value.find { it.uuid == uuid } as? AppleBluetoothPeripheral
             if (existing != null) {
                 existing.rssi = rssiValue
+                if (mfData.isNotEmpty()) existing.manufacturerData = mfData
                 _rssiUpdates.tryEmit(uuid to rssiValue)
             } else {
-                val device = AppleBluetoothPeripheral(peripheral, rssiValue)
+                val device = AppleBluetoothPeripheral(peripheral, rssiValue, mfData)
                 _peripherals.value = _peripherals.value + device
             }
         }
+    }
+
+    private fun parseManufacturerData(advertisementData: Map<Any?, *>): Map<Int, ByteArray> {
+        val raw = advertisementData["kCBAdvDataManufacturerData"] as? NSData ?: return emptyMap()
+        val bytes = raw.toByteArray()
+        if (bytes.size < 2) return emptyMap()
+        val companyId = (bytes[0].toInt() and 0xFF) or ((bytes[1].toInt() and 0xFF) shl 8)
+        val payload = bytes.copyOfRange(2, bytes.size)
+        return mapOf(companyId to payload)
     }
     
     override fun onPeripheralConnected(peripheral: CBPeripheral) {

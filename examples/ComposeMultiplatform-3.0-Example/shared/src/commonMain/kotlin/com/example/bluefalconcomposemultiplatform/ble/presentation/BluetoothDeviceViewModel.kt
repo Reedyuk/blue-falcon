@@ -458,13 +458,17 @@ class BluetoothDeviceViewModel(
 
         peripherals.forEach { peripheral ->
             val existingDevice = previousDevices[peripheral.uuid]
+            val mfData = peripheral.manufacturerData.mapValues { (_, bytes) ->
+                bytes.joinToString("") { (it.toInt() and 0xFF).toString(16).padStart(2, '0').uppercase() }
+            }
             updatedDevices[peripheral.uuid] = EnhancedBluetoothPeripheral(
                 connected = existingDevice?.connected ?: false,
                 peripheral = peripheral,
                 mtuStatus = existingDevice?.mtuStatus,
                 notificationData = existingDevice?.notificationData ?: emptyMap(),
                 fotaState = existingDevice?.fotaState ?: FotaState.Idle,
-                rssi = peripheral.rssi ?: existingDevice?.rssi
+                rssi = peripheral.rssi ?: existingDevice?.rssi,
+                manufacturerData = mfData.ifEmpty { existingDevice?.manufacturerData ?: emptyMap() }
             )
         }
         return updatedDevices
