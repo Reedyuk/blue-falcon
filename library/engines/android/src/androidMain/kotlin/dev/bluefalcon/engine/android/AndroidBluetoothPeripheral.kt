@@ -34,6 +34,9 @@ class AndroidBluetoothPeripheral(val device: BluetoothDevice) : BluetoothPeriphe
     override val characteristics: List<BluetoothCharacteristic>
         get() = services.flatMap { it.characteristics }
 
+    @Volatile
+    override var manufacturerData: Map<Int, ByteArray> = emptyMap()
+
     /**
      * Clears transient per-connection state (discovered services and the negotiated MTU) so that a
      * later reconnect using this same reused instance does not observe stale values from the previous

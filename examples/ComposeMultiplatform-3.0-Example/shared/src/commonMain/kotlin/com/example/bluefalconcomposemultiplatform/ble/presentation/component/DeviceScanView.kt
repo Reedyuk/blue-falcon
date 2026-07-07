@@ -43,8 +43,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.bluefalconcomposemultiplatform.ble.presentation.BluetoothDeviceState
+import com.example.bluefalconcomposemultiplatform.ble.presentation.EnhancedBluetoothPeripheral
 import com.example.bluefalconcomposemultiplatform.ble.presentation.UiEvent
-import dev.bluefalcon.core.BluetoothPeripheral
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -81,7 +81,7 @@ fun DeviceScanView(
         state.devices.values
             .asSequence()
             .filter { device ->
-                state.scanAdvertisementFilter.isBlank() || advertisementSearchText(device.peripheral).contains(
+                state.scanAdvertisementFilter.isBlank() || advertisementSearchText(device).contains(
                     other = state.scanAdvertisementFilter,
                     ignoreCase = true
                 )
@@ -229,6 +229,7 @@ fun DeviceScanView(
                             macId = device.peripheral.uuid,
                             rssi = device.rssi ?: device.peripheral.rssi,
                             serviceUuids = device.peripheral.services.map { it.uuid.toString() },
+                            manufacturerData = device.manufacturerData,
                             connected = device.connected,
                             onConnect = { onEvent(UiEvent.OnConnectClick(device.peripheral.uuid)) },
                             onSelect = { onEvent(UiEvent.OnDeviceSelected(device.peripheral.uuid)) }
@@ -285,7 +286,11 @@ private fun FilterInputWithSuggestions(
     }
 }
 
-private fun advertisementSearchText(peripheral: BluetoothPeripheral): String {
+private fun advertisementSearchText(device: EnhancedBluetoothPeripheral): String {
+    val peripheral = device.peripheral
     val serviceText = peripheral.services.joinToString(separator = " ") { it.uuid.toString() }
-    return "${peripheral.name.orEmpty()} $serviceText".trim()
+    val mfText = device.manufacturerData.entries.joinToString(separator = " ") { (id, hex) ->
+        "0x${id.toString(16).padStart(4, '0')} $hex"
+    }
+    return "${peripheral.name.orEmpty()} $serviceText $mfText".trim()
 }

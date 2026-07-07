@@ -49,6 +49,7 @@ fun ScanResultCard(
     macId: String,
     rssi: Float?,
     serviceUuids: List<String> = emptyList(),
+    manufacturerData: Map<Int, String> = emptyMap(),
     connected: Boolean,
     onConnect: () -> Unit,
     onSelect: () -> Unit
@@ -110,6 +111,16 @@ fun ScanResultCard(
                     color = MaterialTheme.colorScheme.tertiary,
                     fontWeight = FontWeight.Medium
                 )
+                if (manufacturerData.isNotEmpty()) {
+                    val mfText = manufacturerData.entries.joinToString(", ") { (id, hex) ->
+                        "0x${id.toString(16).padStart(4, '0').uppercase()}: $hex"
+                    }
+                    Text(
+                        text = "MFR: $mfText",
+                        fontSize = 10.sp,
+                        color = MaterialTheme.colorScheme.outline
+                    )
+                }
             }
 
             // Signal strength + proximity column

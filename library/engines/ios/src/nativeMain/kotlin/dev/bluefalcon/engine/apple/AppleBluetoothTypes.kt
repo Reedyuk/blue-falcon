@@ -14,7 +14,8 @@ import platform.posix.memcpy
  */
 class AppleBluetoothPeripheral(
     val cbPeripheral: CBPeripheral,
-    override var rssi: Float? = null
+    override var rssi: Float? = null,
+    override var manufacturerData: Map<Int, ByteArray> = emptyMap()
 ) : BluetoothPeripheral {
     
     override val name: String? get() = cbPeripheral.name
