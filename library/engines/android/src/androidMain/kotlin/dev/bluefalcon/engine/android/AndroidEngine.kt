@@ -133,7 +133,17 @@ class AndroidEngine(
         // are normally the same object, but a re-scan can produce a fresh instance.
         androidPeripheral.resetConnectionState()
         resetPeripheralState(androidPeripheral.device.address)
-        androidPeripheral.device.connectGatt(context, autoConnect, gattCallback, transportMethod)
+        val gatt = androidPeripheral.device.connectGatt(context, autoConnect, gattCallback, transportMethod)
+        // Track the returned handle IMMEDIATELY, not only once it reaches STATE_CONNECTED. A direct
+        // (autoConnect=false) connect that never establishes never fires onConnectionStateChange, so
+        // without this it would never enter [gatts] — meaning neither disconnect() nor a later
+        // connect() could ever close it, and the Android stack keeps initiating it for ~30 s. Against
+        // a peripheral that accepts only one connection, several such orphaned initiations overlap and
+        // wedge it (it stops completing any new connection until power-cycled). Registering here lets
+        // the next connect()/disconnect() tear the orphan down, so at most one initiation is ever
+        // outstanding per address.
+        gatt?.let { gattCallback.trackConnecting(it) }
+            ?: logger?.warn("connectGatt returned null for ${androidPeripheral.device.address}")
     }
 
     private fun peripheralFor(address: String): AndroidBluetoothPeripheral? =
@@ -553,6 +563,23 @@ class AndroidEngine(
         // is always gattLock -> queue monitor; no path takes them the other way, so there is no
         // deadlock with [GattOperationQueue]'s per-instance synchronization.
         private val gattLock = Any()
+
+        /**
+         * Register a freshly issued connectGatt handle before it reaches STATE_CONNECTED, closing any
+         * earlier handle for the same address first. This is the in-flight counterpart to [addGatt]
+         * (which only runs once a connection is actually established): it guarantees that an orphaned
+         * direct-connect — one that never establishes and therefore never produces a callback — is
+         * still tracked, so the next connect()/disconnect() can close it. Without it those orphaned
+         * initiations accumulate and wedge a single-connection peripheral.
+         */
+        fun trackConnecting(gatt: BluetoothGatt) = synchronized(gattLock) {
+            val address = gatt.device.address
+            gatts.filter { it.device.address == address && it !== gatt }
+                .forEach { closeAndForget(it) }
+            if (gatts.none { it === gatt }) {
+                gatts.add(gatt)
+            }
+        }
 
         private fun addGatt(gatt: BluetoothGatt) = synchronized(gattLock) {
             // Replace any stale same-address gatt from a previous connection. On a fast reconnect the
