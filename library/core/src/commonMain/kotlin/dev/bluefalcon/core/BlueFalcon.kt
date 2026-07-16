@@ -38,6 +38,28 @@ class BlueFalcon(
     val managerState: StateFlow<BluetoothManagerState> get() = engine.managerState
     val isScanning: Boolean get() = engine.isScanning
     val rssiUpdates: SharedFlow<Pair<String, Float>> get() = engine.rssiUpdates
+
+    /**
+     * Reactive stream of peripheral connection state changes.
+     *
+     * Subscribe to this flow to be notified when a peripheral connects or disconnects.
+     * Do **not** rely on polling [connectionState] immediately after calling [connect] —
+     * BLE connections are asynchronous and [connectionState] will still return
+     * [BluetoothPeripheralState.Disconnected] until the platform callback fires.
+     *
+     * ```kotlin
+     * launch {
+     *     blueFalcon.connectionStateUpdates.collect { update ->
+     *         when (update.state) {
+     *             BluetoothPeripheralState.Connected    -> println("${update.peripheral.name} connected")
+     *             BluetoothPeripheralState.Disconnected -> println("${update.peripheral.name} disconnected")
+     *             else -> Unit
+     *         }
+     *     }
+     * }
+     * ```
+     */
+    val connectionStateUpdates: SharedFlow<ConnectionStateUpdate> get() = engine.connectionStateUpdates
     
     /**
      * Scan for BLE devices

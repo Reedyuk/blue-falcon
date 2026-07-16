@@ -31,6 +31,9 @@ class JsEngine : BlueFalconEngine {
     private val _characteristicNotifications = MutableSharedFlow<CharacteristicNotification>(extraBufferCapacity = 64)
     override val characteristicNotifications: SharedFlow<CharacteristicNotification> = _characteristicNotifications
 
+    private val _connectionStateUpdates = MutableSharedFlow<ConnectionStateUpdate>(extraBufferCapacity = 64)
+    override val connectionStateUpdates: SharedFlow<ConnectionStateUpdate> = _connectionStateUpdates
+
     override var isScanning: Boolean = false
         private set
 
@@ -83,14 +86,19 @@ class JsEngine : BlueFalconEngine {
             return
         }
 
+        // Web Bluetooth's connect() is a Promise that resolves only when the GATT connection
+        // is established. As a suspend function, it returns after the connection is confirmed.
         jsPeripheral.device.connect()
+        _connectionStateUpdates.tryEmit(ConnectionStateUpdate(peripheral, BluetoothPeripheralState.Connected))
     }
 
     override suspend fun disconnect(peripheral: BluetoothPeripheral) {
         val jsPeripheral = peripheral as? JsBluetoothPeripheral
             ?: throw IllegalArgumentException("Peripheral must be a JsBluetoothPeripheral")
 
+        // Web Bluetooth's disconnect() resolves synchronously on the JS side.
         jsPeripheral.device.disconnect()
+        _connectionStateUpdates.tryEmit(ConnectionStateUpdate(peripheral, BluetoothPeripheralState.Disconnected))
     }
 
     override fun connectionState(peripheral: BluetoothPeripheral): BluetoothPeripheralState {

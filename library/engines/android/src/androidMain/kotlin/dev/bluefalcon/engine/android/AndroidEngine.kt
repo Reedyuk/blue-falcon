@@ -44,6 +44,9 @@ class AndroidEngine(
 
     private val _rssiUpdates = MutableSharedFlow<Pair<String, Float>>(extraBufferCapacity = 64)
     override val rssiUpdates: SharedFlow<Pair<String, Float>> = _rssiUpdates
+
+    private val _connectionStateUpdates = MutableSharedFlow<ConnectionStateUpdate>(extraBufferCapacity = 64)
+    override val connectionStateUpdates: SharedFlow<ConnectionStateUpdate> = _connectionStateUpdates
     
     override var isScanning: Boolean = false
         private set
@@ -682,6 +685,11 @@ class AndroidEngine(
                 if (newState == BluetoothProfile.STATE_CONNECTED) {
                     logger?.info("Connected to ${device.address}")
                     addGatt(gatt)
+                    peripheralFor(device.address)?.let { peripheral ->
+                        _connectionStateUpdates.tryEmit(
+                            ConnectionStateUpdate(peripheral, BluetoothPeripheralState.Connected)
+                        )
+                    }
                     if (autoDiscoverAllServicesAndCharacteristics) {
                         // Serialize the post-connect service discovery and RSSI read; issued back to
                         // back without a queue, the second would race the first and be dropped.
@@ -697,6 +705,11 @@ class AndroidEngine(
                     }
                 } else if (newState == BluetoothProfile.STATE_DISCONNECTED) {
                     logger?.info("Disconnected from ${device.address}")
+                    peripheralFor(device.address)?.let { peripheral ->
+                        _connectionStateUpdates.tryEmit(
+                            ConnectionStateUpdate(peripheral, BluetoothPeripheralState.Disconnected)
+                        )
+                    }
                     // closeAndForget removes/closes the gatt, clears its queue, and resets the reused
                     // peripheral's transient state so a later reconnect waits for the new connection's
                     // discovery/MTU instead of reading stale values — but only if no newer gatt for this

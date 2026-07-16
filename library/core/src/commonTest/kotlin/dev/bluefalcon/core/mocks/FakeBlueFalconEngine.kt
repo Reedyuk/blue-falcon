@@ -24,6 +24,9 @@ class FakeBlueFalconEngine : BlueFalconEngine {
 
     private val _characteristicNotifications = MutableSharedFlow<CharacteristicNotification>(extraBufferCapacity = 64)
     override val characteristicNotifications: SharedFlow<CharacteristicNotification> = _characteristicNotifications
+
+    private val _connectionStateUpdates = MutableSharedFlow<ConnectionStateUpdate>(extraBufferCapacity = 64)
+    override val connectionStateUpdates: SharedFlow<ConnectionStateUpdate> = _connectionStateUpdates
     
     override var isScanning: Boolean = false
         private set
@@ -218,5 +221,9 @@ class FakeBlueFalconEngine : BlueFalconEngine {
 
     suspend fun emitCharacteristicNotification(notification: CharacteristicNotification) {
         _characteristicNotifications.emit(notification)
+    }
+
+    suspend fun emitConnectionStateUpdate(update: ConnectionStateUpdate) {
+        _connectionStateUpdates.emit(update)
     }
 }
