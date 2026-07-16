@@ -1,4 +1,4 @@
-package dev.bluefalcon.core
+package dev.bluefalcon.peripheral
 
 /**
  * State of the local BLE peripheral advertiser / GATT server.

@@ -1,4 +1,4 @@
-package dev.bluefalcon.core
+package dev.bluefalcon.peripheral
 
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -6,13 +6,13 @@ import kotlinx.coroutines.flow.StateFlow
 /**
  * Peripheral-role BLE interface: advertisement packet + optional local GATT server.
  *
- * Obtain an instance via the engine-specific `createAdvertiser()` extension function.
+ * Obtain an instance via the platform-specific peripheral factory.
  * On platforms or configurations where advertising is not supported, a
  * [NoOpBluetoothAdvertiser] is returned.
  *
  * Typical usage:
  * ```kotlin
- * val advertiser = engine.createAdvertiser()
+ * val advertiser = createBluetoothAdvertiser(...)
  * advertiser.startAdvertising(config)
  * advertiser.state.collect { state -> ... }
  * advertiser.stopAdvertising()

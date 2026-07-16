@@ -1,6 +1,7 @@
-package dev.bluefalcon.engine.apple
+package dev.bluefalcon.peripheral.apple
 
-import dev.bluefalcon.core.*
+import dev.bluefalcon.core.Logger
+import dev.bluefalcon.peripheral.*
 import kotlinx.cinterop.BetaInteropApi
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.ObjCSignatureOverride
@@ -27,7 +28,7 @@ import platform.darwin.NSObject
  *
  * On macOS all standard advertisement fields are supported.
  *
- * Obtain via [createAdvertiser] on [IosEngine] or [MacosEngine].
+ * Obtain via [createBluetoothAdvertiser].
  */
 @OptIn(BetaInteropApi::class, ExperimentalForeignApi::class)
 class AppleBluetoothAdvertiser(
@@ -338,3 +339,6 @@ class AppleBluetoothAdvertiser(
             upper == "00002902-0000-1000-8000-00805F9B34FB"
     }
 }
+
+fun createBluetoothAdvertiser(logger: Logger? = null): BluetoothAdvertiser =
+    AppleBluetoothAdvertiser(logger)

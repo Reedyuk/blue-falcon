@@ -1,6 +1,6 @@
 package dev.bluefalcon.plugins.broadcast
 
-import dev.bluefalcon.core.CharacteristicProperty
+import dev.bluefalcon.peripheral.CharacteristicProperty
 
 /**
  * Configuration for [DeviceBroadcastPlugin].

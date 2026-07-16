@@ -55,6 +55,7 @@ kotlin {
 
                 // Blue Falcon 3.0
                 implementation("dev.bluefalcon:blue-falcon-core:$falconVersion")
+                implementation("dev.bluefalcon:blue-falcon-peripheral:$falconVersion")
                 implementation("dev.bluefalcon:blue-falcon-plugin-logging:$falconVersion")
                 implementation("dev.bluefalcon:blue-falcon-plugin-retry:$falconVersion")
                 implementation("dev.bluefalcon:blue-falcon-plugin-nordic-fota:$falconVersion")

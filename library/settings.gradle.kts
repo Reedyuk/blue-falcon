@@ -21,6 +21,9 @@ rootProject.name = "blue-falcon"
 // Include core module
 include(":core")
 
+// Include peripheral / GATT server module
+include(":peripheral")
+
 // Include engine modules
 include(":engines:android")
 include(":engines:rpi")

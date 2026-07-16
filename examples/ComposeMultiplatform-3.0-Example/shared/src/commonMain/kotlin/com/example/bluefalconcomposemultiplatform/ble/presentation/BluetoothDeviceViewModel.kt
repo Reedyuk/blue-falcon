@@ -1,10 +1,10 @@
 package com.example.bluefalconcomposemultiplatform.ble.presentation
 
 import dev.bluefalcon.core.BlueFalcon
-import dev.bluefalcon.core.BluetoothAdvertiser
 import dev.bluefalcon.core.BluetoothPeripheralState
 import dev.bluefalcon.core.ServiceFilter
 import dev.bluefalcon.core.toUuid
+import dev.bluefalcon.peripheral.BluetoothAdvertiser
 import dev.bluefalcon.plugins.broadcast.DeviceBroadcastPlugin
 import dev.bluefalcon.plugins.clone.CloneConfig
 import dev.bluefalcon.plugins.clone.DeviceClonePlugin

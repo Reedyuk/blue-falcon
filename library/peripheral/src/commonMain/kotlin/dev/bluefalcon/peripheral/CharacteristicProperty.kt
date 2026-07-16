@@ -1,4 +1,4 @@
-package dev.bluefalcon.core
+package dev.bluefalcon.peripheral
 
 /**
  * GATT characteristic properties used when building a local GATT server.

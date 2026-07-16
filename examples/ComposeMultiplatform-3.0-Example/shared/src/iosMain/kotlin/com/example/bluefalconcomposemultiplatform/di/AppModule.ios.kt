@@ -1,9 +1,9 @@
 package com.example.bluefalconcomposemultiplatform.di
 
 import dev.bluefalcon.core.BlueFalcon
-import dev.bluefalcon.core.BluetoothAdvertiser
 import dev.bluefalcon.engine.ios.IosEngine
-import dev.bluefalcon.engine.ios.createAdvertiser
+import dev.bluefalcon.peripheral.BluetoothAdvertiser
+import dev.bluefalcon.peripheral.apple.createBluetoothAdvertiser
 import dev.bluefalcon.plugins.logging.LoggingPlugin
 import dev.bluefalcon.plugins.logging.LogLevel
 import dev.bluefalcon.plugins.retry.RetryPlugin
@@ -17,7 +17,7 @@ actual class AppModule {
     }
 
     private val engine = IosEngine()
-    actual val advertiser: BluetoothAdvertiser = engine.createAdvertiser()
+    actual val advertiser: BluetoothAdvertiser = createBluetoothAdvertiser()
 
     actual val blueFalcon: BlueFalcon = BlueFalcon(
         engine = engine
