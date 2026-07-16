@@ -87,6 +87,8 @@ class WindowsEngine : BlueFalconEngine {
         val address = windowsPeripheral.address
         
         try {
+            // nativeConnect() blocks the calling thread until the WinRT connection completes
+            // (or throws on failure), so emitting Connected after it returns is safe.
             nativeConnect(address)
             connections[address] = windowsPeripheral
             _connectionStateUpdates.tryEmit(ConnectionStateUpdate(peripheral, BluetoothPeripheralState.Connected))
@@ -102,6 +104,7 @@ class WindowsEngine : BlueFalconEngine {
         val address = windowsPeripheral.address
         
         try {
+            // nativeDisconnect() is synchronous from the JVM side.
             nativeDisconnect(address)
             connections.remove(address)
             _connectionStateUpdates.tryEmit(ConnectionStateUpdate(peripheral, BluetoothPeripheralState.Disconnected))

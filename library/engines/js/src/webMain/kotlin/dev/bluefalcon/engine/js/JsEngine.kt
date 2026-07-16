@@ -86,6 +86,8 @@ class JsEngine : BlueFalconEngine {
             return
         }
 
+        // Web Bluetooth's connect() is a Promise that resolves only when the GATT connection
+        // is established. As a suspend function, it returns after the connection is confirmed.
         jsPeripheral.device.connect()
         _connectionStateUpdates.tryEmit(ConnectionStateUpdate(peripheral, BluetoothPeripheralState.Connected))
     }
@@ -94,6 +96,7 @@ class JsEngine : BlueFalconEngine {
         val jsPeripheral = peripheral as? JsBluetoothPeripheral
             ?: throw IllegalArgumentException("Peripheral must be a JsBluetoothPeripheral")
 
+        // Web Bluetooth's disconnect() resolves synchronously on the JS side.
         jsPeripheral.device.disconnect()
         _connectionStateUpdates.tryEmit(ConnectionStateUpdate(peripheral, BluetoothPeripheralState.Disconnected))
     }
