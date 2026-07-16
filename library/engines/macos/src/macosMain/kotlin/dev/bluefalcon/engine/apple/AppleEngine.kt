@@ -33,6 +33,9 @@ class AppleEngine : BlueFalconEngine, CBCentralManagerCallback, CBPeripheralCall
 
     private val _rssiUpdates = MutableSharedFlow<Pair<String, Float>>(extraBufferCapacity = 64)
     override val rssiUpdates: SharedFlow<Pair<String, Float>> = _rssiUpdates
+
+    private val _connectionStateUpdates = MutableSharedFlow<ConnectionStateUpdate>(extraBufferCapacity = 64)
+    override val connectionStateUpdates: SharedFlow<ConnectionStateUpdate> = _connectionStateUpdates
     
     override var isScanning: Boolean = false
         private set
@@ -388,16 +391,22 @@ class AppleEngine : BlueFalconEngine, CBCentralManagerCallback, CBPeripheralCall
         peripheral.delegate = peripheralDelegate
         val device = AppleBluetoothPeripheral(peripheral, null)
         connectedPeripherals[device.uuid] = device
+        _connectionStateUpdates.tryEmit(ConnectionStateUpdate(device, BluetoothPeripheralState.Connected))
     }
     
     override fun onPeripheralDisconnected(peripheral: CBPeripheral, error: NSError?) {
         val uuid = peripheral.identifier.UUIDString
+        val device = connectedPeripherals[uuid] ?: AppleBluetoothPeripheral(peripheral, null)
         connectedPeripherals.remove(uuid)
         peripheral.delegate = null
+        _connectionStateUpdates.tryEmit(ConnectionStateUpdate(device, BluetoothPeripheralState.Disconnected))
     }
     
     override fun onPeripheralConnectionFailed(peripheral: CBPeripheral, error: NSError?) {
-        // Connection failed - could expose this through a callback if needed
+        val uuid = peripheral.identifier.UUIDString
+        val device = connectedPeripherals[uuid] ?: AppleBluetoothPeripheral(peripheral, null)
+        connectedPeripherals.remove(uuid)
+        _connectionStateUpdates.tryEmit(ConnectionStateUpdate(device, BluetoothPeripheralState.Disconnected))
     }
     
     // CBPeripheralCallback implementation

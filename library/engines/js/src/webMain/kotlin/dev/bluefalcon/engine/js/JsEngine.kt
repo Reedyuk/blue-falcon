@@ -31,6 +31,9 @@ class JsEngine : BlueFalconEngine {
     private val _characteristicNotifications = MutableSharedFlow<CharacteristicNotification>(extraBufferCapacity = 64)
     override val characteristicNotifications: SharedFlow<CharacteristicNotification> = _characteristicNotifications
 
+    private val _connectionStateUpdates = MutableSharedFlow<ConnectionStateUpdate>(extraBufferCapacity = 64)
+    override val connectionStateUpdates: SharedFlow<ConnectionStateUpdate> = _connectionStateUpdates
+
     override var isScanning: Boolean = false
         private set
 
@@ -84,6 +87,7 @@ class JsEngine : BlueFalconEngine {
         }
 
         jsPeripheral.device.connect()
+        _connectionStateUpdates.tryEmit(ConnectionStateUpdate(peripheral, BluetoothPeripheralState.Connected))
     }
 
     override suspend fun disconnect(peripheral: BluetoothPeripheral) {
@@ -91,6 +95,7 @@ class JsEngine : BlueFalconEngine {
             ?: throw IllegalArgumentException("Peripheral must be a JsBluetoothPeripheral")
 
         jsPeripheral.device.disconnect()
+        _connectionStateUpdates.tryEmit(ConnectionStateUpdate(peripheral, BluetoothPeripheralState.Disconnected))
     }
 
     override fun connectionState(peripheral: BluetoothPeripheral): BluetoothPeripheralState {

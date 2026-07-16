@@ -24,6 +24,9 @@ class WindowsEngine : BlueFalconEngine {
 
     private val _characteristicNotifications = MutableSharedFlow<CharacteristicNotification>(extraBufferCapacity = 64)
     override val characteristicNotifications: SharedFlow<CharacteristicNotification> = _characteristicNotifications
+
+    private val _connectionStateUpdates = MutableSharedFlow<ConnectionStateUpdate>(extraBufferCapacity = 64)
+    override val connectionStateUpdates: SharedFlow<ConnectionStateUpdate> = _connectionStateUpdates
     
     override var isScanning: Boolean = false
         private set
@@ -86,6 +89,7 @@ class WindowsEngine : BlueFalconEngine {
         try {
             nativeConnect(address)
             connections[address] = windowsPeripheral
+            _connectionStateUpdates.tryEmit(ConnectionStateUpdate(peripheral, BluetoothPeripheralState.Connected))
         } catch (e: Exception) {
             throw e
         }
@@ -100,6 +104,7 @@ class WindowsEngine : BlueFalconEngine {
         try {
             nativeDisconnect(address)
             connections.remove(address)
+            _connectionStateUpdates.tryEmit(ConnectionStateUpdate(peripheral, BluetoothPeripheralState.Disconnected))
         } catch (e: Exception) {
             throw e
         }

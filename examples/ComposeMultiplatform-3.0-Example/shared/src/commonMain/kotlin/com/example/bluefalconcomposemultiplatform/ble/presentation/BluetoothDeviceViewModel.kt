@@ -2,6 +2,7 @@ package com.example.bluefalconcomposemultiplatform.ble.presentation
 
 import dev.bluefalcon.core.BlueFalcon
 import dev.bluefalcon.core.BluetoothAdvertiser
+import dev.bluefalcon.core.BluetoothPeripheralState
 import dev.bluefalcon.core.ServiceFilter
 import dev.bluefalcon.core.toUuid
 import dev.bluefalcon.plugins.broadcast.DeviceBroadcastPlugin
@@ -108,6 +109,23 @@ class BluetoothDeviceViewModel(
                 _deviceState.update { it.copy(broadcastState = broadcastState) }
             }
         }
+
+        // Collect connection state updates so the UI reflects actual BLE state.
+        // Do not rely on connectionState() polling after connect() — BLE connections are
+        // asynchronous and the state will still read Disconnected until this callback fires.
+        CoroutineScope(Dispatchers.IO).launch {
+            blueFalcon.connectionStateUpdates.collect { update ->
+                val peripheralId = update.peripheral.uuid
+                val isNowConnected = update.state == BluetoothPeripheralState.Connected
+                _deviceState.update { state ->
+                    val updatedDevices = state.devices.toMutableMap()
+                    updatedDevices[peripheralId]?.let { device ->
+                        updatedDevices[peripheralId] = device.copy(connected = isNowConnected)
+                    }
+                    state.copy(devices = HashMap(updatedDevices))
+                }
+            }
+        }
     }
 
     fun onEvent(event: UiEvent) {
@@ -170,18 +188,15 @@ class BluetoothDeviceViewModel(
 
             is UiEvent.OnConnectClick -> {
                 _deviceState.value.devices[event.macId]?.let { device ->
+                    // Optimistically record the selected device so the UI can navigate to the
+                    // detail screen. The connected flag is updated reactively via the
+                    // connectionStateUpdates flow once the platform confirms the connection.
+                    _deviceState.update { state ->
+                        state.copy(selectedDeviceId = event.macId)
+                    }
                     CoroutineScope(Dispatchers.IO).launch {
                         try {
                             blueFalcon.connect(device.peripheral)
-                            // Update state to show connecting/connected
-                            _deviceState.update { state ->
-                                val updateDevices = state.devices.toMutableMap()
-                                updateDevices[event.macId] = device.copy(connected = true, peripheral = device.peripheral)
-                                state.copy(
-                                    devices = HashMap(updateDevices),
-                                    selectedDeviceId = event.macId
-                                )
-                            }
                         } catch (e: Exception) {
                             println("Failed to connect: ${e.message}")
                         }

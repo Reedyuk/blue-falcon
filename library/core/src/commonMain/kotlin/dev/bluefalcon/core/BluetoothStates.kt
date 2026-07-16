@@ -1,6 +1,18 @@
 package dev.bluefalcon.core
 
 /**
+ * Reactive connection state change event emitted by [BlueFalconEngine.connectionStateUpdates].
+ *
+ * Subscribe to [BlueFalconEngine.connectionStateUpdates] (or [BlueFalcon.connectionStateUpdates])
+ * instead of polling [BlueFalcon.connectionState] to observe transitions such as Connected →
+ * Disconnected without timing races.
+ */
+data class ConnectionStateUpdate(
+    val peripheral: BluetoothPeripheral,
+    val state: BluetoothPeripheralState
+)
+
+/**
  * Connection state of a Bluetooth peripheral
  */
 enum class BluetoothPeripheralState {
