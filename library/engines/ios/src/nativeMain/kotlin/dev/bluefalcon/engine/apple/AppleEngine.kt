@@ -425,9 +425,9 @@ class AppleEngine : BlueFalconEngine, CBCentralManagerCallback, CBPeripheralCall
     }
     
     override fun onPeripheralConnectionFailed(peripheral: CBPeripheral, error: NSError?) {
-        val uuid = peripheral.identifier.UUIDString
-        val device = connectedPeripherals[uuid] ?: AppleBluetoothPeripheral(peripheral, null)
-        connectedPeripherals.remove(uuid)
+        // The peripheral was never successfully connected, so it is not in connectedPeripherals.
+        // Still emit Disconnected to notify any code waiting on the connection outcome.
+        val device = AppleBluetoothPeripheral(peripheral, null)
         _connectionStateUpdates.tryEmit(ConnectionStateUpdate(device, BluetoothPeripheralState.Disconnected))
     }
     

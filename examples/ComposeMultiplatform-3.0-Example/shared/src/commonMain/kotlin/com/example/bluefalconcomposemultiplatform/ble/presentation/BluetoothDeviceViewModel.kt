@@ -40,7 +40,7 @@ class BluetoothDeviceViewModel(
 
     init {
         // Collect peripherals from BlueFalcon's StateFlow
-        CoroutineScope(Dispatchers.IO).launch {
+        viewModelScope.launch(Dispatchers.IO) {
             blueFalcon.peripherals.collect { peripherals ->
                 _deviceState.update { currentState ->
                     currentState.copy(
@@ -54,7 +54,7 @@ class BluetoothDeviceViewModel(
         }
 
         // Collect characteristic notifications and update the UI state
-        CoroutineScope(Dispatchers.IO).launch {
+        viewModelScope.launch(Dispatchers.IO) {
             blueFalcon.engine.characteristicNotifications.collect { notification ->
                 val peripheralId = notification.peripheral.uuid
                 val charUuid = notification.characteristic.uuid.toString()
@@ -78,7 +78,7 @@ class BluetoothDeviceViewModel(
         }
 
         // Collect RSSI updates so the scan list stays current without a full peripherals re-emission
-        CoroutineScope(Dispatchers.IO).launch {
+        viewModelScope.launch(Dispatchers.IO) {
             blueFalcon.rssiUpdates.collect { (uuid, rssi) ->
                 _deviceState.update { state ->
                     val updatedDevices = state.devices.toMutableMap()
@@ -91,7 +91,7 @@ class BluetoothDeviceViewModel(
         }
 
         // Collect FOTA state changes and update the relevant device
-        CoroutineScope(Dispatchers.IO).launch {
+        viewModelScope.launch(Dispatchers.IO) {
             fotaPlugin.state.collect { fotaState ->
                 _deviceState.update { currentState ->
                     val selectedId = currentState.selectedDeviceId ?: return@update currentState
@@ -104,7 +104,7 @@ class BluetoothDeviceViewModel(
         }
 
         // Mirror broadcast plugin state into device state
-        CoroutineScope(Dispatchers.IO).launch {
+        viewModelScope.launch(Dispatchers.IO) {
             broadcastPlugin.broadcastState.collect { broadcastState ->
                 _deviceState.update { it.copy(broadcastState = broadcastState) }
             }
@@ -113,7 +113,7 @@ class BluetoothDeviceViewModel(
         // Collect connection state updates so the UI reflects actual BLE state.
         // Do not rely on connectionState() polling after connect() — BLE connections are
         // asynchronous and the state will still read Disconnected until this callback fires.
-        CoroutineScope(Dispatchers.IO).launch {
+        viewModelScope.launch(Dispatchers.IO) {
             blueFalcon.connectionStateUpdates.collect { update ->
                 val peripheralId = update.peripheral.uuid
                 val isNowConnected = update.state == BluetoothPeripheralState.Connected
