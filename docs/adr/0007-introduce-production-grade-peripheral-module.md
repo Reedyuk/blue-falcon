@@ -126,7 +126,7 @@ session/manager design. There will be only one peripheral implementation stack a
 The common root contract will follow this shape:
 
 ```kotlin
-interface BlueFalconPeripheral : AutoCloseable {
+interface BlueFalconPeripheral {
     val state: StateFlow<PeripheralManagerState>
     val capabilities: PeripheralCapabilities
     val sessions: StateFlow<Set<PeripheralSession>>
@@ -136,7 +136,7 @@ interface BlueFalconPeripheral : AutoCloseable {
 
     suspend fun start(config: PeripheralConfig)
     suspend fun stop()
-    override fun close()
+    suspend fun close()
 }
 ```
 
@@ -153,8 +153,16 @@ interface BlueFalconPeripheral : AutoCloseable {
 starting connectable advertising. If any registration or advertising step fails, the manager
 rolls back resources created by that invocation and enters `Failed`.
 
-`stop` is idempotent. It stops advertising, closes sessions, unregisters services, cancels
-pending requests and sends, and returns the manager to `Stopped`. `close` is terminal.
+`stop` is idempotent and reusable. It completes only after advertising has stopped, sessions and
+pending operations have been cancelled, services have been unregistered, and the manager has
+entered `Stopped`. A subsequent `start` is permitted.
+
+`close` is an idempotent suspending terminal operation. It may be called from any non-closed state,
+performs the same deterministic cleanup as `stop`, releases the manager-owned scope and platform
+delegate, and completes only after the manager has entered `Closed`. Once the terminal transition
+begins, critical teardown is completed even if the caller is cancelled. No cleanup continues in the
+background after `close` returns, and implementations must not use `runBlocking` or fire-and-forget
+cleanup to bridge this contract to a non-suspending API.
 
 ### 4. Represent remote centrals as scoped sessions
 
@@ -196,6 +204,13 @@ active subscription prevents inactivity eviction.
 Each session owns a child coroutine scope. Session termination cancels pending ATT responses,
 queued sends, and other work owned by that session.
 
+On Android, a newly created session exposes the default ATT notification payload limit of 20 bytes
+until the remote device negotiates a different MTU. The backend listens to
+`BluetoothGattServerCallback.onMtuChanged` for each device and atomically updates only that
+session's `maximumUpdateValueLength` to `negotiatedMtu - 3`. The negotiated value is discarded
+when the session closes. The backend rejects an oversized notification before invoking the Android
+platform API instead of relying on device- or SDK-specific truncation behavior.
+
 ### 5. Make subscriptions and ATT responses explicit
 
 The manager will expose characteristic and descriptor read/write requests as
@@ -208,6 +223,20 @@ The manager will expose characteristic and descriptor read/write requests as
 - prepared-write metadata where the target supports it;
 - a nullable one-shot response handle when ATT permits or requires a response.
 
+The owning session is non-null and part of the common contract rather than optional metadata:
+
+```kotlin
+interface GattServerRequest {
+    val session: PeripheralSession
+    val sessionId: PeripheralSessionId
+        get() = session.id
+}
+```
+
+Every characteristic, descriptor, and execute-write request can therefore be authorized and
+routed before application business logic reads or mutates a value. A raw platform device object
+is never required for that decision.
+
 The application, rather than the platform implementation, selects the ATT response status and
 value. A response handle has exactly one successful terminal operation. Repeated responses return
 `AlreadyResponded`; responses after timeout or session closure return `Expired`.
@@ -219,8 +248,15 @@ write-without-response cannot be rejected over ATT, so overflow is reported as a
 drop. Other asynchronous lifecycle, subscription, and platform failures that do not belong to a
 specific suspending call are also reported through `events`.
 
-Request response deadlines are configurable. If a response-required request expires, the module
-sends an appropriate ATT error where the platform still permits it and invalidates the handle.
+Request response deadlines are configurable. Each platform delegate wrapper synchronously
+registers a response-required request with a manager-owned request registry before publishing it to
+`requests`. The registry arms the fallback deadline and owns the atomic response state. If the
+application has not completed the handle before the deadline, the registry wins the one-shot
+response race, sends the platform-appropriate generic ATT error where the platform still permits
+it (for example, Android `GATT_FAILURE` or an Apple ATT unlikely error), invalidates the handle, and
+emits a timeout event. Application exceptions, cancellation, a slow collector, or an uncollected
+`requests` flow cannot disable this fallback. The deadline mechanism is shared common logic;
+platform wrappers provide only the final response operation while translating the callback.
 
 ### 6. Expose targeted notifications and backpressure
 
@@ -276,12 +312,24 @@ The plugin will implement:
 
 - a bounded FIFO per session;
 - a bounded total memory budget;
-- at most one permitted in-flight notification per readiness scope;
+- immediate continued draining while `notify` returns `Sent`;
+- suspension of a readiness scope only after `notify` returns `Busy`;
+- resumption of a busy scope only after a matching readiness event;
+- a loss-free handoff from `Busy` to waiting: the plugin subscribes to or rechecks the readiness
+  scope so an event emitted between the failed attempt and suspension cannot be missed;
+- platform-aware acceptance windows: Android may expose `Busy` until `onNotificationSent`, while
+  Apple may accept multiple updates before its transmit queue becomes full;
 - fair round-robin scheduling across sessions;
-- retry only after `Busy` and a matching readiness event;
+- at most one item per session in each scheduling pass before the scheduler advances to the next
+  session, preventing a continuously writable session from starving others;
 - cancellation of an item that has not yet been submitted when its caller is cancelled;
 - cancellation of all session items when the session closes;
 - `RejectNewest` as the default overflow policy.
+
+If at least one item is accepted during a scheduling pass, the plugin immediately begins the next
+round-robin pass without waiting for a flow emission. It waits on `notificationReadiness` only when
+all currently eligible readiness scopes are busy. This avoids a coroutine wake-up between every
+accepted packet while preserving fairness and bounded memory.
 
 The plugin will never silently discard data. Queue overflow returns `QueueFull`. A value larger
 than `maximumUpdateValueLength` returns `PayloadTooLarge`.
@@ -340,6 +388,20 @@ differences that cannot be expressed in the shared source set.
 
 The application supplies a stable restoration identifier when restoration is enabled. Blue Falcon
 will not silently generate an identifier whose continuity the application cannot control.
+
+On iOS, restoration-enabled applications must instantiate `BlueFalconPeripheral` during early
+application bootstrap with the same persisted restoration identifier on every launch. It must not
+be created lazily from a view model, screen, or feature-scoped dependency graph. The integration
+documentation will show initialization from `application(_:didFinishLaunchingWithOptions:)` and
+the equivalent SwiftUI or scene-based startup path, before UI-driven common code is initialized.
+Scene-based applications must persist and reuse the identifier themselves rather than depending on
+launch options to supply it.
+
+Core Bluetooth relaunch eligibility remains an operating-system policy rather than a library
+guarantee. In particular, Apple documents additional AccessorySetupKit requirements for Bluetooth
+restoration relaunch on iOS and iPadOS 26 and later. The `state restoration` capability means that
+the backend supports stable manager reconstruction and restoration callbacks when the operating
+system makes them available; it does not promise that every application will be relaunched.
 
 ### 11. Define concurrency and ownership rules
 
@@ -466,24 +528,28 @@ Implementation will proceed through reviewable PRs after this ADR is accepted:
 2. **Common production API:** add manager/session/request/result/capability contracts, an internal
    fake backend, and common contract tests.
 3. **Android backend:** implement multi-central sessions, subscription tracking, explicit ATT
-   responses, prepared writes, targeted notify/indicate, MTU tracking, notification completion,
-   and deterministic teardown.
+   responses, prepared writes, targeted notify/indicate, per-session `onMtuChanged` tracking,
+   notification completion, and deterministic teardown.
 4. **Apple backend:** implement the shared `appleMain` manager, session/subscription registry,
-   targeted updates, readiness, maximum update length, and restoration hooks.
+   targeted updates, readiness, maximum update length, restoration hooks, and early-startup
+   integration guidance.
 5. **Queue plugin:** implement bounded FIFO scheduling, fairness, cancellation, and overflow
    behavior.
 6. **Documentation and examples:** add the migration guide, simultaneous central/peripheral
-   example, two-central example, capability documentation, and future Windows/Linux issues.
+   example, two-central example, iOS restoration bootstrap examples for UIKit and SwiftUI/scene
+   applications, capability documentation, and future Windows/Linux issues.
 
 Every PR must compile all published variants and must not introduce silent no-op paths.
 
 Testing will include:
 
 - common manager state-machine tests;
-- session lifecycle and cleanup tests;
-- one-shot response, timeout, and overflow tests;
+- session lifecycle, suspending terminal close, cancellation, and cleanup tests;
+- one-shot response, fallback-before-delivery, timeout, and overflow tests;
+- Android default-MTU, per-session MTU update, session reset, and oversize rejection tests;
 - notification result/readiness contract tests;
-- queue bounds, fairness, cancellation, and session-close tests;
+- queue bounds, drain-until-busy, busy-to-readiness race, readiness wake-up, fairness,
+  cancellation, and session-close tests;
 - platform mapping tests behind wrapper interfaces;
 - Android instrumented tests for the real GATT server where CI hardware permits;
 - Apple native compile/tests and documented two-device manual scenarios;
@@ -514,6 +580,8 @@ The first implementation milestone is complete when Android, iOS, and macOS supp
 - [Android BluetoothGattServerCallback](https://developer.android.com/reference/android/bluetooth/BluetoothGattServerCallback)
 - [Apple CBPeripheralManager](https://developer.apple.com/documentation/corebluetooth/cbperipheralmanager)
 - [Apple peripheral manager restoration identifier](https://developer.apple.com/documentation/corebluetooth/cbperipheralmanageroptionrestoreidentifierkey)
+- [Apple Core Bluetooth background processing and restoration](https://developer.apple.com/library/archive/documentation/NetworkingInternetWeb/Conceptual/CoreBluetooth_concepts/CoreBluetoothBackgroundProcessingForIOSApps/PerformingTasksWhileYourAppIsInTheBackground.html)
+- [Apple TN3115: Bluetooth state restoration app relaunch rules](https://developer.apple.com/documentation/technotes/tn3115-bluetooth-state-restoration-app-relaunch-rules)
 - [Windows Bluetooth GATT Server](https://learn.microsoft.com/en-us/windows/apps/develop/devices-sensors/gatt-server)
 - [BlueZ GATT API](https://bluez.readthedocs.io/en/latest/gatt-api/)
 - [Web Bluetooth specification](https://webbluetoothcg.github.io/web-bluetooth/)
