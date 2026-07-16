@@ -277,11 +277,32 @@ blueFalcon.connect(bluetoothPeripheral, autoConnect = false)
 
 // Disconnect from a peripheral
 blueFalcon.disconnect(bluetoothPeripheral)
+```
 
-// Check current connection state
+> ⚠️ **Do not call `connectionState()` immediately after `connect()`.**
+> BLE connections are asynchronous. Polling `connectionState()` right after initiating a connection
+> will return `Disconnected` because the platform callback has not fired yet.
+> Use `connectionStateUpdates` instead to react to the actual state change:
+
+```kotlin
+// ✅ Reactive — subscribe BEFORE calling connect()
+launch {
+    blueFalcon.connectionStateUpdates.collect { update ->
+        when (update.state) {
+            BluetoothPeripheralState.Connected    -> println("${update.peripheral.name} connected")
+            BluetoothPeripheralState.Disconnected -> println("${update.peripheral.name} disconnected")
+            else -> Unit
+        }
+    }
+}
+
+blueFalcon.connect(bluetoothPeripheral)
+
+// ❌ Avoid — connectionState() is a snapshot and will return Disconnected if called too early
 val state: BluetoothPeripheralState = blueFalcon.connectionState(bluetoothPeripheral)
-// Returns: Connecting, Connected, Disconnected, Disconnecting, or Unknown
+```
 
+```kotlin
 // Request connection priority (Android-specific, no-op on other platforms)
 blueFalcon.requestConnectionPriority(bluetoothPeripheral, ConnectionPriority.High)
 // Options: ConnectionPriority.Balanced, ConnectionPriority.High, ConnectionPriority.Low

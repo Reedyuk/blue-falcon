@@ -28,6 +28,9 @@ class MacosJvmEngine : BlueFalconEngine {
     private val _characteristicNotifications = MutableSharedFlow<CharacteristicNotification>(extraBufferCapacity = 64)
     override val characteristicNotifications: SharedFlow<CharacteristicNotification> = _characteristicNotifications
 
+    private val _connectionStateUpdates = MutableSharedFlow<ConnectionStateUpdate>(extraBufferCapacity = 64)
+    override val connectionStateUpdates: SharedFlow<ConnectionStateUpdate> = _connectionStateUpdates
+
     override var isScanning: Boolean = false
         private set
 
@@ -84,11 +87,17 @@ class MacosJvmEngine : BlueFalconEngine {
         if (!connections.containsKey(peripheralUuid)) {
             connections[peripheralUuid] = MacosJvmBluetoothPeripheral(peripheralUuid, null)
         }
+        val peripheral = connections[peripheralUuid] ?: return
+        _connectionStateUpdates.tryEmit(ConnectionStateUpdate(peripheral, BluetoothPeripheralState.Connected))
     }
 
     @Suppress("unused")
     private fun onDisconnected(peripheralUuid: String) {
+        val peripheral = connections[peripheralUuid]
         connections.remove(peripheralUuid)
+        if (peripheral != null) {
+            _connectionStateUpdates.tryEmit(ConnectionStateUpdate(peripheral, BluetoothPeripheralState.Disconnected))
+        }
     }
 
     @Suppress("unused")

@@ -39,6 +39,20 @@ interface BlueFalconEngine {
      */
     val rssiUpdates: SharedFlow<Pair<String, Float>>
         get() = MutableSharedFlow()
+
+    /**
+     * Reactive stream of peripheral connection state changes.
+     *
+     * Use this instead of polling [connectionState] to receive immediate notifications
+     * when a peripheral connects or disconnects. Polling [connectionState] immediately
+     * after calling [connect] will return [BluetoothPeripheralState.Disconnected] because
+     * BLE connection establishment is asynchronous — the first emission on this flow signals
+     * that the connection (or disconnection) has actually occurred.
+     *
+     * Engines that do not support this may leave the default no-op implementation.
+     */
+    val connectionStateUpdates: SharedFlow<ConnectionStateUpdate>
+        get() = MutableSharedFlow()
     
     /**
      * Check if currently scanning
