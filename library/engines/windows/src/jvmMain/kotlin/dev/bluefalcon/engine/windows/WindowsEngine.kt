@@ -24,6 +24,9 @@ class WindowsEngine : BlueFalconEngine {
 
     private val _characteristicNotifications = MutableSharedFlow<CharacteristicNotification>(extraBufferCapacity = 64)
     override val characteristicNotifications: SharedFlow<CharacteristicNotification> = _characteristicNotifications
+
+    private val _connectionStateUpdates = MutableSharedFlow<ConnectionStateUpdate>(extraBufferCapacity = 64)
+    override val connectionStateUpdates: SharedFlow<ConnectionStateUpdate> = _connectionStateUpdates
     
     override var isScanning: Boolean = false
         private set
@@ -84,8 +87,11 @@ class WindowsEngine : BlueFalconEngine {
         val address = windowsPeripheral.address
         
         try {
+            // nativeConnect() blocks the calling thread until the WinRT connection completes
+            // (or throws on failure), so emitting Connected after it returns is safe.
             nativeConnect(address)
             connections[address] = windowsPeripheral
+            _connectionStateUpdates.tryEmit(ConnectionStateUpdate(peripheral, BluetoothPeripheralState.Connected))
         } catch (e: Exception) {
             throw e
         }
@@ -98,8 +104,10 @@ class WindowsEngine : BlueFalconEngine {
         val address = windowsPeripheral.address
         
         try {
+            // nativeDisconnect() is synchronous from the JVM side.
             nativeDisconnect(address)
             connections.remove(address)
+            _connectionStateUpdates.tryEmit(ConnectionStateUpdate(peripheral, BluetoothPeripheralState.Disconnected))
         } catch (e: Exception) {
             throw e
         }

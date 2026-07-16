@@ -5,7 +5,7 @@ plugins {
     id("org.jetbrains.kotlin.plugin.compose")
 }
 
-val falconVersion = "3.5.0"
+val falconVersion = "3.5.1"
 val coroutinesVersion = "1.11.0"
 
 kotlin {
