@@ -15,6 +15,7 @@ import dev.bluefalcon.peripheral.internal.PeripheralBackendEventSink
 import dev.bluefalcon.peripheral.internal.BackendCharacteristicReadRequest
 import dev.bluefalcon.peripheral.internal.BackendCharacteristicWriteRequest
 import dev.bluefalcon.peripheral.internal.BackendGattResponder
+import kotlinx.coroutines.CompletableDeferred
 
 internal class FakePeripheralBackend(
     override val capabilities: PeripheralCapabilities = SupportedCapabilities,
@@ -40,6 +41,8 @@ internal class FakePeripheralBackend(
     var lastNotificationMode: NotificationMode? = null
         private set
     val disconnectSessionIds = mutableListOf<PeripheralSessionId>()
+    private var notificationGate: CompletableDeferred<Unit>? = null
+    private var stopGate: CompletableDeferred<Unit>? = null
 
     lateinit var eventSink: PeripheralBackendEventSink
         private set
@@ -56,6 +59,8 @@ internal class FakePeripheralBackend(
 
     override suspend fun stop() {
         stopCalls++
+        notificationGate?.complete(Unit)
+        stopGate?.await()
     }
 
     override suspend fun close() {
@@ -72,6 +77,7 @@ internal class FakePeripheralBackend(
         lastNotificationCharacteristic = characteristic
         lastNotificationValue = value.copyOf()
         lastNotificationMode = mode
+        notificationGate?.await()
         if (mutateNotificationInput && value.isNotEmpty()) value[0] = 99
         return notificationResult
     }
@@ -116,6 +122,18 @@ internal class FakePeripheralBackend(
 
     fun signalNotificationReady(readiness: NotificationReadiness) {
         eventSink.onNotificationReady(readiness)
+    }
+
+    fun blockNotificationsUntilStop() {
+        notificationGate = CompletableDeferred()
+    }
+
+    fun blockStopUntilReleased() {
+        stopGate = CompletableDeferred()
+    }
+
+    fun releaseStop() {
+        stopGate?.complete(Unit)
     }
 
     fun emitCharacteristicRead(

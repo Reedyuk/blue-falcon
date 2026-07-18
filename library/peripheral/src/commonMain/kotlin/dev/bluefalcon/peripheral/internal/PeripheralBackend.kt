@@ -106,6 +106,12 @@ internal class BackendCharacteristicWriteRequest(
     override val descriptorId: GattDescriptorId? = null
     val value: ByteArray
         get() = copiedValue.copyOf()
+
+    init {
+        require(!preparedWrite || responder != null) {
+            "Prepared characteristic writes require a responder"
+        }
+    }
 }
 
 internal class BackendDescriptorReadRequest(
@@ -134,6 +140,12 @@ internal class BackendDescriptorWriteRequest(
     override val requestType = GattRequestType.DescriptorWrite
     val value: ByteArray
         get() = copiedValue.copyOf()
+
+    init {
+        require(!preparedWrite || responder != null) {
+            "Prepared descriptor writes require a responder"
+        }
+    }
 }
 
 internal class BackendExecuteWriteRequest(

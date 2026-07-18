@@ -22,3 +22,25 @@ data class PeripheralConfig(
         }
     }
 }
+
+internal fun PeripheralConfig.copyForBackend(): PeripheralConfig = copy(
+    advertiseConfig = advertiseConfig.copy(
+        serviceUuids = advertiseConfig.serviceUuids.toList(),
+        manufacturerData = advertiseConfig.manufacturerData.mapValues { (_, value) ->
+            value.copyOf()
+        },
+        services = advertiseConfig.services.map { service ->
+            service.copy(
+                characteristics = service.characteristics.map { characteristic ->
+                    characteristic.copy(
+                        properties = characteristic.properties.toSet(),
+                        initialValue = characteristic.initialValue?.copyOf(),
+                        descriptors = characteristic.descriptors.map { descriptor ->
+                            descriptor.copy(initialValue = descriptor.initialValue?.copyOf())
+                        },
+                    )
+                },
+            )
+        },
+    ),
+)

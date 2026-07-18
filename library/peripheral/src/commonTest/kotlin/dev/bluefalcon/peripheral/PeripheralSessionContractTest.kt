@@ -6,7 +6,9 @@ import dev.bluefalcon.peripheral.internal.DefaultBlueFalconPeripheral
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
+import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
@@ -14,6 +16,7 @@ import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
 import kotlin.test.assertSame
 import kotlin.test.assertTrue
+import kotlin.time.Duration.Companion.milliseconds
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class PeripheralSessionContractTest {
@@ -110,6 +113,31 @@ class PeripheralSessionContractTest {
     }
 
     @Test
+    fun managerReadinessReachesEveryActiveSession() = runTest {
+        val (backend, peripheral) = startedPeripheral()
+        backend.openSession(SessionId)
+        backend.openSession(OtherSessionId)
+        runCurrent()
+        val sessions = peripheral.sessions.value.associateBy { it.id }
+        val firstReadiness = async(UnconfinedTestDispatcher(testScheduler)) {
+            withTimeoutOrNull(1.milliseconds) {
+                sessions.getValue(SessionId).notificationReady.first()
+            }
+        }
+        val secondReadiness = async(UnconfinedTestDispatcher(testScheduler)) {
+            withTimeoutOrNull(1.milliseconds) {
+                sessions.getValue(OtherSessionId).notificationReady.first()
+            }
+        }
+
+        backend.signalNotificationReady(NotificationReadiness.Manager)
+        runCurrent()
+
+        assertEquals(Unit, firstReadiness.await())
+        assertEquals(Unit, secondReadiness.await())
+    }
+
+    @Test
     fun sessionCloseRemovesSessionAndRejectsLaterOperations() = runTest {
         val (backend, peripheral) = startedPeripheral()
         backend.openSession(SessionId)
@@ -128,6 +156,65 @@ class PeripheralSessionContractTest {
         assertEquals(DisconnectResult.AlreadyDisconnected, session.disconnect())
         assertEquals(null, backend.lastNotificationSessionId)
         assertTrue(backend.disconnectSessionIds.isEmpty())
+    }
+
+    @Test
+    fun firstSubscriptionCreatesSessionAndInactivityWaitsForFinalUnsubscribe() = runTest {
+        val backend = FakePeripheralBackend(
+            capabilities = PeripheralCapabilities.Unsupported.copy(
+                localGattServer = true,
+                connectionLifecycleVisibility = false,
+            ),
+        )
+        val peripheral = DefaultBlueFalconPeripheral(backend, coroutineContext)
+        peripheral.start(
+            PeripheralConfig(
+                advertiseConfig = AdvertiseConfig(),
+                inactiveSessionTimeout = 100.milliseconds,
+            ),
+        )
+
+        backend.updateSubscriptions(SessionId, setOf(CharacteristicId))
+        runCurrent()
+        val session = peripheral.sessions.value.single()
+
+        advanceTimeBy(500)
+        runCurrent()
+        assertEquals(SessionState.Active, session.state.value)
+
+        backend.updateSubscriptions(SessionId, emptySet())
+        runCurrent()
+        advanceTimeBy(99)
+        runCurrent()
+        assertEquals(SessionState.Active, session.state.value)
+
+        advanceTimeBy(1)
+        runCurrent()
+        assertTrue(peripheral.sessions.value.isEmpty())
+        assertEquals(SessionState.Closed, session.state.value)
+    }
+
+    @Test
+    fun stopCanReachBackendWhileNotificationIsSuspended() = runTest {
+        val (backend, peripheral) = startedPeripheral()
+        backend.openSession(SessionId)
+        runCurrent()
+        val session = peripheral.sessions.value.single()
+        backend.blockNotificationsUntilStop()
+        val notification = async(UnconfinedTestDispatcher(testScheduler)) {
+            withTimeoutOrNull(100.milliseconds) {
+                session.notify(CharacteristicId, byteArrayOf(1))
+            }
+        }
+        runCurrent()
+
+        val stop = async(UnconfinedTestDispatcher(testScheduler)) { peripheral.stop() }
+        runCurrent()
+
+        assertEquals(1, backend.stopCalls)
+        stop.await()
+        assertEquals(NotificationResult.Disconnected, notification.await())
+        assertEquals(SessionState.Closed, session.state.value)
     }
 
     private suspend fun kotlinx.coroutines.test.TestScope.startedPeripheral():

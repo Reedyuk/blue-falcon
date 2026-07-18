@@ -27,7 +27,7 @@ class GattCharacteristicReadRequest(
     override val serviceId: GattServiceId,
     override val characteristicId: GattCharacteristicId,
     override val offset: Int,
-    override val response: GattResponseHandle?,
+    override val response: GattResponseHandle,
 ) : GattAttributeRequest {
     override val descriptorId: GattDescriptorId? = null
 }
@@ -46,6 +46,12 @@ class GattCharacteristicWriteRequest(
     override val descriptorId: GattDescriptorId? = null
     val value: ByteArray
         get() = copiedValue.copyOf()
+
+    init {
+        require(!preparedWrite || response != null) {
+            "Prepared characteristic writes require a response handle"
+        }
+    }
 }
 
 class GattDescriptorReadRequest(
@@ -54,7 +60,7 @@ class GattDescriptorReadRequest(
     override val characteristicId: GattCharacteristicId,
     override val descriptorId: GattDescriptorId,
     override val offset: Int,
-    override val response: GattResponseHandle?,
+    override val response: GattResponseHandle,
 ) : GattAttributeRequest
 
 class GattDescriptorWriteRequest(
@@ -71,10 +77,16 @@ class GattDescriptorWriteRequest(
 
     val value: ByteArray
         get() = copiedValue.copyOf()
+
+    init {
+        require(!preparedWrite || response != null) {
+            "Prepared descriptor writes require a response handle"
+        }
+    }
 }
 
 class GattExecuteWriteRequest(
     override val session: PeripheralSession,
     val execute: Boolean,
-    override val response: GattResponseHandle?,
+    override val response: GattResponseHandle,
 ) : GattServerRequest

@@ -1,6 +1,7 @@
 package dev.bluefalcon.peripheral
 
 import dev.bluefalcon.core.Uuid
+import kotlin.jvm.JvmInline
 
 @JvmInline
 value class PeripheralSessionId(val value: String) {

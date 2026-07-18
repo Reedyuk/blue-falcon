@@ -8,6 +8,7 @@ import kotlinx.coroutines.flow.emptyFlow
 import kotlin.test.Test
 import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertNull
 
 class PeripheralApiShapeTest {
@@ -41,7 +42,7 @@ class PeripheralApiShapeTest {
             characteristicId = GattCharacteristicId(CHARACTERISTIC_UUID.toUuid()),
             offset = 4,
             value = source,
-            preparedWrite = true,
+            preparedWrite = false,
             response = null,
         )
 
@@ -57,18 +58,52 @@ class PeripheralApiShapeTest {
     }
 
     @Test
-    fun descriptorRequestRequiresDescriptorId() {
+    fun responseRequiredRequestsExposeNonNullHandle() {
+        val response = RecordingResponseHandle()
         val descriptorId = GattDescriptorId(DESCRIPTOR_UUID.toUuid())
-        val request = GattDescriptorReadRequest(
+        val descriptorRequest = GattDescriptorReadRequest(
             session = RecordingSession(),
             serviceId = GattServiceId(SERVICE_UUID.toUuid()),
             characteristicId = GattCharacteristicId(CHARACTERISTIC_UUID.toUuid()),
             descriptorId = descriptorId,
             offset = 0,
-            response = null,
+            response = response,
+        )
+        val readRequest = GattCharacteristicReadRequest(
+            session = RecordingSession(),
+            serviceId = GattServiceId(SERVICE_UUID.toUuid()),
+            characteristicId = GattCharacteristicId(CHARACTERISTIC_UUID.toUuid()),
+            offset = 0,
+            response = response,
+        )
+        val executeRequest = GattExecuteWriteRequest(
+            session = RecordingSession(),
+            execute = true,
+            response = response,
+        )
+        val requiredResponses: List<GattResponseHandle> = listOf(
+            descriptorRequest.response,
+            readRequest.response,
+            executeRequest.response,
         )
 
-        assertEquals(descriptorId, request.descriptorId)
+        assertEquals(descriptorId, descriptorRequest.descriptorId)
+        assertEquals(listOf(response, response, response), requiredResponses)
+    }
+
+    @Test
+    fun preparedWriteRequiresResponseHandle() {
+        assertFailsWith<IllegalArgumentException> {
+            GattCharacteristicWriteRequest(
+                session = RecordingSession(),
+                serviceId = GattServiceId(SERVICE_UUID.toUuid()),
+                characteristicId = GattCharacteristicId(CHARACTERISTIC_UUID.toUuid()),
+                offset = 0,
+                value = byteArrayOf(1),
+                preparedWrite = true,
+                response = null,
+            )
+        }
     }
 
     private class RecordingPeripheral : BlueFalconPeripheral {
@@ -100,6 +135,13 @@ class PeripheralApiShapeTest {
         ): NotificationResult = NotificationResult.Sent
 
         override suspend fun disconnect(): DisconnectResult = DisconnectResult.Disconnected
+    }
+
+    private class RecordingResponseHandle : GattResponseHandle {
+        override suspend fun respond(
+            status: GattResponseStatus,
+            value: ByteArray?,
+        ): GattResponseResult = GattResponseResult.Responded
     }
 
     private companion object {

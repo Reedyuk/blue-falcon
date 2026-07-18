@@ -19,6 +19,7 @@ internal class DefaultGattResponseHandle(
         status: GattResponseStatus,
         value: ByteArray?,
     ): GattResponseResult {
+        val copiedValue = value?.copyOf()
         val result = mutex.withLock {
             when (state) {
                 State.Pending -> {
@@ -33,7 +34,7 @@ internal class DefaultGattResponseHandle(
 
         if (result == GattResponseResult.Responded) {
             terminal.complete(Unit)
-            responder(status, value?.copyOf())
+            responder(status, copiedValue)
         }
 
         return result
@@ -61,8 +62,33 @@ internal class DefaultGattResponseHandle(
         return expired
     }
 
+    internal fun tryExpire(fallbackStatus: GattResponseStatus? = null): Boolean {
+        if (!mutex.tryLock()) return false
+        val expired = try {
+            if (state != State.Pending) {
+                false
+            } else {
+                state = State.Expired
+                true
+            }
+        } finally {
+            mutex.unlock()
+        }
+
+        if (expired) {
+            terminal.complete(Unit)
+            if (fallbackStatus != null) responder(fallbackStatus, null)
+        }
+
+        return expired
+    }
+
     internal suspend fun awaitTerminal() {
         terminal.await()
+    }
+
+    internal suspend fun isPending(): Boolean = mutex.withLock {
+        state == State.Pending
     }
 
     private enum class State {
