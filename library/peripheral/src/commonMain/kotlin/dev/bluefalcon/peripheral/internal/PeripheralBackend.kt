@@ -99,6 +99,7 @@ internal class BackendCharacteristicWriteRequest(
     value: ByteArray,
     val preparedWrite: Boolean,
     override val responder: BackendGattResponder?,
+    val requestId: Int = -1,
 ) : BackendGattAttributeRequest {
     private val copiedValue = value.copyOf()
 

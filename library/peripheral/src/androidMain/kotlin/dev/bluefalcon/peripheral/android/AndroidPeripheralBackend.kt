@@ -39,6 +39,7 @@ internal class AndroidPeripheralBackend(
     private val stack: AndroidBluetoothStack,
     private val logger: Logger?,
     private val operationTimeout: Duration = 10.seconds,
+    private val allowAdvertisingWithoutGattServer: Boolean = false,
 ) : PeripheralBackend {
     private val lock = Any()
     private val platformOperationMutex = Mutex()
@@ -82,7 +83,9 @@ internal class AndroidPeripheralBackend(
         config: PeripheralConfig,
         eventSink: PeripheralBackendEventSink,
     ) {
-        validateCapabilities()
+        val requiresGattServer =
+            config.advertiseConfig.services.isNotEmpty() || !allowAdvertisingWithoutGattServer
+        validateCapabilities(requiresGattServer)
         val configuredNotificationModes = notificationModes(config)
         val startGeneration = synchronized(lock) {
             when (state) {
@@ -105,8 +108,10 @@ internal class AndroidPeripheralBackend(
         }
 
         try {
-            runStartupOperation(startGeneration) {
-                stack.open(listener)
+            if (requiresGattServer) {
+                runStartupOperation(startGeneration) {
+                    stack.open(listener)
+                }
             }
             config.advertiseConfig.services.forEach { service ->
                 runStartupOperation(startGeneration) {
@@ -229,8 +234,8 @@ internal class AndroidPeripheralBackend(
         }
     }
 
-    private fun validateCapabilities() {
-        if (!stack.capabilities.localGattServer) {
+    private fun validateCapabilities(requiresGattServer: Boolean) {
+        if (requiresGattServer && !stack.capabilities.localGattServer) {
             throw PeripheralUnsupportedException("Android local GATT server")
         }
         if (!stack.capabilities.connectableAdvertising) {
@@ -537,6 +542,7 @@ internal class AndroidPeripheralBackend(
                     value = event.value,
                     preparedWrite = event.preparedWrite,
                     responder = responder,
+                    requestId = if (event.responseNeeded) event.requestId else -1,
                 )
                 val delivery = { sink.onRequest(request) }
                 delivery
