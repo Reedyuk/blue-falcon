@@ -1,12 +1,16 @@
 package dev.bluefalcon.peripheral.android
 
+import android.bluetooth.BluetoothGatt
 import dev.bluefalcon.core.Logger
+import dev.bluefalcon.core.Uuid
+import dev.bluefalcon.peripheral.CharacteristicProperty
 import dev.bluefalcon.peripheral.DisconnectResult
 import dev.bluefalcon.peripheral.GattCharacteristicId
 import dev.bluefalcon.peripheral.GattDescriptorId
 import dev.bluefalcon.peripheral.GattResponseStatus
 import dev.bluefalcon.peripheral.GattServiceId
 import dev.bluefalcon.peripheral.NotificationMode
+import dev.bluefalcon.peripheral.NotificationReadiness
 import dev.bluefalcon.peripheral.NotificationResult
 import dev.bluefalcon.peripheral.PeripheralCapabilities
 import dev.bluefalcon.peripheral.PeripheralConfig
@@ -22,7 +26,10 @@ import dev.bluefalcon.peripheral.internal.BackendExecuteWriteRequest
 import dev.bluefalcon.peripheral.internal.BackendGattResponder
 import dev.bluefalcon.peripheral.internal.PeripheralBackendEventSink
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import kotlin.time.Duration
@@ -34,6 +41,7 @@ internal class AndroidPeripheralBackend(
     private val operationTimeout: Duration = 10.seconds,
 ) : PeripheralBackend {
     private val lock = Any()
+    private val platformOperationMutex = Mutex()
     private var state: BackendState = BackendState.Stopped
     private var generation = 0L
     private var eventSink: PeripheralBackendEventSink? = null
@@ -44,6 +52,7 @@ internal class AndroidPeripheralBackend(
         mutableMapOf<PeripheralSessionId, MutableMap<GattCharacteristicId, NotificationMode>>()
     private val preparedCccdWrites = mutableMapOf<PeripheralSessionId, PreparedCccdWrite>()
     private val pendingNotifications = mutableSetOf<PeripheralSessionId>()
+    private var supportedNotificationModes = emptyMap<GattCharacteristicId, Set<NotificationMode>>()
     private val eventDeliveries = ArrayDeque<EventDelivery>()
     private var eventDeliveryOwner = false
 
@@ -74,6 +83,7 @@ internal class AndroidPeripheralBackend(
         eventSink: PeripheralBackendEventSink,
     ) {
         validateCapabilities()
+        val configuredNotificationModes = notificationModes(config)
         val startGeneration = synchronized(lock) {
             when (state) {
                 BackendState.Stopped -> Unit
@@ -87,6 +97,7 @@ internal class AndroidPeripheralBackend(
             val allocatedGeneration = ++generation
             state = BackendState.Starting(allocatedGeneration)
             this.eventSink = eventSink
+            supportedNotificationModes = configuredNotificationModes
             allocatedGeneration
         }
         val listener = AndroidBluetoothStackListener { event ->
@@ -144,10 +155,79 @@ internal class AndroidPeripheralBackend(
         characteristic: GattCharacteristicId,
         value: ByteArray,
         mode: NotificationMode,
-    ): NotificationResult = NotificationResult.Unsupported
+    ): NotificationResult = platformOperationMutex.withLock {
+        notifyPlatformSerialized(sessionId, characteristic, value, mode)
+    }
 
-    override suspend fun disconnect(sessionId: PeripheralSessionId): DisconnectResult =
-        DisconnectResult.Unsupported
+    private fun notifyPlatformSerialized(
+        sessionId: PeripheralSessionId,
+        characteristic: GattCharacteristicId,
+        value: ByteArray,
+        mode: NotificationMode,
+    ): NotificationResult {
+        val request = synchronized(lock) {
+            if (sessionId !in connectedSessions) {
+                return NotificationResult.Disconnected
+            }
+            if (supportedNotificationModes[characteristic]?.contains(mode) != true) {
+                return NotificationResult.Unsupported
+            }
+            if (subscriptions[sessionId]?.get(characteristic) != mode) {
+                return NotificationResult.Unsupported
+            }
+            val maximumLength = maximumUpdateLengths[sessionId]
+                ?: return NotificationResult.Disconnected
+            if (value.size > maximumLength) {
+                return NotificationResult.Failed(
+                    AndroidNotificationValueTooLongException(value.size, maximumLength),
+                )
+            }
+            if (!pendingNotifications.add(sessionId)) {
+                return NotificationResult.Busy
+            }
+            AndroidNotificationRequest(sessionId, characteristic, mode, value)
+        }
+
+        return try {
+            when (val result = stack.notify(request)) {
+                AndroidNotificationStartResult.Accepted -> NotificationResult.Sent
+                is AndroidNotificationStartResult.Rejected -> {
+                    synchronized(lock) { pendingNotifications.remove(sessionId) }
+                    if (result.cause is CancellationException) throw result.cause
+                    NotificationResult.Failed(result.cause)
+                }
+            }
+        } catch (cause: Throwable) {
+            synchronized(lock) { pendingNotifications.remove(sessionId) }
+            if (cause is CancellationException) throw cause
+            NotificationResult.Failed(cause)
+        }
+    }
+
+    override suspend fun disconnect(
+        sessionId: PeripheralSessionId,
+    ): DisconnectResult = platformOperationMutex.withLock {
+        disconnectPlatformSerialized(sessionId)
+    }
+
+    private fun disconnectPlatformSerialized(sessionId: PeripheralSessionId): DisconnectResult {
+        synchronized(lock) {
+            if (sessionId !in connectedSessions) {
+                return DisconnectResult.AlreadyDisconnected
+            }
+        }
+
+        return try {
+            if (stack.disconnect(sessionId)) {
+                DisconnectResult.Disconnected
+            } else {
+                DisconnectResult.Failed(AndroidDisconnectException(sessionId))
+            }
+        } catch (cause: Throwable) {
+            if (cause is CancellationException) throw cause
+            DisconnectResult.Failed(cause)
+        }
+    }
 
     private fun validateCapabilities() {
         if (!stack.capabilities.localGattServer) {
@@ -155,6 +235,24 @@ internal class AndroidPeripheralBackend(
         }
         if (!stack.capabilities.connectableAdvertising) {
             throw PeripheralUnsupportedException("Android connectable advertising")
+        }
+    }
+
+    private fun notificationModes(
+        config: PeripheralConfig,
+    ): Map<GattCharacteristicId, Set<NotificationMode>> = buildMap {
+        config.advertiseConfig.services.forEach { service ->
+            service.characteristics.forEach { characteristic ->
+                val modes = buildSet {
+                    if (CharacteristicProperty.NOTIFY in characteristic.properties) {
+                        add(NotificationMode.Notification)
+                    }
+                    if (CharacteristicProperty.INDICATE in characteristic.properties) {
+                        add(NotificationMode.Indication)
+                    }
+                }
+                put(GattCharacteristicId(Uuid.parse(characteristic.uuid)), modes)
+            }
         }
     }
 
@@ -254,7 +352,7 @@ internal class AndroidPeripheralBackend(
 
         withContext(NonCancellable) {
             synchronized(lock) { startupOperationIdle }?.await()
-            teardownPlatform()
+            platformOperationMutex.withLock { teardownPlatform() }
             val terminal = synchronized(lock) {
                 val current = state as? BackendState.ShuttingDown
                 if (current != null && current.completion === shutdown.completion) {
@@ -557,7 +655,19 @@ internal class AndroidPeripheralBackend(
             }
         }
 
-        else -> null
+        is AndroidGattEvent.NotificationSent -> {
+            pendingNotifications.remove(event.sessionId)
+            val delivery = {
+                sink.onNotificationReady(NotificationReadiness.Session(event.sessionId))
+                if (event.status != BluetoothGatt.GATT_SUCCESS) {
+                    sink.onPlatformFailure(
+                        AndroidNotificationCallbackException(event.sessionId, event.status),
+                    )
+                }
+            }
+            delivery
+        }
+
     }
 
     private fun stagePreparedCccdWrite(
@@ -735,6 +845,7 @@ internal class AndroidPeripheralBackend(
         subscriptions.clear()
         preparedCccdWrites.clear()
         pendingNotifications.clear()
+        supportedNotificationModes = emptyMap()
     }
 
     private sealed interface BackendState {
@@ -800,4 +911,22 @@ internal class AndroidPeripheralBackend(
 
 internal class AndroidGattResponseException(requestId: Int) : IllegalStateException(
     "Android GATT server rejected response for request $requestId",
+)
+
+internal class AndroidNotificationValueTooLongException(
+    valueSize: Int,
+    maximumSize: Int,
+) : IllegalArgumentException(
+    "Android notification value size $valueSize exceeds the negotiated limit $maximumSize",
+)
+
+internal class AndroidNotificationCallbackException(
+    sessionId: PeripheralSessionId,
+    status: Int,
+) : IllegalStateException(
+    "Android notification callback failed for session ${sessionId.value} with status $status",
+)
+
+internal class AndroidDisconnectException(sessionId: PeripheralSessionId) : IllegalStateException(
+    "Android rejected disconnect for session ${sessionId.value}",
 )
