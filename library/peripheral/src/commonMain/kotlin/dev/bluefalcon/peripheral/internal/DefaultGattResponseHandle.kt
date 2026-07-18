@@ -3,6 +3,7 @@ package dev.bluefalcon.peripheral.internal
 import dev.bluefalcon.peripheral.GattResponseHandle
 import dev.bluefalcon.peripheral.GattResponseResult
 import dev.bluefalcon.peripheral.GattResponseStatus
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
@@ -11,6 +12,7 @@ internal class DefaultGattResponseHandle(
 ) : GattResponseHandle {
 
     private val mutex = Mutex()
+    private val terminal = CompletableDeferred<Unit>()
     private var state = State.Pending
 
     override suspend fun respond(
@@ -30,6 +32,7 @@ internal class DefaultGattResponseHandle(
         }
 
         if (result == GattResponseResult.Responded) {
+            terminal.complete(Unit)
             responder(status, value?.copyOf())
         }
 
@@ -49,10 +52,17 @@ internal class DefaultGattResponseHandle(
         }
 
         if (expired && fallbackStatus != null) {
+            terminal.complete(Unit)
             responder(fallbackStatus, null)
+        } else if (expired) {
+            terminal.complete(Unit)
         }
 
         return expired
+    }
+
+    internal suspend fun awaitTerminal() {
+        terminal.await()
     }
 
     private enum class State {

@@ -2,6 +2,8 @@ package dev.bluefalcon.peripheral.fake
 
 import dev.bluefalcon.peripheral.DisconnectResult
 import dev.bluefalcon.peripheral.GattCharacteristicId
+import dev.bluefalcon.peripheral.GattResponseStatus
+import dev.bluefalcon.peripheral.GattServiceId
 import dev.bluefalcon.peripheral.NotificationMode
 import dev.bluefalcon.peripheral.NotificationResult
 import dev.bluefalcon.peripheral.PeripheralCapabilities
@@ -10,6 +12,9 @@ import dev.bluefalcon.peripheral.PeripheralSessionId
 import dev.bluefalcon.peripheral.NotificationReadiness
 import dev.bluefalcon.peripheral.internal.PeripheralBackend
 import dev.bluefalcon.peripheral.internal.PeripheralBackendEventSink
+import dev.bluefalcon.peripheral.internal.BackendCharacteristicReadRequest
+import dev.bluefalcon.peripheral.internal.BackendCharacteristicWriteRequest
+import dev.bluefalcon.peripheral.internal.BackendGattResponder
 
 internal class FakePeripheralBackend(
     override val capabilities: PeripheralCapabilities = SupportedCapabilities,
@@ -113,6 +118,49 @@ internal class FakePeripheralBackend(
         eventSink.onNotificationReady(readiness)
     }
 
+    fun emitCharacteristicRead(
+        sessionId: PeripheralSessionId,
+        serviceId: GattServiceId,
+        characteristicId: GattCharacteristicId,
+        offset: Int = 0,
+    ): RecordedGattResponder {
+        val responder = RecordedGattResponder()
+        eventSink.onRequest(
+            BackendCharacteristicReadRequest(
+                sessionId = sessionId,
+                serviceId = serviceId,
+                characteristicId = characteristicId,
+                offset = offset,
+                responder = responder,
+            ),
+        )
+        return responder
+    }
+
+    fun emitCharacteristicWrite(
+        sessionId: PeripheralSessionId,
+        serviceId: GattServiceId,
+        characteristicId: GattCharacteristicId,
+        value: ByteArray,
+        responseRequired: Boolean,
+        offset: Int = 0,
+        preparedWrite: Boolean = false,
+    ): RecordedGattResponder? {
+        val responder = if (responseRequired) RecordedGattResponder() else null
+        eventSink.onRequest(
+            BackendCharacteristicWriteRequest(
+                sessionId = sessionId,
+                serviceId = serviceId,
+                characteristicId = characteristicId,
+                offset = offset,
+                value = value,
+                preparedWrite = preparedWrite,
+                responder = responder,
+            ),
+        )
+        return responder
+    }
+
     private companion object {
         val SupportedCapabilities = PeripheralCapabilities(
             localGattServer = true,
@@ -127,4 +175,21 @@ internal class FakePeripheralBackend(
             stateRestoration = true,
         )
     }
+}
+
+internal class RecordedGattResponder : BackendGattResponder {
+    val responses = mutableListOf<RecordedGattResponse>()
+
+    override fun respond(status: GattResponseStatus, value: ByteArray?) {
+        responses += RecordedGattResponse(status, value)
+    }
+}
+
+internal class RecordedGattResponse(
+    val status: GattResponseStatus,
+    value: ByteArray?,
+) {
+    private val copiedValue = value?.copyOf()
+    val value: ByteArray?
+        get() = copiedValue?.copyOf()
 }

@@ -1,7 +1,12 @@
 package dev.bluefalcon.peripheral.internal
 
 import dev.bluefalcon.peripheral.BlueFalconPeripheral
+import dev.bluefalcon.peripheral.GattCharacteristicReadRequest
+import dev.bluefalcon.peripheral.GattCharacteristicWriteRequest
 import dev.bluefalcon.peripheral.GattCharacteristicId
+import dev.bluefalcon.peripheral.GattDescriptorReadRequest
+import dev.bluefalcon.peripheral.GattDescriptorWriteRequest
+import dev.bluefalcon.peripheral.GattExecuteWriteRequest
 import dev.bluefalcon.peripheral.GattResponseStatus
 import dev.bluefalcon.peripheral.GattServerRequest
 import dev.bluefalcon.peripheral.NotificationReadiness
@@ -27,9 +32,11 @@ import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.withContext
 import kotlin.coroutines.CoroutineContext
 import kotlin.coroutines.EmptyCoroutineContext
+import kotlin.time.Duration
 
 internal class DefaultBlueFalconPeripheral(
     private val backend: PeripheralBackend,
@@ -45,13 +52,17 @@ internal class DefaultBlueFalconPeripheral(
 
     private val lifecycleMutex = Mutex()
     private val sessionMutex = Mutex()
+    private val pendingResponseMutex = Mutex()
     private val managerJob = SupervisorJob()
     private val managerScope = CoroutineScope(
         coroutineContext.minusKey(Job) + managerJob,
     )
     private val sessionRegistry = mutableMapOf<PeripheralSessionId, DefaultPeripheralSession>()
+    private val pendingResponses =
+        mutableMapOf<PeripheralSessionId, MutableSet<DefaultGattResponseHandle>>()
     private var nextGeneration = 0L
     private var activeGeneration = NoGeneration
+    private var activeConfig: PeripheralConfig? = null
 
     private val mutableState = MutableStateFlow<PeripheralManagerState>(
         PeripheralManagerState.Stopped,
@@ -97,6 +108,7 @@ internal class DefaultBlueFalconPeripheral(
 
             val generation = ++nextGeneration
             activeGeneration = generation
+            activeConfig = config
             mutableState.value = PeripheralManagerState.Starting
             try {
                 backend.start(config, BackendEventSink(generation))
@@ -109,6 +121,7 @@ internal class DefaultBlueFalconPeripheral(
                         cause.addSuppressed(rollbackFailure)
                     }
                     activeGeneration = NoGeneration
+                    activeConfig = null
                     closeAllSessions()
                     mutableState.value = PeripheralManagerState.Failed(cause)
                 }
@@ -127,6 +140,7 @@ internal class DefaultBlueFalconPeripheral(
                 else -> withContext(NonCancellable) {
                     mutableState.value = PeripheralManagerState.Stopping
                     activeGeneration = NoGeneration
+                    activeConfig = null
                     closeAllSessions()
                     try {
                         backend.stop()
@@ -148,6 +162,7 @@ internal class DefaultBlueFalconPeripheral(
                 val shouldStop = mutableState.value != PeripheralManagerState.Stopped
                 var failure: Throwable? = null
                 activeGeneration = NoGeneration
+                activeConfig = null
 
                 if (shouldStop) {
                     mutableState.value = PeripheralManagerState.Stopping
@@ -206,7 +221,7 @@ internal class DefaultBlueFalconPeripheral(
                     }
                 }
 
-                is BackendEvent.Request -> rejectUnconsumedRequest(event.request)
+                is BackendEvent.Request -> processRequest(event.request)
                 is BackendEvent.PlatformFailure ->
                     eventChannel.trySend(PeripheralEvent.PlatformFailure(event.cause))
             }
@@ -236,6 +251,7 @@ internal class DefaultBlueFalconPeripheral(
         sessionId: PeripheralSessionId,
         cause: Throwable?,
     ) {
+        expirePendingResponses(sessionId)
         val session = sessionMutex.withLock {
             sessionRegistry.remove(sessionId).also { publishSessions() }
         } ?: return
@@ -245,6 +261,7 @@ internal class DefaultBlueFalconPeripheral(
     }
 
     private suspend fun closeAllSessions() {
+        expireAllPendingResponses()
         val sessions = sessionMutex.withLock {
             sessionRegistry.values.toList().also {
                 sessionRegistry.clear()
@@ -258,13 +275,169 @@ internal class DefaultBlueFalconPeripheral(
         mutableSessions.value = sessionRegistry.values.toSet()
     }
 
-    private fun rejectUnconsumedRequest(request: BackendGattServerRequest) {
+    private suspend fun processRequest(request: BackendGattServerRequest) {
+        val session = sessionRegistry[request.sessionId]
+        val responseDeadline = activeConfig?.responseDeadline
+        if (session == null || responseDeadline == null) {
+            rejectRequest(request)
+            return
+        }
+
+        val responseHandle = request.responder?.let { responder ->
+            DefaultGattResponseHandle { status, value -> responder.respond(status, value) }
+        }
+        if (responseHandle != null) {
+            registerPendingResponse(request.sessionId, responseHandle)
+        }
+
+        val publicRequest = request.toPublicRequest(session, responseHandle)
+        if (requestChannel.trySend(publicRequest).isFailure) {
+            if (responseHandle != null) {
+                try {
+                    responseHandle.expire(GattResponseStatus.UnlikelyError)
+                } finally {
+                    unregisterPendingResponse(request.sessionId, responseHandle)
+                }
+            }
+            emitRequestDropped(request)
+            return
+        }
+
+        if (responseHandle != null) {
+            scheduleResponseDeadline(
+                sessionId = request.sessionId,
+                requestType = request.requestType,
+                responseHandle = responseHandle,
+                responseDeadline = responseDeadline,
+            )
+        }
+    }
+
+    private suspend fun registerPendingResponse(
+        sessionId: PeripheralSessionId,
+        responseHandle: DefaultGattResponseHandle,
+    ) {
+        pendingResponseMutex.withLock {
+            pendingResponses.getOrPut(sessionId, ::mutableSetOf).add(responseHandle)
+        }
+    }
+
+    private suspend fun unregisterPendingResponse(
+        sessionId: PeripheralSessionId,
+        responseHandle: DefaultGattResponseHandle,
+    ) {
+        pendingResponseMutex.withLock {
+            val sessionResponses = pendingResponses[sessionId] ?: return@withLock
+            sessionResponses.remove(responseHandle)
+            if (sessionResponses.isEmpty()) pendingResponses.remove(sessionId)
+        }
+    }
+
+    private fun scheduleResponseDeadline(
+        sessionId: PeripheralSessionId,
+        requestType: dev.bluefalcon.peripheral.GattRequestType,
+        responseHandle: DefaultGattResponseHandle,
+        responseDeadline: Duration,
+    ) {
+        managerScope.launch {
+            val completed = withTimeoutOrNull(responseDeadline) {
+                responseHandle.awaitTerminal()
+                true
+            } == true
+
+            if (!completed) {
+                try {
+                    if (responseHandle.expire(GattResponseStatus.UnlikelyError)) {
+                        eventChannel.trySend(
+                            PeripheralEvent.ResponseTimedOut(sessionId, requestType),
+                        )
+                    }
+                } catch (cause: Throwable) {
+                    eventChannel.trySend(PeripheralEvent.PlatformFailure(cause))
+                    eventChannel.trySend(
+                        PeripheralEvent.ResponseTimedOut(sessionId, requestType),
+                    )
+                }
+            }
+
+            unregisterPendingResponse(sessionId, responseHandle)
+        }
+    }
+
+    private suspend fun expirePendingResponses(sessionId: PeripheralSessionId) {
+        val responses = pendingResponseMutex.withLock {
+            pendingResponses.remove(sessionId)?.toList().orEmpty()
+        }
+        responses.forEach { it.expire() }
+    }
+
+    private suspend fun expireAllPendingResponses() {
+        val responses = pendingResponseMutex.withLock {
+            pendingResponses.values.flatten().also { pendingResponses.clear() }
+        }
+        responses.forEach { it.expire() }
+    }
+
+    private fun rejectRequest(request: BackendGattServerRequest) {
         request.responder?.respond(GattResponseStatus.UnlikelyError, null)
+        emitRequestDropped(request)
+    }
+
+    private fun emitRequestDropped(request: BackendGattServerRequest) {
         eventChannel.trySend(
             PeripheralEvent.RequestDropped(
                 sessionId = request.sessionId,
                 requestType = request.requestType,
             ),
+        )
+    }
+
+    private fun BackendGattServerRequest.toPublicRequest(
+        session: DefaultPeripheralSession,
+        responseHandle: DefaultGattResponseHandle?,
+    ): GattServerRequest = when (this) {
+        is BackendCharacteristicReadRequest -> GattCharacteristicReadRequest(
+            session = session,
+            serviceId = serviceId,
+            characteristicId = characteristicId,
+            offset = offset,
+            response = requireNotNull(responseHandle),
+        )
+
+        is BackendCharacteristicWriteRequest -> GattCharacteristicWriteRequest(
+            session = session,
+            serviceId = serviceId,
+            characteristicId = characteristicId,
+            offset = offset,
+            value = value,
+            preparedWrite = preparedWrite,
+            response = responseHandle,
+        )
+
+        is BackendDescriptorReadRequest -> GattDescriptorReadRequest(
+            session = session,
+            serviceId = serviceId,
+            characteristicId = characteristicId,
+            descriptorId = descriptorId,
+            offset = offset,
+            response = requireNotNull(responseHandle),
+        )
+
+        is BackendDescriptorWriteRequest -> GattDescriptorWriteRequest(
+            session = session,
+            serviceId = serviceId,
+            characteristicId = characteristicId,
+            descriptorId = descriptorId,
+            offset = offset,
+            value = value,
+            preparedWrite = preparedWrite,
+            response = responseHandle,
+        )
+
+        is BackendExecuteWriteRequest -> GattExecuteWriteRequest(
+            session = session,
+            execute = execute,
+            response = requireNotNull(responseHandle),
         )
     }
 
