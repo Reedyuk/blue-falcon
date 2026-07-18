@@ -11,6 +11,9 @@ import dev.bluefalcon.peripheral.NotificationMode
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertFailsWith
+import kotlin.test.assertNull
+import kotlin.test.assertSame
 import kotlin.test.assertTrue
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
@@ -104,6 +107,64 @@ class FrameworkAndroidGattMappingsTest {
     fun indicationRequiresAndroidConfirmation() {
         assertFalse(NotificationMode.Notification.toAndroidConfirm())
         assertTrue(NotificationMode.Indication.toAndroidConfirm())
+    }
+
+    @Test
+    fun staleOpenCannotClaimAReopenedGeneration() {
+        val state = AndroidGattLifecycleState()
+        val first = state.beginOpen()
+        state.close()
+        val second = state.beginOpen()
+
+        assertFalse(state.publishOpen(first))
+        state.failOpen(first)
+        assertTrue(state.publishOpen(second))
+        assertTrue(state.isActive(second.generation))
+    }
+
+    @Test
+    fun cancelledServiceWaiterDoesNotReleaseFrameworkQueueBeforeCallback() {
+        val gate = AndroidGattServiceGate<Any, String>()
+        val firstService = Any()
+        val first = gate.begin(generation = 1, identity = firstService, payload = "first")
+
+        assertFailsWith<IllegalStateException> {
+            gate.begin(generation = 1, identity = Any(), payload = "second")
+        }
+        assertNull(gate.complete(generation = 1, identity = Any()))
+        assertSame(first, gate.complete(generation = 1, identity = firstService))
+
+        gate.begin(generation = 1, identity = Any(), payload = "second")
+    }
+
+    @Test
+    fun staleServiceCallbackCannotCompleteReopenedGeneration() {
+        val gate = AndroidGattServiceGate<Any, String>()
+        val service = Any()
+        gate.begin(generation = 1, identity = service, payload = "first")
+        gate.close()
+        val second = gate.begin(generation = 2, identity = service, payload = "second")
+
+        assertNull(gate.complete(generation = 1, identity = service))
+        assertSame(second, gate.complete(generation = 2, identity = service))
+    }
+
+    @Test
+    fun duplicateCharacteristicIdsAreRejectedAcrossServices() {
+        val id = Uuid.parse(CHARACTERISTIC_UUID)
+
+        assertFailsWith<IllegalArgumentException> {
+            requireUniqueCharacteristicIds(
+                existing = setOf(id),
+                additions = listOf(id),
+            )
+        }
+        assertFailsWith<IllegalArgumentException> {
+            requireUniqueCharacteristicIds(
+                existing = emptySet(),
+                additions = listOf(id, id),
+            )
+        }
     }
 
     private companion object {

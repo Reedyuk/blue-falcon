@@ -45,9 +45,10 @@ internal class FrameworkAndroidBluetoothStack(
         applicationContext.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
     private val lock = Any()
 
-    private var openingGattServer = false
+    private val lifecycleState = AndroidGattLifecycleState()
+    private val serviceGate =
+        AndroidGattServiceGate<BluetoothGattService, PendingService>()
     private var gattServer: BluetoothGattServer? = null
-    private var pendingService: PendingService? = null
     private var currentAdvertiser: BluetoothLeAdvertiser? = null
     private var currentAdvertiseCallback: AdvertiseCallback? = null
     private var pendingAdvertising: CompletableDeferred<Unit>? = null
@@ -87,27 +88,26 @@ internal class FrameworkAndroidBluetoothStack(
     override fun closeGattServer() = closeCurrentGattServer()
 
     private fun openGattServer(listener: AndroidBluetoothStackListener) {
-        synchronized(lock) {
-            check(!openingGattServer && gattServer == null) { "Android GATT server is already open" }
-            openingGattServer = true
+        val attempt = synchronized(lock) {
+            check(gattServer == null) { "Android GATT server is already open" }
+            lifecycleState.beginOpen()
         }
 
-        val callback = createGattServerCallback(listener)
+        val callback = createGattServerCallback(listener, attempt.generation)
         val openedServer = try {
             bluetoothManager.openGattServer(applicationContext, callback)
         } catch (cause: Throwable) {
-            synchronized(lock) { openingGattServer = false }
+            synchronized(lock) { lifecycleState.failOpen(attempt) }
             throw cause
         }
 
         if (openedServer == null) {
-            synchronized(lock) { openingGattServer = false }
+            synchronized(lock) { lifecycleState.failOpen(attempt) }
             throw IllegalStateException("Android failed to open a GATT server")
         }
 
         val accepted = synchronized(lock) {
-            if (openingGattServer) {
-                openingGattServer = false
+            if (lifecycleState.publishOpen(attempt)) {
                 gattServer = openedServer
                 true
             } else {
@@ -121,32 +121,41 @@ internal class FrameworkAndroidBluetoothStack(
     }
 
     private suspend fun addServiceAndAwaitCallback(config: GattServiceConfig) {
+        val characteristicIds = config.characteristics.map { Uuid.parse(it.uuid) }
+        requireUniqueCharacteristicIds(emptySet(), characteristicIds)
         val built = buildService(config)
         val completion = CompletableDeferred<Unit>()
-        val server = synchronized(lock) {
-            check(pendingService == null) { "Another Android GATT service is still being added" }
+        val operationAndServer = synchronized(lock) {
             val currentServer = checkNotNull(gattServer) { "Android GATT server is not open" }
-            pendingService = PendingService(built, completion)
-            currentServer
+            val generation = checkNotNull(lifecycleState.activeGeneration) {
+                "Android GATT server generation is not active"
+            }
+            requireUniqueCharacteristicIds(
+                existing = characteristicsById.keys.mapTo(mutableSetOf()) { it.uuid },
+                additions = characteristicIds,
+            )
+            val operation = serviceGate.begin(
+                generation = generation,
+                identity = built.service,
+                payload = PendingService(built, completion),
+            )
+            operation to currentServer
         }
+        val operation = operationAndServer.first
+        val server = operationAndServer.second
 
         val accepted = try {
             server.addService(built.service)
         } catch (cause: Throwable) {
-            clearPendingService(completion)
+            synchronized(lock) { serviceGate.clear(operation) }
             throw cause
         }
         if (!accepted) {
-            clearPendingService(completion)
+            synchronized(lock) { serviceGate.clear(operation) }
             throw IllegalStateException("Android rejected GATT service ${config.uuid}")
         }
 
-        try {
-            completion.await()
-        } catch (cause: Throwable) {
-            clearPendingService(completion)
-            throw cause
-        }
+        completion.await()
     }
 
     private suspend fun startAdvertisingAndAwaitCallback(config: AdvertiseConfig) {
@@ -285,11 +294,10 @@ internal class FrameworkAndroidBluetoothStack(
     private fun closeCurrentGattServer() {
         stopCurrentAdvertisement()
         val closed = synchronized(lock) {
-            openingGattServer = false
             val server = gattServer
-            val serviceCompletion = pendingService?.completion
+            val serviceCompletion = serviceGate.close()?.payload?.completion
+            lifecycleState.close()
             gattServer = null
-            pendingService = null
             devicesBySession.clear()
             characteristicsById.clear()
             ClosedGattServer(server, serviceCompletion)
@@ -306,9 +314,10 @@ internal class FrameworkAndroidBluetoothStack(
 
     private fun createGattServerCallback(
         listener: AndroidBluetoothStackListener,
+        generation: Long,
     ): BluetoothGattServerCallback = object : BluetoothGattServerCallback() {
         override fun onServiceAdded(status: Int, service: BluetoothGattService) {
-            completePendingService(status, service)
+            completePendingService(generation, status, service)
         }
 
         override fun onConnectionStateChange(
@@ -319,19 +328,37 @@ internal class FrameworkAndroidBluetoothStack(
             val sessionId = device.toSessionId()
             when (newState) {
                 BluetoothProfile.STATE_CONNECTED -> {
-                    rememberDevice(sessionId, device)
-                    listener.onEvent(AndroidGattEvent.Connected(sessionId))
+                    val active = synchronized(lock) {
+                        if (lifecycleState.isActive(generation)) {
+                            devicesBySession[sessionId] = device
+                            true
+                        } else {
+                            false
+                        }
+                    }
+                    if (active) {
+                        listener.onEvent(AndroidGattEvent.Connected(sessionId))
+                    }
                 }
 
                 BluetoothProfile.STATE_DISCONNECTED -> {
-                    synchronized(lock) { devicesBySession.remove(sessionId) }
-                    listener.onEvent(AndroidGattEvent.Disconnected(sessionId, status))
+                    val active = synchronized(lock) {
+                        if (lifecycleState.isActive(generation)) {
+                            devicesBySession.remove(sessionId)
+                            true
+                        } else {
+                            false
+                        }
+                    }
+                    if (active) {
+                        listener.onEvent(AndroidGattEvent.Disconnected(sessionId, status))
+                    }
                 }
             }
         }
 
         override fun onMtuChanged(device: BluetoothDevice, mtu: Int) {
-            val sessionId = rememberDevice(device)
+            val sessionId = connectedSessionId(generation, device) ?: return
             listener.onEvent(AndroidGattEvent.MtuChanged(sessionId, mtu))
         }
 
@@ -341,7 +368,7 @@ internal class FrameworkAndroidBluetoothStack(
             offset: Int,
             characteristic: BluetoothGattCharacteristic,
         ) {
-            val sessionId = rememberDevice(device)
+            val sessionId = connectedSessionId(generation, device) ?: return
             val identity = characteristic.identityOrNull() ?: return
             listener.onEvent(
                 AndroidGattEvent.CharacteristicRead(
@@ -363,7 +390,7 @@ internal class FrameworkAndroidBluetoothStack(
             offset: Int,
             value: ByteArray?,
         ) {
-            val sessionId = rememberDevice(device)
+            val sessionId = connectedSessionId(generation, device) ?: return
             val identity = characteristic.identityOrNull() ?: return
             listener.onEvent(
                 AndroidGattEvent.CharacteristicWrite(
@@ -385,7 +412,7 @@ internal class FrameworkAndroidBluetoothStack(
             offset: Int,
             descriptor: BluetoothGattDescriptor,
         ) {
-            val sessionId = rememberDevice(device)
+            val sessionId = connectedSessionId(generation, device) ?: return
             val identity = descriptor.identityOrNull() ?: return
             listener.onEvent(
                 AndroidGattEvent.DescriptorRead(
@@ -408,7 +435,7 @@ internal class FrameworkAndroidBluetoothStack(
             offset: Int,
             value: ByteArray?,
         ) {
-            val sessionId = rememberDevice(device)
+            val sessionId = connectedSessionId(generation, device) ?: return
             val identity = descriptor.identityOrNull() ?: return
             listener.onEvent(
                 AndroidGattEvent.DescriptorWrite(
@@ -430,12 +457,12 @@ internal class FrameworkAndroidBluetoothStack(
             requestId: Int,
             execute: Boolean,
         ) {
-            val sessionId = rememberDevice(device)
+            val sessionId = connectedSessionId(generation, device) ?: return
             listener.onEvent(AndroidGattEvent.ExecuteWrite(sessionId, requestId, execute))
         }
 
         override fun onNotificationSent(device: BluetoothDevice, status: Int) {
-            val sessionId = rememberDevice(device)
+            val sessionId = connectedSessionId(generation, device) ?: return
             listener.onEvent(AndroidGattEvent.NotificationSent(sessionId, status))
         }
     }
@@ -472,21 +499,21 @@ internal class FrameworkAndroidBluetoothStack(
         }
     }
 
-    private fun completePendingService(status: Int, service: BluetoothGattService) {
-        val pending = synchronized(lock) {
-            val current = pendingService
-            if (current != null && current.built.service.uuid == service.uuid) {
-                pendingService = null
-                if (status == BluetoothGatt.GATT_SUCCESS) {
-                    characteristicsById.putAll(current.built.characteristics)
-                }
-                current
-            } else {
-                null
+    private fun completePendingService(
+        generation: Long,
+        status: Int,
+        service: BluetoothGattService,
+    ) {
+        val operation = synchronized(lock) {
+            val completed = serviceGate.complete(generation, service) ?: return@synchronized null
+            if (status == BluetoothGatt.GATT_SUCCESS && lifecycleState.isActive(generation)) {
+                characteristicsById.putAll(completed.payload.built.characteristics)
             }
+            completed
         } ?: return
+        val pending = operation.payload
 
-        if (status == BluetoothGatt.GATT_SUCCESS) {
+        if (status == BluetoothGatt.GATT_SUCCESS && isActiveGeneration(generation)) {
             pending.completion.complete(Unit)
         } else {
             pending.completion.completeExceptionally(
@@ -494,14 +521,6 @@ internal class FrameworkAndroidBluetoothStack(
                     "Android failed to add GATT service ${service.uuid} with status $status",
                 ),
             )
-        }
-    }
-
-    private fun clearPendingService(completion: CompletableDeferred<Unit>) {
-        synchronized(lock) {
-            if (pendingService?.completion === completion) {
-                pendingService = null
-            }
         }
     }
 
@@ -517,15 +536,24 @@ internal class FrameworkAndroidBluetoothStack(
             }
         }
 
-    private fun rememberDevice(device: BluetoothDevice): PeripheralSessionId {
+    private fun connectedSessionId(
+        generation: Long,
+        device: BluetoothDevice,
+    ): PeripheralSessionId? {
         val sessionId = device.toSessionId()
-        rememberDevice(sessionId, device)
-        return sessionId
+        return synchronized(lock) {
+            if (lifecycleState.isActive(generation) &&
+                devicesBySession.containsKey(sessionId)
+            ) {
+                sessionId
+            } else {
+                null
+            }
+        }
     }
 
-    private fun rememberDevice(sessionId: PeripheralSessionId, device: BluetoothDevice) {
-        synchronized(lock) { devicesBySession[sessionId] = device }
-    }
+    private fun isActiveGeneration(generation: Long): Boolean =
+        synchronized(lock) { lifecycleState.isActive(generation) }
 
     private fun buildService(config: GattServiceConfig): BuiltService {
         val service = BluetoothGattService(
@@ -669,6 +697,87 @@ internal class FrameworkAndroidBluetoothStack(
 
     private companion object {
         const val CCCD_UUID = "00002902-0000-1000-8000-00805f9b34fb"
+    }
+}
+
+internal class AndroidGattLifecycleState {
+    private var nextGeneration = 0L
+    private var opening: AndroidGattOpenAttempt? = null
+
+    var activeGeneration: Long? = null
+        private set
+
+    fun beginOpen(): AndroidGattOpenAttempt {
+        check(opening == null && activeGeneration == null) {
+            "Android GATT server is already opening or active"
+        }
+        return AndroidGattOpenAttempt(++nextGeneration).also { opening = it }
+    }
+
+    fun publishOpen(attempt: AndroidGattOpenAttempt): Boolean {
+        if (opening !== attempt) return false
+        opening = null
+        activeGeneration = attempt.generation
+        return true
+    }
+
+    fun failOpen(attempt: AndroidGattOpenAttempt) {
+        if (opening === attempt) {
+            opening = null
+        }
+    }
+
+    fun close() {
+        opening = null
+        activeGeneration = null
+    }
+
+    fun isActive(generation: Long): Boolean = activeGeneration == generation
+}
+
+internal class AndroidGattOpenAttempt internal constructor(
+    val generation: Long,
+)
+
+internal class AndroidGattServiceGate<I : Any, P> {
+    private var pending: Operation<I, P>? = null
+
+    fun begin(generation: Long, identity: I, payload: P): Operation<I, P> {
+        check(pending == null) { "Another Android GATT service is still being added" }
+        return Operation(generation, identity, payload).also { pending = it }
+    }
+
+    fun complete(generation: Long, identity: I): Operation<I, P>? {
+        val current = pending
+        if (current == null || current.generation != generation || current.identity !== identity) {
+            return null
+        }
+        pending = null
+        return current
+    }
+
+    fun clear(operation: Operation<I, P>): Boolean {
+        if (pending !== operation) return false
+        pending = null
+        return true
+    }
+
+    fun close(): Operation<I, P>? = pending.also { pending = null }
+
+    internal class Operation<I : Any, P> internal constructor(
+        val generation: Long,
+        val identity: I,
+        val payload: P,
+    )
+}
+
+internal fun requireUniqueCharacteristicIds(
+    existing: Set<Uuid>,
+    additions: List<Uuid>,
+) {
+    val seen = existing.toMutableSet()
+    additions.forEach { id ->
+        require(seen.add(id)) { "Duplicate GATT characteristic UUID: $id" }
     }
 }
 
