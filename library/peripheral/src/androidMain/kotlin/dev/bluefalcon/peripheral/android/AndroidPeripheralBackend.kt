@@ -29,6 +29,15 @@ internal class AndroidPeripheralBackend(
     private var generation = 0L
     private var eventSink: PeripheralBackendEventSink? = null
     private var startupOperationIdle: CompletableDeferred<Unit>? = null
+    private val connectedSessions = mutableSetOf<PeripheralSessionId>()
+    private val maximumUpdateLengths = mutableMapOf<PeripheralSessionId, Int>()
+    private val subscriptions =
+        mutableMapOf<PeripheralSessionId, MutableMap<GattCharacteristicId, NotificationMode>>()
+    private val preparedCccdWrites =
+        mutableMapOf<PeripheralSessionId, MutableMap<Int, ByteArray>>()
+    private val pendingNotifications = mutableSetOf<PeripheralSessionId>()
+    private val eventDeliveries = ArrayDeque<EventDelivery>()
+    private var eventDeliveryOwner = false
 
     private val platformSupported =
         stack.capabilities.localGattServer && stack.capabilities.connectableAdvertising
@@ -207,6 +216,8 @@ internal class AndroidPeripheralBackend(
         terminal: Boolean,
     ): BackendState.ShuttingDown {
         eventSink = null
+        clearSessionStateLocked()
+        eventDeliveries.clear()
         return BackendState.ShuttingDown(
             generation = shutdownGeneration,
             terminal = terminal,
@@ -292,17 +303,106 @@ internal class AndroidPeripheralBackend(
     }
 
     private fun onStackEvent(eventGeneration: Long, event: AndroidGattEvent) {
-        val sink = synchronized(lock) {
-            if (state == BackendState.Running(eventGeneration)) eventSink else null
-        } ?: return
-        handleEvent(event, sink)
+        val owner = synchronized(lock) {
+            if (state != BackendState.Running(eventGeneration)) {
+                false
+            } else {
+                val delivery = eventSink?.let { sink -> handleEventLocked(event, sink) }
+                if (delivery == null) {
+                    false
+                } else {
+                    eventDeliveries.addLast(EventDelivery(eventGeneration, delivery))
+                    if (eventDeliveryOwner) {
+                        false
+                    } else {
+                        eventDeliveryOwner = true
+                        true
+                    }
+                }
+            }
+        }
+        if (owner) drainEventDeliveries()
     }
 
-    @Suppress("UNUSED_PARAMETER")
-    private fun handleEvent(
+    private fun drainEventDeliveries() {
+        while (true) {
+            val delivery = synchronized(lock) {
+                eventDeliveries.removeFirstOrNull().also { next ->
+                    if (next == null) eventDeliveryOwner = false
+                }
+            } ?: return
+            val current = synchronized(lock) {
+                state == BackendState.Running(delivery.generation)
+            }
+            if (current) {
+                runCatching(delivery.callback)
+                    .onFailure { logger?.warn("Android peripheral event delivery failed", it) }
+            }
+        }
+    }
+
+    private fun handleEventLocked(
         event: AndroidGattEvent,
         sink: PeripheralBackendEventSink,
-    ) = Unit
+    ): (() -> Unit)? = when (event) {
+        is AndroidGattEvent.Connected -> {
+            if (!connectedSessions.add(event.sessionId)) {
+                null
+            } else {
+                maximumUpdateLengths[event.sessionId] = DefaultMaximumUpdateValueLength
+                subscriptions[event.sessionId] = mutableMapOf()
+                preparedCccdWrites[event.sessionId] = mutableMapOf()
+                val delivery = {
+                    sink.onSessionOpened(event.sessionId, DefaultMaximumUpdateValueLength)
+                }
+                delivery
+            }
+        }
+
+        is AndroidGattEvent.MtuChanged -> {
+            if (event.sessionId !in connectedSessions) {
+                null
+            } else {
+                val maximumUpdateValueLength =
+                    (event.mtu - AttHeaderLength).coerceAtLeast(0)
+                maximumUpdateLengths[event.sessionId] = maximumUpdateValueLength
+                val delivery = {
+                    sink.onMaximumUpdateValueLengthChanged(
+                        event.sessionId,
+                        maximumUpdateValueLength,
+                    )
+                }
+                delivery
+            }
+        }
+
+        is AndroidGattEvent.Disconnected -> {
+            if (!removeSessionStateLocked(event.sessionId)) {
+                null
+            } else {
+                { sink.onSessionClosed(event.sessionId) }
+            }
+        }
+
+        else -> null
+    }
+
+    private fun removeSessionStateLocked(sessionId: PeripheralSessionId): Boolean {
+        if (!connectedSessions.remove(sessionId)) return false
+        maximumUpdateLengths.remove(sessionId)
+        subscriptions.remove(sessionId)
+        preparedCccdWrites.remove(sessionId)
+        pendingNotifications.remove(sessionId)
+        return true
+    }
+
+    private fun clearSessionStateLocked() {
+        connectedSessions.clear()
+        maximumUpdateLengths.clear()
+        subscriptions.clear()
+        preparedCccdWrites.clear()
+        pendingNotifications.clear()
+    }
 
     private sealed interface BackendState {
         data object Stopped : BackendState
@@ -315,5 +415,15 @@ internal class AndroidPeripheralBackend(
             val ownerClaimed: Boolean,
         ) : BackendState
         data object Closed : BackendState
+    }
+
+    private data class EventDelivery(
+        val generation: Long,
+        val callback: () -> Unit,
+    )
+
+    private companion object {
+        const val DefaultMaximumUpdateValueLength = 20
+        const val AttHeaderLength = 3
     }
 }
