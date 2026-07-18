@@ -7,6 +7,7 @@ import dev.bluefalcon.peripheral.NotificationResult
 import dev.bluefalcon.peripheral.PeripheralCapabilities
 import dev.bluefalcon.peripheral.PeripheralConfig
 import dev.bluefalcon.peripheral.PeripheralSessionId
+import dev.bluefalcon.peripheral.NotificationReadiness
 import dev.bluefalcon.peripheral.internal.PeripheralBackend
 import dev.bluefalcon.peripheral.internal.PeripheralBackendEventSink
 
@@ -22,6 +23,18 @@ internal class FakePeripheralBackend(
     var closeCalls = 0
         private set
     val startConfigs = mutableListOf<PeripheralConfig>()
+    var notificationResult: NotificationResult = NotificationResult.Sent
+    var disconnectResult: DisconnectResult = DisconnectResult.Disconnected
+    var mutateNotificationInput = false
+    var lastNotificationSessionId: PeripheralSessionId? = null
+        private set
+    var lastNotificationCharacteristic: GattCharacteristicId? = null
+        private set
+    var lastNotificationValue: ByteArray? = null
+        private set
+    var lastNotificationMode: NotificationMode? = null
+        private set
+    val disconnectSessionIds = mutableListOf<PeripheralSessionId>()
 
     lateinit var eventSink: PeripheralBackendEventSink
         private set
@@ -49,11 +62,56 @@ internal class FakePeripheralBackend(
         characteristic: GattCharacteristicId,
         value: ByteArray,
         mode: NotificationMode,
-    ): NotificationResult = NotificationResult.Sent
+    ): NotificationResult {
+        lastNotificationSessionId = sessionId
+        lastNotificationCharacteristic = characteristic
+        lastNotificationValue = value.copyOf()
+        lastNotificationMode = mode
+        if (mutateNotificationInput && value.isNotEmpty()) value[0] = 99
+        return notificationResult
+    }
 
     override suspend fun disconnect(
         sessionId: PeripheralSessionId,
-    ): DisconnectResult = DisconnectResult.Disconnected
+    ): DisconnectResult {
+        disconnectSessionIds += sessionId
+        return disconnectResult
+    }
+
+    fun openSession(
+        sessionId: PeripheralSessionId,
+        maximumUpdateValueLength: Int? = null,
+    ) {
+        eventSink.onSessionOpened(sessionId, maximumUpdateValueLength)
+    }
+
+    fun closeSession(
+        sessionId: PeripheralSessionId,
+        cause: Throwable? = null,
+    ) {
+        eventSink.onSessionClosed(sessionId, cause)
+    }
+
+    fun updateSubscriptions(
+        sessionId: PeripheralSessionId,
+        subscriptions: Set<GattCharacteristicId>,
+    ) {
+        eventSink.onSubscriptionsChanged(sessionId, subscriptions)
+    }
+
+    fun updateMaximumValueLength(
+        sessionId: PeripheralSessionId,
+        maximumUpdateValueLength: Int?,
+    ) {
+        eventSink.onMaximumUpdateValueLengthChanged(
+            sessionId,
+            maximumUpdateValueLength,
+        )
+    }
+
+    fun signalNotificationReady(readiness: NotificationReadiness) {
+        eventSink.onNotificationReady(readiness)
+    }
 
     private companion object {
         val SupportedCapabilities = PeripheralCapabilities(

@@ -1,6 +1,7 @@
 package dev.bluefalcon.peripheral.internal
 
 import dev.bluefalcon.peripheral.BlueFalconPeripheral
+import dev.bluefalcon.peripheral.GattCharacteristicId
 import dev.bluefalcon.peripheral.GattResponseStatus
 import dev.bluefalcon.peripheral.GattServerRequest
 import dev.bluefalcon.peripheral.NotificationReadiness
@@ -10,7 +11,10 @@ import dev.bluefalcon.peripheral.PeripheralEvent
 import dev.bluefalcon.peripheral.PeripheralLifecycleException
 import dev.bluefalcon.peripheral.PeripheralManagerState
 import dev.bluefalcon.peripheral.PeripheralSession
+import dev.bluefalcon.peripheral.PeripheralSessionId
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
@@ -20,6 +24,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.receiveAsFlow
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -39,10 +44,14 @@ internal class DefaultBlueFalconPeripheral(
     }
 
     private val lifecycleMutex = Mutex()
+    private val sessionMutex = Mutex()
     private val managerJob = SupervisorJob()
     private val managerScope = CoroutineScope(
         coroutineContext.minusKey(Job) + managerJob,
     )
+    private val sessionRegistry = mutableMapOf<PeripheralSessionId, DefaultPeripheralSession>()
+    private var nextGeneration = 0L
+    private var activeGeneration = NoGeneration
 
     private val mutableState = MutableStateFlow<PeripheralManagerState>(
         PeripheralManagerState.Stopped,
@@ -64,43 +73,16 @@ internal class DefaultBlueFalconPeripheral(
     override val notificationReadiness: Flow<NotificationReadiness> =
         readinessChannel.receiveAsFlow()
 
-    private val backendEventSink = object : PeripheralBackendEventSink {
-        override fun onSessionOpened(
-            sessionId: dev.bluefalcon.peripheral.PeripheralSessionId,
-            maximumUpdateValueLength: Int?,
-        ) = Unit
-
-        override fun onSessionClosed(
-            sessionId: dev.bluefalcon.peripheral.PeripheralSessionId,
-            cause: Throwable?,
-        ) = Unit
-
-        override fun onSubscriptionsChanged(
-            sessionId: dev.bluefalcon.peripheral.PeripheralSessionId,
-            subscriptions: Set<dev.bluefalcon.peripheral.GattCharacteristicId>,
-        ) = Unit
-
-        override fun onMaximumUpdateValueLengthChanged(
-            sessionId: dev.bluefalcon.peripheral.PeripheralSessionId,
-            maximumUpdateValueLength: Int?,
-        ) = Unit
-
-        override fun onNotificationReady(readiness: NotificationReadiness) {
-            readinessChannel.trySend(readiness)
-        }
-
-        override fun onRequest(request: BackendGattServerRequest) {
-            request.responder?.respond(GattResponseStatus.UnlikelyError, null)
-            eventChannel.trySend(
-                PeripheralEvent.RequestDropped(
-                    sessionId = request.sessionId,
-                    requestType = request.requestType,
-                ),
-            )
-        }
-
-        override fun onPlatformFailure(cause: Throwable) {
-            eventChannel.trySend(PeripheralEvent.PlatformFailure(cause))
+    private val backendEventChannel = Channel<BackendEvent>(Channel.UNLIMITED)
+    private val backendEventProcessor = managerScope.launch(start = CoroutineStart.UNDISPATCHED) {
+        for (event in backendEventChannel) {
+            try {
+                processBackendEvent(event)
+            } catch (cause: CancellationException) {
+                throw cause
+            } catch (cause: Throwable) {
+                eventChannel.trySend(PeripheralEvent.PlatformFailure(cause))
+            }
         }
     }
 
@@ -113,9 +95,11 @@ internal class DefaultBlueFalconPeripheral(
                 )
             }
 
+            val generation = ++nextGeneration
+            activeGeneration = generation
             mutableState.value = PeripheralManagerState.Starting
             try {
-                backend.start(config, backendEventSink)
+                backend.start(config, BackendEventSink(generation))
                 mutableState.value = PeripheralManagerState.Running
             } catch (cause: Throwable) {
                 withContext(NonCancellable) {
@@ -124,6 +108,8 @@ internal class DefaultBlueFalconPeripheral(
                     } catch (rollbackFailure: Throwable) {
                         cause.addSuppressed(rollbackFailure)
                     }
+                    activeGeneration = NoGeneration
+                    closeAllSessions()
                     mutableState.value = PeripheralManagerState.Failed(cause)
                 }
                 throw cause
@@ -140,6 +126,8 @@ internal class DefaultBlueFalconPeripheral(
 
                 else -> withContext(NonCancellable) {
                     mutableState.value = PeripheralManagerState.Stopping
+                    activeGeneration = NoGeneration
+                    closeAllSessions()
                     try {
                         backend.stop()
                         mutableState.value = PeripheralManagerState.Stopped
@@ -159,9 +147,11 @@ internal class DefaultBlueFalconPeripheral(
             withContext(NonCancellable) {
                 val shouldStop = mutableState.value != PeripheralManagerState.Stopped
                 var failure: Throwable? = null
+                activeGeneration = NoGeneration
 
                 if (shouldStop) {
                     mutableState.value = PeripheralManagerState.Stopping
+                    closeAllSessions()
                     try {
                         backend.stop()
                     } catch (cause: Throwable) {
@@ -179,6 +169,7 @@ internal class DefaultBlueFalconPeripheral(
                     }
                 }
 
+                backendEventChannel.close(failure)
                 requestChannel.close(failure)
                 eventChannel.close(failure)
                 readinessChannel.close(failure)
@@ -190,7 +181,195 @@ internal class DefaultBlueFalconPeripheral(
         }
     }
 
+    private suspend fun processBackendEvent(event: BackendEvent) {
+        lifecycleMutex.withLock {
+            if (event.generation != activeGeneration) return
+
+            when (event) {
+                is BackendEvent.SessionOpened -> {
+                    if (mutableState.value != PeripheralManagerState.Running) return
+                    openSession(event.sessionId, event.maximumUpdateValueLength)
+                }
+
+                is BackendEvent.SessionClosed -> closeSession(event.sessionId, event.cause)
+                is BackendEvent.SubscriptionsChanged -> sessionRegistry[event.sessionId]
+                    ?.updateSubscriptions(event.subscriptions)
+
+                is BackendEvent.MaximumUpdateValueLengthChanged ->
+                    sessionRegistry[event.sessionId]
+                        ?.updateMaximumUpdateValueLength(event.maximumUpdateValueLength)
+
+                is BackendEvent.NotificationReady -> {
+                    readinessChannel.trySend(event.readiness)
+                    if (event.readiness is NotificationReadiness.Session) {
+                        sessionRegistry[event.readiness.sessionId]?.signalNotificationReady()
+                    }
+                }
+
+                is BackendEvent.Request -> rejectUnconsumedRequest(event.request)
+                is BackendEvent.PlatformFailure ->
+                    eventChannel.trySend(PeripheralEvent.PlatformFailure(event.cause))
+            }
+        }
+    }
+
+    private suspend fun openSession(
+        sessionId: PeripheralSessionId,
+        maximumUpdateValueLength: Int?,
+    ) = sessionMutex.withLock {
+        val existing = sessionRegistry[sessionId]
+        if (existing != null) {
+            existing.updateMaximumUpdateValueLength(maximumUpdateValueLength)
+            return@withLock
+        }
+
+        sessionRegistry[sessionId] = DefaultPeripheralSession(
+            id = sessionId,
+            backend = backend,
+            parentJob = managerJob,
+            maximumUpdateValueLength = maximumUpdateValueLength,
+        )
+        publishSessions()
+    }
+
+    private suspend fun closeSession(
+        sessionId: PeripheralSessionId,
+        cause: Throwable?,
+    ) {
+        val session = sessionMutex.withLock {
+            sessionRegistry.remove(sessionId).also { publishSessions() }
+        } ?: return
+
+        session.close()
+        eventChannel.trySend(PeripheralEvent.SessionClosed(sessionId, cause))
+    }
+
+    private suspend fun closeAllSessions() {
+        val sessions = sessionMutex.withLock {
+            sessionRegistry.values.toList().also {
+                sessionRegistry.clear()
+                publishSessions()
+            }
+        }
+        sessions.forEach { it.close() }
+    }
+
+    private fun publishSessions() {
+        mutableSessions.value = sessionRegistry.values.toSet()
+    }
+
+    private fun rejectUnconsumedRequest(request: BackendGattServerRequest) {
+        request.responder?.respond(GattResponseStatus.UnlikelyError, null)
+        eventChannel.trySend(
+            PeripheralEvent.RequestDropped(
+                sessionId = request.sessionId,
+                requestType = request.requestType,
+            ),
+        )
+    }
+
+    private inner class BackendEventSink(
+        private val generation: Long,
+    ) : PeripheralBackendEventSink {
+        override fun onSessionOpened(
+            sessionId: PeripheralSessionId,
+            maximumUpdateValueLength: Int?,
+        ) {
+            submit(BackendEvent.SessionOpened(generation, sessionId, maximumUpdateValueLength))
+        }
+
+        override fun onSessionClosed(sessionId: PeripheralSessionId, cause: Throwable?) {
+            submit(BackendEvent.SessionClosed(generation, sessionId, cause))
+        }
+
+        override fun onSubscriptionsChanged(
+            sessionId: PeripheralSessionId,
+            subscriptions: Set<GattCharacteristicId>,
+        ) {
+            submit(
+                BackendEvent.SubscriptionsChanged(
+                    generation,
+                    sessionId,
+                    subscriptions.toSet(),
+                ),
+            )
+        }
+
+        override fun onMaximumUpdateValueLengthChanged(
+            sessionId: PeripheralSessionId,
+            maximumUpdateValueLength: Int?,
+        ) {
+            submit(
+                BackendEvent.MaximumUpdateValueLengthChanged(
+                    generation,
+                    sessionId,
+                    maximumUpdateValueLength,
+                ),
+            )
+        }
+
+        override fun onNotificationReady(readiness: NotificationReadiness) {
+            submit(BackendEvent.NotificationReady(generation, readiness))
+        }
+
+        override fun onRequest(request: BackendGattServerRequest) {
+            submit(BackendEvent.Request(generation, request))
+        }
+
+        override fun onPlatformFailure(cause: Throwable) {
+            submit(BackendEvent.PlatformFailure(generation, cause))
+        }
+
+        private fun submit(event: BackendEvent) {
+            backendEventChannel.trySend(event)
+        }
+    }
+
+    private sealed interface BackendEvent {
+        val generation: Long
+
+        data class SessionOpened(
+            override val generation: Long,
+            val sessionId: PeripheralSessionId,
+            val maximumUpdateValueLength: Int?,
+        ) : BackendEvent
+
+        data class SessionClosed(
+            override val generation: Long,
+            val sessionId: PeripheralSessionId,
+            val cause: Throwable?,
+        ) : BackendEvent
+
+        data class SubscriptionsChanged(
+            override val generation: Long,
+            val sessionId: PeripheralSessionId,
+            val subscriptions: Set<GattCharacteristicId>,
+        ) : BackendEvent
+
+        data class MaximumUpdateValueLengthChanged(
+            override val generation: Long,
+            val sessionId: PeripheralSessionId,
+            val maximumUpdateValueLength: Int?,
+        ) : BackendEvent
+
+        data class NotificationReady(
+            override val generation: Long,
+            val readiness: NotificationReadiness,
+        ) : BackendEvent
+
+        data class Request(
+            override val generation: Long,
+            val request: BackendGattServerRequest,
+        ) : BackendEvent
+
+        data class PlatformFailure(
+            override val generation: Long,
+            val cause: Throwable,
+        ) : BackendEvent
+    }
+
     private companion object {
         const val DefaultBufferCapacity = 64
+        const val NoGeneration = -1L
     }
 }
