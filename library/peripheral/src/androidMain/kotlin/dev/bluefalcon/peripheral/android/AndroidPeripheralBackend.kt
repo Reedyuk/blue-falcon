@@ -28,6 +28,7 @@ internal class AndroidPeripheralBackend(
     private var state: BackendState = BackendState.Stopped
     private var generation = 0L
     private var eventSink: PeripheralBackendEventSink? = null
+    private var startupOperationIdle: CompletableDeferred<Unit>? = null
 
     private val platformSupported =
         stack.capabilities.localGattServer && stack.capabilities.connectableAdvertising
@@ -76,14 +77,20 @@ internal class AndroidPeripheralBackend(
         }
 
         try {
-            stack.open(listener)
+            runStartupOperation(startGeneration) {
+                stack.open(listener)
+            }
             config.advertiseConfig.services.forEach { service ->
-                withTimeout(operationTimeout) {
-                    stack.addService(service)
+                runStartupOperation(startGeneration) {
+                    withTimeout(operationTimeout) {
+                        stack.addService(service)
+                    }
                 }
             }
-            withTimeout(operationTimeout) {
-                stack.startAdvertising(config.advertiseConfig)
+            runStartupOperation(startGeneration) {
+                withTimeout(operationTimeout) {
+                    stack.startAdvertising(config.advertiseConfig)
+                }
             }
 
             val published = synchronized(lock) {
@@ -226,19 +233,54 @@ internal class AndroidPeripheralBackend(
             return
         }
 
-        teardownPlatform()
-        val terminal = synchronized(lock) {
-            val current = state as? BackendState.ShuttingDown
-            if (current != null && current.completion === shutdown.completion) {
-                state = if (current.terminal) BackendState.Closed else BackendState.Stopped
-                current.terminal
-            } else {
-                false
+        withContext(NonCancellable) {
+            synchronized(lock) { startupOperationIdle }?.await()
+            teardownPlatform()
+            val terminal = synchronized(lock) {
+                val current = state as? BackendState.ShuttingDown
+                if (current != null && current.completion === shutdown.completion) {
+                    state = if (current.terminal) BackendState.Closed else BackendState.Stopped
+                    current.terminal
+                } else {
+                    false
+                }
+            }
+            shutdown.completion.complete(Unit)
+            if (terminal) {
+                synchronized(lock) { eventSink = null }
             }
         }
-        shutdown.completion.complete(Unit)
-        if (terminal) {
-            synchronized(lock) { eventSink = null }
+    }
+
+    private suspend fun <T> runStartupOperation(
+        startGeneration: Long,
+        operation: suspend () -> T,
+    ): T {
+        val idle = CompletableDeferred<Unit>()
+        synchronized(lock) {
+            if (state != BackendState.Starting(startGeneration)) {
+                throw PeripheralLifecycleException(
+                    "Android peripheral start was superseded by shutdown",
+                )
+            }
+            check(startupOperationIdle == null) {
+                "Android peripheral startup operations must be sequential"
+            }
+            startupOperationIdle = idle
+        }
+
+        try {
+            return operation()
+        } finally {
+            val completion = synchronized(lock) {
+                if (startupOperationIdle === idle) {
+                    startupOperationIdle = null
+                    idle
+                } else {
+                    null
+                }
+            }
+            completion?.complete(Unit)
         }
     }
 

@@ -7,15 +7,19 @@ import dev.bluefalcon.peripheral.PeripheralConfig
 import dev.bluefalcon.peripheral.PeripheralLifecycleException
 import dev.bluefalcon.peripheral.PeripheralSessionId
 import dev.bluefalcon.peripheral.PeripheralUnsupportedException
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.withTimeout
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertFalse
+import kotlin.test.assertIs
 import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.seconds
 
@@ -100,6 +104,87 @@ class AndroidPeripheralBackendLifecycleTest {
         }
 
         assertTrue(stack.calls.takeLast(2) == listOf("stopAdvertising", "closeGattServer"))
+    }
+
+    @Test
+    fun cancellationDuringAdvertisingRollsBack() = runTest {
+        val stack = FakeAndroidBluetoothStack().apply { suspendAdvertising = true }
+        val backend = AndroidPeripheralBackend(stack, NoOpLogger, 10.seconds)
+        val startJob = launch {
+            backend.start(configWithServices(), RecordingBackendSink())
+        }
+        runCurrent()
+
+        startJob.cancelAndJoin()
+
+        assertTrue(startJob.isCancelled)
+        assertTrue(stack.calls.takeLast(2) == listOf("stopAdvertising", "closeGattServer"))
+    }
+
+    @Test
+    fun serviceAdditionTimeoutRollsBack() = runTest {
+        val stack = FakeAndroidBluetoothStack().apply { suspendAddService = true }
+        val backend = AndroidPeripheralBackend(stack, NoOpLogger, 1.seconds)
+
+        assertFailsWith<TimeoutCancellationException> {
+            backend.start(configWithServices("service-1"), RecordingBackendSink())
+        }
+
+        assertTrue(stack.calls.takeLast(2) == listOf("stopAdvertising", "closeGattServer"))
+    }
+
+    @Test
+    fun stopDuringServiceAdditionPreventsLaterAdvertising() = runTest {
+        val serviceGate = CompletableDeferred<Unit>()
+        val stack = FakeAndroidBluetoothStack().apply { addServiceGate = serviceGate }
+        val backend = AndroidPeripheralBackend(stack, NoOpLogger, 10.seconds)
+        val startFailure = CompletableDeferred<Throwable?>()
+        val start = launch {
+            startFailure.complete(
+                runCatching {
+                    backend.start(configWithServices("service-1"), RecordingBackendSink())
+                }.exceptionOrNull(),
+            )
+        }
+        runCurrent()
+        val stop = launch { backend.stop() }
+        runCurrent()
+
+        serviceGate.complete(Unit)
+        stop.join()
+        start.join()
+
+        assertIs<PeripheralLifecycleException>(startFailure.await())
+        assertFalse("advertise" in stack.calls)
+        assertTrue(stack.calls.takeLast(2) == listOf("stopAdvertising", "closeGattServer"))
+    }
+
+    @Test
+    fun cancelledStopDuringServiceAdditionStillCompletesShutdown() = runTest {
+        val serviceGate = CompletableDeferred<Unit>()
+        val stack = FakeAndroidBluetoothStack().apply { addServiceGate = serviceGate }
+        val backend = AndroidPeripheralBackend(stack, NoOpLogger, 10.seconds)
+        val start = launch {
+            runCatching {
+                backend.start(configWithServices("service-1"), RecordingBackendSink())
+            }
+        }
+        runCurrent()
+        val stop = launch { backend.stop() }
+        runCurrent()
+
+        stop.cancel()
+        serviceGate.complete(Unit)
+
+        withTimeout(1.seconds) {
+            start.join()
+            stop.join()
+            stack.addServiceGate = null
+            backend.start(configWithServices(), RecordingBackendSink())
+        }
+        assertTrue(stop.isCancelled)
+        assertEquals(1, stack.calls.count { it == "stopAdvertising" })
+        assertEquals(1, stack.calls.count { it == "closeGattServer" })
     }
 
     @Test

@@ -6,6 +6,7 @@ import dev.bluefalcon.peripheral.NotificationReadiness
 import dev.bluefalcon.peripheral.PeripheralSessionId
 import dev.bluefalcon.peripheral.internal.BackendGattServerRequest
 import dev.bluefalcon.peripheral.internal.PeripheralBackendEventSink
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.awaitCancellation
 
 internal class FakeAndroidBluetoothStack : AndroidBluetoothStack {
@@ -23,6 +24,8 @@ internal class FakeAndroidBluetoothStack : AndroidBluetoothStack {
     var advertisingFailure: Throwable? = null
     var suspendAddService = false
     var suspendAdvertising = false
+    var addServiceGate: CompletableDeferred<Unit>? = null
+    var advertisingGate: CompletableDeferred<Unit>? = null
     var notificationResult: AndroidNotificationStartResult =
         AndroidNotificationStartResult.Accepted
 
@@ -40,12 +43,14 @@ internal class FakeAndroidBluetoothStack : AndroidBluetoothStack {
         if (serviceCallCount == addServiceFailureAt) {
             throw IllegalStateException("service failed")
         }
+        addServiceGate?.await()
         if (suspendAddService) awaitCancellation()
     }
 
     override suspend fun startAdvertising(config: dev.bluefalcon.peripheral.AdvertiseConfig) {
         calls += "advertise"
         advertisingFailure?.let { throw it }
+        advertisingGate?.await()
         if (suspendAdvertising) awaitCancellation()
     }
 
