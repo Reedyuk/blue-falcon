@@ -12,7 +12,10 @@ import kotlinx.coroutines.flow.StateFlow
  *
  * Typical usage:
  * ```kotlin
- * val advertiser = createBluetoothAdvertiser(...)
+ * // Android (use dev.bluefalcon.peripheral.apple.createBluetoothAdvertiser on Apple).
+ * import dev.bluefalcon.peripheral.android.createBluetoothAdvertiser
+ *
+ * val advertiser = createBluetoothAdvertiser(context, logger)
  * advertiser.startAdvertising(config)
  * advertiser.state.collect { state -> ... }
  * advertiser.stopAdvertising()
