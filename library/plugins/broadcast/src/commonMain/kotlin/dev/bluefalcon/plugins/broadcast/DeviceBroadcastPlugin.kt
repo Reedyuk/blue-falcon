@@ -19,7 +19,9 @@ import kotlinx.coroutines.launch
  *
  * Usage:
  * ```kotlin
- * // Android; Apple exposes an equivalent factory without Context.
+ * // Android (use dev.bluefalcon.peripheral.apple.createBluetoothAdvertiser on Apple).
+ * import dev.bluefalcon.peripheral.android.createBluetoothAdvertiser
+ *
  * val advertiser = createBluetoothAdvertiser(context, logger)
  *
  * val broadcastPlugin = DeviceBroadcastPlugin()

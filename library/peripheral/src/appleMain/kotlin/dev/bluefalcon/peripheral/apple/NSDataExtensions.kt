@@ -8,7 +8,10 @@ import platform.posix.memcpy
 fun NSData.toByteArray(): ByteArray {
     val data = this
     val d = memScoped { data }
-    return ByteArray(d.length.toInt()).apply {
+    val length = d.length.toInt()
+    if (length == 0) return ByteArray(0)
+
+    return ByteArray(length).apply {
         usePinned {
             memcpy(it.addressOf(0), d.bytes, d.length)
         }
