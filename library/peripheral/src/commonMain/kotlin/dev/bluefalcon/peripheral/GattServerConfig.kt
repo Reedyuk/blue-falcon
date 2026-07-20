@@ -1,4 +1,4 @@
-package dev.bluefalcon.core
+package dev.bluefalcon.peripheral
 
 /**
  * Configuration for a local GATT service to be hosted by [BluetoothAdvertiser].

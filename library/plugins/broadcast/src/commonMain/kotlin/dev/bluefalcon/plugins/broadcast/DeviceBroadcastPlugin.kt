@@ -1,6 +1,6 @@
 package dev.bluefalcon.plugins.broadcast
 
-import dev.bluefalcon.core.*
+import dev.bluefalcon.peripheral.*
 import dev.bluefalcon.plugins.clone.CharacteristicClone
 import dev.bluefalcon.plugins.clone.DeviceClone
 import kotlinx.coroutines.CoroutineScope
@@ -19,8 +19,10 @@ import kotlinx.coroutines.launch
  *
  * Usage:
  * ```kotlin
- * // Obtain an advertiser from your engine
- * val advertiser = androidEngine.createAdvertiser(logger)
+ * // Android (use dev.bluefalcon.peripheral.apple.createBluetoothAdvertiser on Apple).
+ * import dev.bluefalcon.peripheral.android.createBluetoothAdvertiser
+ *
+ * val advertiser = createBluetoothAdvertiser(context, logger)
  *
  * val broadcastPlugin = DeviceBroadcastPlugin()
  * broadcastPlugin.startBroadcast(clone, advertiser)
@@ -66,7 +68,7 @@ class DeviceBroadcastPlugin {
      * If a broadcast is already active it is stopped first.
      *
      * @param clone    The captured device profile to replay.
-     * @param advertiser Platform-specific [BluetoothAdvertiser] (from `engine.createAdvertiser()`).
+     * @param advertiser Platform-specific [BluetoothAdvertiser].
      * @param config   Optional broadcast configuration overrides.
      */
     suspend fun startBroadcast(

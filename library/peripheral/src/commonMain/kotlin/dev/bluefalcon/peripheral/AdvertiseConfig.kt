@@ -1,4 +1,4 @@
-package dev.bluefalcon.core
+package dev.bluefalcon.peripheral
 
 /**
  * Configuration passed to [BluetoothAdvertiser.startAdvertising].

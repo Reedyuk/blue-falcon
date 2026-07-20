@@ -2,9 +2,9 @@ package com.example.bluefalconcomposemultiplatform.di
 
 import android.content.Context
 import dev.bluefalcon.core.BlueFalcon
-import dev.bluefalcon.core.BluetoothAdvertiser
 import dev.bluefalcon.engine.android.AndroidEngine
-import dev.bluefalcon.engine.android.createAdvertiser
+import dev.bluefalcon.peripheral.BluetoothAdvertiser
+import dev.bluefalcon.peripheral.android.createBluetoothAdvertiser
 import dev.bluefalcon.plugins.logging.LoggingPlugin
 import dev.bluefalcon.plugins.logging.LogLevel
 import dev.bluefalcon.plugins.retry.RetryPlugin
@@ -20,7 +20,7 @@ actual class AppModule(
     }
 
     private val engine = AndroidEngine(context)
-    actual val advertiser: BluetoothAdvertiser = engine.createAdvertiser()
+    actual val advertiser: BluetoothAdvertiser = createBluetoothAdvertiser(context)
 
     actual val blueFalcon: BlueFalcon = BlueFalcon(
         engine = engine

@@ -1,4 +1,4 @@
-package dev.bluefalcon.core
+package dev.bluefalcon.peripheral
 
 /**
  * Emitted by [BluetoothAdvertiser.characteristicWriteRequests] when a remote central

@@ -1,5 +1,6 @@
 plugins {
     kotlin("multiplatform") version "2.3.0"
+    id("com.android.library")
     id("com.vanniktech.maven.publish")
     id("signing")
 }
@@ -10,7 +11,19 @@ repositories {
 }
 
 val kotlinx_coroutines_version: String by project
-val versionPlugins: String by project
+val versionPeripheral: String by project
+
+android {
+    compileSdk = 33
+    namespace = "dev.bluefalcon.peripheral"
+    defaultConfig {
+        minSdk = 24
+        targetSdk = 33
+    }
+    lint {
+        disable += "MissingPermission"
+    }
+}
 
 kotlin {
     jvmToolchain(17)
@@ -22,18 +35,23 @@ kotlin {
         nodejs()
     }
 
+    iosArm64()
     iosSimulatorArm64()
     iosX64()
-    iosArm64()
     macosArm64()
     macosX64()
+
+    androidTarget {
+        publishAllLibraryVariants()
+    }
+
+    applyDefaultHierarchyTemplate()
 
     sourceSets {
         val commonMain by getting {
             dependencies {
-                api(project(":peripheral"))
-                api(project(":plugins:clone"))
-                implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:$kotlinx_coroutines_version")
+                api(project(":core"))
+                api("org.jetbrains.kotlinx:kotlinx-coroutines-core:$kotlinx_coroutines_version")
             }
         }
 
@@ -43,6 +61,12 @@ kotlin {
                 implementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:$kotlinx_coroutines_version")
             }
         }
+
+        val androidMain by getting {
+            dependencies {
+                implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:$kotlinx_coroutines_version")
+            }
+        }
     }
 }
 
@@ -50,9 +74,8 @@ kotlin.sourceSets.all {
     languageSettings.optIn("kotlin.uuid.ExperimentalUuidApi")
 }
 
-// Publishing configuration
 group = "dev.bluefalcon"
-version = versionPlugins
+version = versionPeripheral
 
 mavenPublishing {
     publishToMavenCentral(automaticRelease = true)
@@ -60,13 +83,13 @@ mavenPublishing {
 
     coordinates(
         groupId = "dev.bluefalcon",
-        artifactId = "blue-falcon-plugin-broadcast",
-        version = versionPlugins
+        artifactId = "blue-falcon-peripheral",
+        version = versionPeripheral,
     )
 
     pom {
-        name.set("Blue Falcon Broadcast Plugin")
-        description.set("BLE device broadcast plugin for Blue Falcon - Re-advertise a cloned device profile as a local BLE peripheral")
+        name.set("Blue Falcon Peripheral")
+        description.set("Peripheral-role BLE and local GATT server module for Blue Falcon")
         url.set("https://github.com/Reedyuk/blue-falcon")
 
         licenses {
@@ -92,7 +115,6 @@ mavenPublishing {
     }
 }
 
-// Signing configuration
 signing {
     setRequired {
         gradle.taskGraph.allTasks.any {

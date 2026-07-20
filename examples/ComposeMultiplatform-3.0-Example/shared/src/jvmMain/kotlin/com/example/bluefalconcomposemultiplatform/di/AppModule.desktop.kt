@@ -2,11 +2,11 @@ package com.example.bluefalconcomposemultiplatform.di
 
 import dev.bluefalcon.core.BlueFalcon
 import dev.bluefalcon.core.BlueFalconEngine
-import dev.bluefalcon.core.BluetoothAdvertiser
-import dev.bluefalcon.core.NoOpBluetoothAdvertiser
 import dev.bluefalcon.engine.macos.jvm.MacosJvmEngine
 import dev.bluefalcon.engine.rpi.RpiEngine
 import dev.bluefalcon.engine.windows.WindowsEngine
+import dev.bluefalcon.peripheral.BluetoothAdvertiser
+import dev.bluefalcon.peripheral.NoOpBluetoothAdvertiser
 import dev.bluefalcon.plugins.logging.LogLevel
 import dev.bluefalcon.plugins.logging.LoggingPlugin
 import dev.bluefalcon.plugins.nordicfota.NordicFotaPlugin

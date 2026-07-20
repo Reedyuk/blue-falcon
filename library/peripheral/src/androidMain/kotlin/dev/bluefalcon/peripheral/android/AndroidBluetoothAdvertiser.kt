@@ -1,11 +1,12 @@
-package dev.bluefalcon.engine.android
+package dev.bluefalcon.peripheral.android
 
 import android.bluetooth.*
 import android.bluetooth.le.*
 import android.content.Context
 import android.os.Build
 import android.os.ParcelUuid
-import dev.bluefalcon.core.*
+import dev.bluefalcon.core.Logger
+import dev.bluefalcon.peripheral.*
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -27,7 +28,7 @@ import java.util.UUID
  *   - `android.permission.BLUETOOTH_ADVERTISE` on API 31+
  *   - `android.permission.BLUETOOTH_CONNECT` on API 31+
  *
- * Obtain via [AndroidEngine.createAdvertiser].
+ * Obtain via [createBluetoothAdvertiser].
  */
 class AndroidBluetoothAdvertiser(
     private val context: Context,
@@ -340,12 +341,15 @@ class AndroidBluetoothAdvertiser(
 }
 
 /**
- * Create an [AndroidBluetoothAdvertiser] for this engine.
+ * Create an [AndroidBluetoothAdvertiser] for this Android context.
  *
  * Returns a [NoOpBluetoothAdvertiser] if BLE advertising is not supported
  * on this device (e.g. no hardware support, or Bluetooth is off).
  */
-fun AndroidEngine.createAdvertiser(logger: Logger? = null): BluetoothAdvertiser {
+fun createBluetoothAdvertiser(
+    context: Context,
+    logger: Logger? = null,
+): BluetoothAdvertiser {
     return try {
         val mgr = context.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager
         if (mgr?.adapter?.isMultipleAdvertisementSupported == true) {
