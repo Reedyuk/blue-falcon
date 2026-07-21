@@ -342,7 +342,7 @@ void BluetoothLEManager::discoverCharacteristics(uint64_t address, const std::ws
                         if ((charProps & GattCharacteristicProperties::Notify) != GattCharacteristicProperties::None) properties |= 0x10;
                         if ((charProps & GattCharacteristicProperties::Indicate) != GattCharacteristicProperties::None) properties |= 0x20;
                         
-                        // Notify Java
+                        // Notify Java per-characteristic
                         JNIEnv* env = nullptr;
                         if (m_jvm->AttachCurrentThread((void**)&env, nullptr) == JNI_OK) {
                             wchar_t serviceUuidStr[40], charUuidStr[40];
@@ -374,6 +374,28 @@ void BluetoothLEManager::discoverCharacteristics(uint64_t address, const std::ws
                             env->DeleteLocalRef(cls);
                             m_jvm->DetachCurrentThread();
                         }
+                    }
+
+                    // Notify Java that all characteristics for this service are ready.
+                    JNIEnv* env = nullptr;
+                    if (m_jvm->AttachCurrentThread((void**)&env, nullptr) == JNI_OK) {
+                        wchar_t serviceUuidStr[40];
+                        swprintf_s(serviceUuidStr, 40, L"%08x-%04x-%04x-%02x%02x-%02x%02x%02x%02x%02x%02x",
+                                 serviceGuid.Data1, serviceGuid.Data2, serviceGuid.Data3,
+                                 serviceGuid.Data4[0], serviceGuid.Data4[1], serviceGuid.Data4[2], serviceGuid.Data4[3],
+                                 serviceGuid.Data4[4], serviceGuid.Data4[5], serviceGuid.Data4[6], serviceGuid.Data4[7]);
+                        std::string svcUuid = wstringToString(serviceUuidStr);
+
+                        jclass cls = env->GetObjectClass(m_javaObject);
+                        jmethodID mid = env->GetMethodID(cls, "onCharacteristicsDiscoveredForService",
+                                                        "(JLjava/lang/String;)V");
+                        if (mid != nullptr) {
+                            jstring jSvcUuid = env->NewStringUTF(svcUuid.c_str());
+                            env->CallVoidMethod(m_javaObject, mid, (jlong)address, jSvcUuid);
+                            env->DeleteLocalRef(jSvcUuid);
+                        }
+                        env->DeleteLocalRef(cls);
+                        m_jvm->DetachCurrentThread();
                     }
                 }
             } catch (...) {

@@ -27,6 +27,9 @@ class FakeBlueFalconEngine : BlueFalconEngine {
 
     private val _connectionStateUpdates = MutableSharedFlow<ConnectionStateUpdate>(extraBufferCapacity = 64)
     override val connectionStateUpdates: SharedFlow<ConnectionStateUpdate> = _connectionStateUpdates
+
+    private val _serviceDiscoveryUpdates = MutableSharedFlow<ServiceDiscoveryUpdate>(extraBufferCapacity = 64)
+    override val serviceDiscoveryUpdates: SharedFlow<ServiceDiscoveryUpdate> = _serviceDiscoveryUpdates
     
     override var isScanning: Boolean = false
         private set
@@ -225,5 +228,9 @@ class FakeBlueFalconEngine : BlueFalconEngine {
 
     suspend fun emitConnectionStateUpdate(update: ConnectionStateUpdate) {
         _connectionStateUpdates.emit(update)
+    }
+
+    suspend fun emitServiceDiscoveryUpdate(update: ServiceDiscoveryUpdate) {
+        _serviceDiscoveryUpdates.emit(update)
     }
 }

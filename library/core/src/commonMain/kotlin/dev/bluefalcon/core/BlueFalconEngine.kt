@@ -53,6 +53,24 @@ interface BlueFalconEngine {
      */
     val connectionStateUpdates: SharedFlow<ConnectionStateUpdate>
         get() = MutableSharedFlow()
+
+    /**
+     * Reactive stream of GATT service and characteristic discovery events.
+     *
+     * Emits a [ServiceDiscoveryUpdate] each time:
+     * - [ServiceDiscoveryPhase.ServicesDiscovered] — the peripheral's service list is populated
+     *   after a call to [discoverServices].
+     * - [ServiceDiscoveryPhase.CharacteristicsDiscovered] — characteristics for one service are
+     *   populated after a call to [discoverCharacteristics]. The [ServiceDiscoveryUpdate.service]
+     *   field identifies which service is ready.
+     *
+     * Use this flow instead of polling [BluetoothPeripheral.services] or inserting arbitrary
+     * delays after [discoverServices] / [discoverCharacteristics].
+     *
+     * Engines that do not support this may leave the default no-op implementation.
+     */
+    val serviceDiscoveryUpdates: SharedFlow<ServiceDiscoveryUpdate>
+        get() = MutableSharedFlow()
     
     /**
      * Check if currently scanning

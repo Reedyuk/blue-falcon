@@ -28,6 +28,9 @@ class RpiEngine : BlueFalconEngine {
 
     private val _characteristicNotifications = MutableSharedFlow<CharacteristicNotification>(extraBufferCapacity = 64)
     override val characteristicNotifications: SharedFlow<CharacteristicNotification> = _characteristicNotifications
+
+    private val _serviceDiscoveryUpdates = MutableSharedFlow<ServiceDiscoveryUpdate>(extraBufferCapacity = 64)
+    override val serviceDiscoveryUpdates: SharedFlow<ServiceDiscoveryUpdate> = _serviceDiscoveryUpdates
     
     override var isScanning: Boolean = false
         private set
@@ -291,7 +294,17 @@ class RpiEngine : BlueFalconEngine {
                 nativePeripheral: BlessedPeripheral,
                 services: MutableList<BluetoothGattService>
             ) {
-                peripheral.updateServices(services.map { RpiBluetoothService(it) })
+                val updatedServices = services.map { RpiBluetoothService(it) }
+                peripheral.updateServices(updatedServices)
+                // Blessed populates services and characteristics atomically — emit both phases.
+                _serviceDiscoveryUpdates.tryEmit(
+                    ServiceDiscoveryUpdate(peripheral, ServiceDiscoveryPhase.ServicesDiscovered)
+                )
+                updatedServices.forEach { service ->
+                    _serviceDiscoveryUpdates.tryEmit(
+                        ServiceDiscoveryUpdate(peripheral, ServiceDiscoveryPhase.CharacteristicsDiscovered, service)
+                    )
+                }
             }
             
             override fun onCharacteristicUpdate(
