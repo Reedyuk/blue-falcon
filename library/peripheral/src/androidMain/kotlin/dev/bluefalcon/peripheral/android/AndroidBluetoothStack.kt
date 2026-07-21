@@ -12,6 +12,8 @@ import dev.bluefalcon.peripheral.PeripheralSessionId
 internal interface AndroidBluetoothStack {
     val capabilities: AndroidStackCapabilities
 
+    fun validateStart() = Unit
+
     suspend fun open(listener: AndroidBluetoothStackListener)
 
     suspend fun addService(service: GattServiceConfig)
@@ -26,11 +28,15 @@ internal interface AndroidBluetoothStack {
 
     fun stopAdvertising()
 
+    fun clearServices() = Unit
+
     fun closeGattServer()
 }
 
-internal fun interface AndroidBluetoothStackListener {
+internal interface AndroidBluetoothStackListener {
     fun onEvent(event: AndroidGattEvent)
+
+    fun onPlatformFailure(cause: Throwable)
 }
 
 internal data class AndroidStackCapabilities(

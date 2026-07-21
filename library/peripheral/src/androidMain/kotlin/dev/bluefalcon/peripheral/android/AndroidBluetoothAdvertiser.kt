@@ -1,6 +1,5 @@
 package dev.bluefalcon.peripheral.android
 
-import android.bluetooth.BluetoothManager
 import android.content.Context
 import dev.bluefalcon.core.Logger
 import dev.bluefalcon.core.Uuid
@@ -368,10 +367,10 @@ fun createBluetoothAdvertiser(
     context: Context,
     logger: Logger? = null,
 ): BluetoothAdvertiser = try {
-    val manager = context.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager
-    if (manager?.adapter?.isMultipleAdvertisementSupported == true) {
+    val stack = FrameworkAndroidBluetoothStack(context, logger)
+    if (stack.capabilities.connectableAdvertising) {
         @Suppress("DEPRECATION")
-        AndroidBluetoothAdvertiser(context, logger)
+        AndroidBluetoothAdvertiser(stack, logger)
     } else {
         NoOpBluetoothAdvertiser()
     }

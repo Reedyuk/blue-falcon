@@ -1,8 +1,13 @@
 package dev.bluefalcon.peripheral.android
 
 import dev.bluefalcon.core.NoOpLogger
+import dev.bluefalcon.core.Uuid
+import dev.bluefalcon.core.BluetoothPermissionException
 import dev.bluefalcon.peripheral.AdvertiseConfig
 import dev.bluefalcon.peripheral.GattServiceConfig
+import dev.bluefalcon.peripheral.GattCharacteristicId
+import dev.bluefalcon.peripheral.GattResponseStatus
+import dev.bluefalcon.peripheral.GattServiceId
 import dev.bluefalcon.peripheral.PeripheralConfig
 import dev.bluefalcon.peripheral.PeripheralLifecycleException
 import dev.bluefalcon.peripheral.PeripheralSessionId
@@ -25,6 +30,21 @@ import kotlin.time.Duration.Companion.seconds
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class AndroidPeripheralBackendLifecycleTest {
+    @Test
+    fun securityExceptionDuringPreflightIsMappedToBluetoothPermissionFailure() = runTest {
+        val stack = FakeAndroidBluetoothStack().apply {
+            validationFailure = SecurityException("permission revoked")
+        }
+        val backend = AndroidPeripheralBackend(stack, NoOpLogger)
+
+        val failure = assertFailsWith<BluetoothPermissionException> {
+            backend.start(configWithServices(), RecordingBackendSink())
+        }
+
+        assertIs<SecurityException>(failure.cause)
+        assertTrue(stack.calls.isEmpty())
+    }
+
     @Test
     fun startAddsServicesSequentiallyBeforeAdvertising() = runTest {
         val stack = FakeAndroidBluetoothStack()
@@ -103,7 +123,10 @@ class AndroidPeripheralBackendLifecycleTest {
             backend.start(configWithServices(), RecordingBackendSink())
         }
 
-        assertTrue(stack.calls.takeLast(2) == listOf("stopAdvertising", "closeGattServer"))
+        assertEquals(
+            listOf("stopAdvertising", "clearServices", "closeGattServer"),
+            stack.calls.takeLast(3),
+        )
     }
 
     @Test
@@ -118,7 +141,10 @@ class AndroidPeripheralBackendLifecycleTest {
         startJob.cancelAndJoin()
 
         assertTrue(startJob.isCancelled)
-        assertTrue(stack.calls.takeLast(2) == listOf("stopAdvertising", "closeGattServer"))
+        assertEquals(
+            listOf("stopAdvertising", "clearServices", "closeGattServer"),
+            stack.calls.takeLast(3),
+        )
     }
 
     @Test
@@ -130,7 +156,10 @@ class AndroidPeripheralBackendLifecycleTest {
             backend.start(configWithServices("service-1"), RecordingBackendSink())
         }
 
-        assertTrue(stack.calls.takeLast(2) == listOf("stopAdvertising", "closeGattServer"))
+        assertEquals(
+            listOf("stopAdvertising", "clearServices", "closeGattServer"),
+            stack.calls.takeLast(3),
+        )
     }
 
     @Test
@@ -156,7 +185,10 @@ class AndroidPeripheralBackendLifecycleTest {
 
         assertIs<PeripheralLifecycleException>(startFailure.await())
         assertFalse("advertise" in stack.calls)
-        assertTrue(stack.calls.takeLast(2) == listOf("stopAdvertising", "closeGattServer"))
+        assertEquals(
+            listOf("stopAdvertising", "clearServices", "closeGattServer"),
+            stack.calls.takeLast(3),
+        )
     }
 
     @Test
@@ -233,6 +265,47 @@ class AndroidPeripheralBackendLifecycleTest {
         )
 
         assertEquals(0, currentSink.callbackCount)
+    }
+
+    @Test
+    fun responseRequiredRequestDuringShutdownReceivesFailure() = runTest {
+        val sessionId = PeripheralSessionId("late-central")
+        val stack = FakeAndroidBluetoothStack().apply {
+            eventsOnStopAdvertising += AndroidGattEvent.CharacteristicRead(
+                sessionId = sessionId,
+                requestId = 41,
+                serviceId = GattServiceId(Uuid.parse("0000180d-0000-1000-8000-00805f9b34fb")),
+                characteristicId = GattCharacteristicId(
+                    Uuid.parse("00002a37-0000-1000-8000-00805f9b34fb"),
+                ),
+                offset = 3,
+            )
+            eventsOnStopAdvertising += AndroidGattEvent.CharacteristicWrite(
+                sessionId = sessionId,
+                requestId = 42,
+                serviceId = GattServiceId(Uuid.parse("0000180d-0000-1000-8000-00805f9b34fb")),
+                characteristicId = GattCharacteristicId(
+                    Uuid.parse("00002a37-0000-1000-8000-00805f9b34fb"),
+                ),
+                offset = 0,
+                preparedWrite = false,
+                responseNeeded = false,
+                value = byteArrayOf(1),
+            )
+        }
+        val backend = AndroidPeripheralBackend(stack, NoOpLogger)
+        backend.start(configWithServices(), RecordingBackendSink())
+
+        backend.stop()
+
+        assertEquals(1, stack.responses.size)
+        with(stack.responses.single()) {
+            assertEquals(sessionId, this.sessionId)
+            assertEquals(41, requestId)
+            assertEquals(GattResponseStatus.UnlikelyError, status)
+            assertEquals(3, offset)
+            assertEquals(null, value)
+        }
     }
 
     private fun configWithServices(vararg serviceIds: String): PeripheralConfig =

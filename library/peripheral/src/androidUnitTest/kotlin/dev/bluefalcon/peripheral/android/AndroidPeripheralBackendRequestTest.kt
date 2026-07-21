@@ -336,6 +336,54 @@ class AndroidPeripheralBackendRequestTest {
     }
 
     @Test
+    fun rejectedLaterPreparedFragmentDiscardsPreviouslyStagedCccdValue() = runTest {
+        val fixture = startedFixture()
+        fixture.stageCccdFragment(
+            requestId = 48,
+            offset = 0,
+            value = NotificationCccdValue,
+        )
+        fixture.emitCccdWrite(
+            requestId = 49,
+            value = IndicationCccdValue,
+            preparedWrite = true,
+        )
+        fixture.lastDescriptorWrite().responder?.respond(
+            GattResponseStatus.WriteNotPermitted,
+            null,
+        )
+
+        fixture.emitExecuteWrite(requestId = 50, execute = true)
+        fixture.lastExecuteWrite().responder.respond(GattResponseStatus.Success, null)
+
+        assertEquals(emptyList(), fixture.sink.subscriptionChanges)
+    }
+
+    @Test
+    fun expiredLaterPreparedFragmentDiscardsPreviouslyStagedCccdValue() = runTest {
+        val fixture = startedFixture()
+        fixture.stageCccdFragment(
+            requestId = 51,
+            offset = 0,
+            value = NotificationCccdValue,
+        )
+        fixture.emitCccdWrite(
+            requestId = 52,
+            value = IndicationCccdValue,
+            preparedWrite = true,
+        )
+        fixture.lastDescriptorWrite().responder?.respond(
+            GattResponseStatus.UnlikelyError,
+            null,
+        )
+
+        fixture.emitExecuteWrite(requestId = 53, execute = true)
+        fixture.lastExecuteWrite().responder.respond(GattResponseStatus.Success, null)
+
+        assertEquals(emptyList(), fixture.sink.subscriptionChanges)
+    }
+
+    @Test
     fun incompletePreparedCccdValueDoesNotCommit() = runTest {
         val fixture = startedFixture()
         fixture.stageCccdFragment(requestId = 45, offset = 0, value = byteArrayOf(1))

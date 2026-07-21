@@ -16,10 +16,33 @@ import java.util.concurrent.TimeUnit
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertIs
 import kotlin.test.assertTrue
 import kotlin.concurrent.thread
 
 class AndroidPeripheralBackendSessionTest {
+    @Test
+    fun failedDisconnectionStatusClosesSessionAndPublishesPlatformFailure() = runTest {
+        val stack = FakeAndroidBluetoothStack()
+        val sink = RecordingBackendSink()
+        val backend = AndroidPeripheralBackend(stack, NoOpLogger)
+        val sessionId = PeripheralSessionId("central")
+        backend.start(PeripheralConfig(AdvertiseConfig()), sink)
+        stack.emit(AndroidGattEvent.Connected(sessionId))
+
+        stack.emit(AndroidGattEvent.Disconnected(sessionId, status = 133))
+
+        assertEquals(
+            listOf<Pair<PeripheralSessionId, Throwable?>>(sessionId to null),
+            sink.closedSessions,
+        )
+        with(assertIs<AndroidConnectionStateException>(sink.platformFailures.single())) {
+            assertEquals(sessionId, this.sessionId)
+            assertEquals(133, status)
+        }
+        backend.close()
+    }
+
     @Test
     fun connectionMtuAndDisconnectionPublishSessionLifecycleInOrder() = runTest {
         val stack = FakeAndroidBluetoothStack()

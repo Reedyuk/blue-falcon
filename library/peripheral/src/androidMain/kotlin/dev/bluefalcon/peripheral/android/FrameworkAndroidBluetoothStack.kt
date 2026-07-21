@@ -1,5 +1,6 @@
 package dev.bluefalcon.peripheral.android
 
+import android.Manifest
 import android.bluetooth.BluetoothDevice
 import android.bluetooth.BluetoothGatt
 import android.bluetooth.BluetoothGattCharacteristic
@@ -15,8 +16,11 @@ import android.bluetooth.le.AdvertiseData
 import android.bluetooth.le.AdvertiseSettings
 import android.bluetooth.le.BluetoothLeAdvertiser
 import android.content.Context
+import android.content.pm.PackageManager
 import android.os.Build
 import android.os.ParcelUuid
+import dev.bluefalcon.core.BluetoothNotEnabledException
+import dev.bluefalcon.core.BluetoothPermissionException
 import dev.bluefalcon.core.Logger
 import dev.bluefalcon.peripheral.AdvertiseConfig
 import dev.bluefalcon.peripheral.CharacteristicProperty
@@ -61,9 +65,21 @@ internal class FrameworkAndroidBluetoothStack(
             val adapter = bluetoothManager.adapter
             return AndroidStackCapabilities(
                 localGattServer = adapter != null,
-                connectableAdvertising = adapter?.isMultipleAdvertisementSupported == true,
+                connectableAdvertising = adapter != null && runCatching {
+                    adapter.isMultipleAdvertisementSupported
+                }.getOrDefault(true),
             )
         }
+
+    override fun validateStart() {
+        val adapter = bluetoothManager.adapter ?: return
+        validateAndroidPeripheralAccess(
+            sdkInt = Build.VERSION.SDK_INT,
+            connectGranted = applicationContext.hasPermission(Manifest.permission.BLUETOOTH_CONNECT),
+            advertiseGranted = applicationContext.hasPermission(Manifest.permission.BLUETOOTH_ADVERTISE),
+            adapterEnabled = { adapter.isEnabled },
+        )
+    }
 
     override suspend fun open(listener: AndroidBluetoothStackListener) =
         openGattServer(listener)
@@ -84,6 +100,11 @@ internal class FrameworkAndroidBluetoothStack(
         cancelTargetedConnection(sessionId)
 
     override fun stopAdvertising() = stopCurrentAdvertisement()
+
+    override fun clearServices() {
+        val server = synchronized(lock) { gattServer }
+        server?.clearServices()
+    }
 
     override fun closeGattServer() = closeCurrentGattServer()
 
@@ -292,7 +313,6 @@ internal class FrameworkAndroidBluetoothStack(
     }
 
     private fun closeCurrentGattServer() {
-        stopCurrentAdvertisement()
         val closed = synchronized(lock) {
             val server = gattServer
             val serviceCompletion = serviceGate.close()?.payload?.completion
@@ -317,7 +337,9 @@ internal class FrameworkAndroidBluetoothStack(
         generation: Long,
     ): BluetoothGattServerCallback = object : BluetoothGattServerCallback() {
         override fun onServiceAdded(status: Int, service: BluetoothGattService) {
-            completePendingService(generation, status, service)
+            dispatchAndroidGattCallback(listener) {
+                completePendingService(generation, status, service)
+            }
         }
 
         override fun onConnectionStateChange(
@@ -325,41 +347,46 @@ internal class FrameworkAndroidBluetoothStack(
             status: Int,
             newState: Int,
         ) {
-            val sessionId = device.toSessionId()
-            when (newState) {
-                BluetoothProfile.STATE_CONNECTED -> {
-                    val active = synchronized(lock) {
-                        if (lifecycleState.isActive(generation)) {
-                            devicesBySession[sessionId] = device
-                            true
-                        } else {
-                            false
+            dispatchAndroidGattCallback(listener) {
+                val sessionId = device.toSessionId()
+                when (newState) {
+                    BluetoothProfile.STATE_CONNECTED -> {
+                        val active = synchronized(lock) {
+                            if (lifecycleState.isActive(generation)) {
+                                devicesBySession[sessionId] = device
+                                true
+                            } else {
+                                false
+                            }
+                        }
+                        if (active) {
+                            listener.onEvent(AndroidGattEvent.Connected(sessionId))
                         }
                     }
-                    if (active) {
-                        listener.onEvent(AndroidGattEvent.Connected(sessionId))
-                    }
-                }
 
-                BluetoothProfile.STATE_DISCONNECTED -> {
-                    val active = synchronized(lock) {
-                        if (lifecycleState.isActive(generation)) {
-                            devicesBySession.remove(sessionId)
-                            true
-                        } else {
-                            false
+                    BluetoothProfile.STATE_DISCONNECTED -> {
+                        val active = synchronized(lock) {
+                            if (lifecycleState.isActive(generation)) {
+                                devicesBySession.remove(sessionId)
+                                true
+                            } else {
+                                false
+                            }
                         }
-                    }
-                    if (active) {
-                        listener.onEvent(AndroidGattEvent.Disconnected(sessionId, status))
+                        if (active) {
+                            listener.onEvent(AndroidGattEvent.Disconnected(sessionId, status))
+                        }
                     }
                 }
             }
         }
 
         override fun onMtuChanged(device: BluetoothDevice, mtu: Int) {
-            val sessionId = connectedSessionId(generation, device) ?: return
-            listener.onEvent(AndroidGattEvent.MtuChanged(sessionId, mtu))
+            dispatchAndroidGattCallback(listener) {
+                val sessionId = connectedSessionId(generation, device)
+                    ?: return@dispatchAndroidGattCallback
+                listener.onEvent(AndroidGattEvent.MtuChanged(sessionId, mtu))
+            }
         }
 
         override fun onCharacteristicReadRequest(
@@ -368,17 +395,21 @@ internal class FrameworkAndroidBluetoothStack(
             offset: Int,
             characteristic: BluetoothGattCharacteristic,
         ) {
-            val sessionId = connectedSessionId(generation, device) ?: return
-            val identity = characteristic.identityOrNull() ?: return
-            listener.onEvent(
-                AndroidGattEvent.CharacteristicRead(
-                    sessionId = sessionId,
-                    requestId = requestId,
-                    serviceId = identity.serviceId,
-                    characteristicId = identity.characteristicId,
-                    offset = offset,
-                ),
-            )
+            dispatchAndroidGattCallback(listener) {
+                val sessionId = connectedSessionId(generation, device)
+                    ?: return@dispatchAndroidGattCallback
+                val identity = characteristic.identityOrNull()
+                    ?: return@dispatchAndroidGattCallback
+                listener.onEvent(
+                    AndroidGattEvent.CharacteristicRead(
+                        sessionId = sessionId,
+                        requestId = requestId,
+                        serviceId = identity.serviceId,
+                        characteristicId = identity.characteristicId,
+                        offset = offset,
+                    ),
+                )
+            }
         }
 
         override fun onCharacteristicWriteRequest(
@@ -390,20 +421,24 @@ internal class FrameworkAndroidBluetoothStack(
             offset: Int,
             value: ByteArray?,
         ) {
-            val sessionId = connectedSessionId(generation, device) ?: return
-            val identity = characteristic.identityOrNull() ?: return
-            listener.onEvent(
-                AndroidGattEvent.CharacteristicWrite(
-                    sessionId = sessionId,
-                    requestId = requestId,
-                    serviceId = identity.serviceId,
-                    characteristicId = identity.characteristicId,
-                    offset = offset,
-                    preparedWrite = preparedWrite,
-                    responseNeeded = responseNeeded,
-                    value = value ?: ByteArray(0),
-                ),
-            )
+            dispatchAndroidGattCallback(listener) {
+                val sessionId = connectedSessionId(generation, device)
+                    ?: return@dispatchAndroidGattCallback
+                val identity = characteristic.identityOrNull()
+                    ?: return@dispatchAndroidGattCallback
+                listener.onEvent(
+                    AndroidGattEvent.CharacteristicWrite(
+                        sessionId = sessionId,
+                        requestId = requestId,
+                        serviceId = identity.serviceId,
+                        characteristicId = identity.characteristicId,
+                        offset = offset,
+                        preparedWrite = preparedWrite,
+                        responseNeeded = responseNeeded,
+                        value = value ?: ByteArray(0),
+                    ),
+                )
+            }
         }
 
         override fun onDescriptorReadRequest(
@@ -412,18 +447,22 @@ internal class FrameworkAndroidBluetoothStack(
             offset: Int,
             descriptor: BluetoothGattDescriptor,
         ) {
-            val sessionId = connectedSessionId(generation, device) ?: return
-            val identity = descriptor.identityOrNull() ?: return
-            listener.onEvent(
-                AndroidGattEvent.DescriptorRead(
-                    sessionId = sessionId,
-                    requestId = requestId,
-                    serviceId = identity.serviceId,
-                    characteristicId = identity.characteristicId,
-                    descriptorId = identity.descriptorId,
-                    offset = offset,
-                ),
-            )
+            dispatchAndroidGattCallback(listener) {
+                val sessionId = connectedSessionId(generation, device)
+                    ?: return@dispatchAndroidGattCallback
+                val identity = descriptor.identityOrNull()
+                    ?: return@dispatchAndroidGattCallback
+                listener.onEvent(
+                    AndroidGattEvent.DescriptorRead(
+                        sessionId = sessionId,
+                        requestId = requestId,
+                        serviceId = identity.serviceId,
+                        characteristicId = identity.characteristicId,
+                        descriptorId = identity.descriptorId,
+                        offset = offset,
+                    ),
+                )
+            }
         }
 
         override fun onDescriptorWriteRequest(
@@ -435,21 +474,25 @@ internal class FrameworkAndroidBluetoothStack(
             offset: Int,
             value: ByteArray?,
         ) {
-            val sessionId = connectedSessionId(generation, device) ?: return
-            val identity = descriptor.identityOrNull() ?: return
-            listener.onEvent(
-                AndroidGattEvent.DescriptorWrite(
-                    sessionId = sessionId,
-                    requestId = requestId,
-                    serviceId = identity.serviceId,
-                    characteristicId = identity.characteristicId,
-                    descriptorId = identity.descriptorId,
-                    offset = offset,
-                    preparedWrite = preparedWrite,
-                    responseNeeded = responseNeeded,
-                    value = value ?: ByteArray(0),
-                ),
-            )
+            dispatchAndroidGattCallback(listener) {
+                val sessionId = connectedSessionId(generation, device)
+                    ?: return@dispatchAndroidGattCallback
+                val identity = descriptor.identityOrNull()
+                    ?: return@dispatchAndroidGattCallback
+                listener.onEvent(
+                    AndroidGattEvent.DescriptorWrite(
+                        sessionId = sessionId,
+                        requestId = requestId,
+                        serviceId = identity.serviceId,
+                        characteristicId = identity.characteristicId,
+                        descriptorId = identity.descriptorId,
+                        offset = offset,
+                        preparedWrite = preparedWrite,
+                        responseNeeded = responseNeeded,
+                        value = value ?: ByteArray(0),
+                    ),
+                )
+            }
         }
 
         override fun onExecuteWrite(
@@ -457,13 +500,19 @@ internal class FrameworkAndroidBluetoothStack(
             requestId: Int,
             execute: Boolean,
         ) {
-            val sessionId = connectedSessionId(generation, device) ?: return
-            listener.onEvent(AndroidGattEvent.ExecuteWrite(sessionId, requestId, execute))
+            dispatchAndroidGattCallback(listener) {
+                val sessionId = connectedSessionId(generation, device)
+                    ?: return@dispatchAndroidGattCallback
+                listener.onEvent(AndroidGattEvent.ExecuteWrite(sessionId, requestId, execute))
+            }
         }
 
         override fun onNotificationSent(device: BluetoothDevice, status: Int) {
-            val sessionId = connectedSessionId(generation, device) ?: return
-            listener.onEvent(AndroidGattEvent.NotificationSent(sessionId, status))
+            dispatchAndroidGattCallback(listener) {
+                val sessionId = connectedSessionId(generation, device)
+                    ?: return@dispatchAndroidGattCallback
+                listener.onEvent(AndroidGattEvent.NotificationSent(sessionId, status))
+            }
         }
     }
 
@@ -697,6 +746,37 @@ internal class FrameworkAndroidBluetoothStack(
 
     private companion object {
         const val CCCD_UUID = "00002902-0000-1000-8000-00805f9b34fb"
+    }
+}
+
+private fun Context.hasPermission(permission: String): Boolean =
+    checkSelfPermission(permission) == PackageManager.PERMISSION_GRANTED
+
+internal fun validateAndroidPeripheralAccess(
+    sdkInt: Int,
+    connectGranted: Boolean,
+    advertiseGranted: Boolean,
+    adapterEnabled: () -> Boolean,
+) {
+    if (sdkInt >= Build.VERSION_CODES.S && (!connectGranted || !advertiseGranted)) {
+        throw BluetoothPermissionException()
+    }
+    if (!adapterEnabled()) throw BluetoothNotEnabledException()
+}
+
+internal inline fun dispatchAndroidGattCallback(
+    listener: AndroidBluetoothStackListener,
+    callback: () -> Unit,
+) {
+    try {
+        callback()
+    } catch (cause: Throwable) {
+        val reported = if (cause is SecurityException) {
+            BluetoothPermissionException().also { it.initCause(cause) }
+        } else {
+            cause
+        }
+        runCatching { listener.onPlatformFailure(reported) }
     }
 }
 

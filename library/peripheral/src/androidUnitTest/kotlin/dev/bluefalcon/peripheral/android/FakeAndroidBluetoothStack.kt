@@ -22,15 +22,21 @@ internal class FakeAndroidBluetoothStack : AndroidBluetoothStack {
 
     var addServiceFailureAt: Int? = null
     var advertisingFailure: Throwable? = null
+    var validationFailure: Throwable? = null
     var suspendAddService = false
     var suspendAdvertising = false
     var addServiceGate: CompletableDeferred<Unit>? = null
     var advertisingGate: CompletableDeferred<Unit>? = null
     var notificationResult: AndroidNotificationStartResult =
         AndroidNotificationStartResult.Accepted
+    val eventsOnStopAdvertising = mutableListOf<AndroidGattEvent>()
 
     val listener: AndroidBluetoothStackListener?
         get() = listeners.lastOrNull()
+
+    override fun validateStart() {
+        validationFailure?.let { throw it }
+    }
 
     override suspend fun open(listener: AndroidBluetoothStackListener) {
         calls += "open"
@@ -71,6 +77,11 @@ internal class FakeAndroidBluetoothStack : AndroidBluetoothStack {
 
     override fun stopAdvertising() {
         calls += "stopAdvertising"
+        eventsOnStopAdvertising.forEach { event -> listener?.onEvent(event) }
+    }
+
+    override fun clearServices() {
+        calls += "clearServices"
     }
 
     override fun closeGattServer() {
@@ -78,6 +89,8 @@ internal class FakeAndroidBluetoothStack : AndroidBluetoothStack {
     }
 
     fun emit(event: AndroidGattEvent) = requireNotNull(listener).onEvent(event)
+
+    fun emitFailure(cause: Throwable) = requireNotNull(listener).onPlatformFailure(cause)
 
     fun emitFrom(listenerIndex: Int, event: AndroidGattEvent) {
         listeners[listenerIndex].onEvent(event)

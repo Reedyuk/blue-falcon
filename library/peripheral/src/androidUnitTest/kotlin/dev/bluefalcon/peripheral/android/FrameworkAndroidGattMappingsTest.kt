@@ -3,6 +3,8 @@ package dev.bluefalcon.peripheral.android
 import android.bluetooth.BluetoothGatt
 import android.bluetooth.BluetoothGattCharacteristic
 import android.bluetooth.BluetoothGattDescriptor
+import dev.bluefalcon.core.BluetoothNotEnabledException
+import dev.bluefalcon.core.BluetoothPermissionException
 import dev.bluefalcon.peripheral.CharacteristicProperty
 import dev.bluefalcon.peripheral.GattCharacteristicConfig
 import dev.bluefalcon.peripheral.GattDescriptorConfig
@@ -14,12 +16,68 @@ import kotlin.test.assertFalse
 import kotlin.test.assertFailsWith
 import kotlin.test.assertNull
 import kotlin.test.assertSame
+import kotlin.test.assertIs
 import kotlin.test.assertTrue
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
 
 @OptIn(ExperimentalUuidApi::class)
 class FrameworkAndroidGattMappingsTest {
+    @Test
+    fun callbackSecurityExceptionIsReportedAsBluetoothPermissionFailure() {
+        val failures = mutableListOf<Throwable>()
+        val listener = object : AndroidBluetoothStackListener {
+            override fun onEvent(event: AndroidGattEvent) = Unit
+
+            override fun onPlatformFailure(cause: Throwable) {
+                failures += cause
+            }
+        }
+
+        dispatchAndroidGattCallback(listener) {
+            throw SecurityException("permission revoked")
+        }
+
+        val failure = assertIs<BluetoothPermissionException>(failures.single())
+        assertIs<SecurityException>(failure.cause)
+    }
+
+    @Test
+    fun android31StartRequiresConnectPermission() {
+        assertFailsWith<BluetoothPermissionException> {
+            validateAndroidPeripheralAccess(
+                sdkInt = 31,
+                connectGranted = false,
+                advertiseGranted = true,
+                adapterEnabled = { error("adapter state must not be queried without CONNECT") },
+            )
+        }
+    }
+
+    @Test
+    fun android31StartRequiresAdvertisePermission() {
+        assertFailsWith<BluetoothPermissionException> {
+            validateAndroidPeripheralAccess(
+                sdkInt = 31,
+                connectGranted = true,
+                advertiseGranted = false,
+                adapterEnabled = { error("adapter state must not be queried without ADVERTISE") },
+            )
+        }
+    }
+
+    @Test
+    fun disabledAdapterIsRejectedAfterPermissionsPass() {
+        assertFailsWith<BluetoothNotEnabledException> {
+            validateAndroidPeripheralAccess(
+                sdkInt = 31,
+                connectGranted = true,
+                advertiseGranted = true,
+                adapterEnabled = { false },
+            )
+        }
+    }
+
     @Test
     fun responseStatusesMapToAndroidGattConstants() {
         val expected = mapOf(

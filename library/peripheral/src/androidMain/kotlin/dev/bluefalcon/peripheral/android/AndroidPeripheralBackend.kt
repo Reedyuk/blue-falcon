@@ -1,6 +1,7 @@
 package dev.bluefalcon.peripheral.android
 
 import android.bluetooth.BluetoothGatt
+import dev.bluefalcon.core.BluetoothPermissionException
 import dev.bluefalcon.core.Logger
 import dev.bluefalcon.core.Uuid
 import dev.bluefalcon.peripheral.CharacteristicProperty
@@ -83,6 +84,11 @@ internal class AndroidPeripheralBackend(
         config: PeripheralConfig,
         eventSink: PeripheralBackendEventSink,
     ) {
+        try {
+            stack.validateStart()
+        } catch (cause: Throwable) {
+            throw cause.toPeripheralStartFailure()
+        }
         val requiresGattServer =
             config.advertiseConfig.services.isNotEmpty() || !allowAdvertisingWithoutGattServer
         validateCapabilities(requiresGattServer)
@@ -103,8 +109,14 @@ internal class AndroidPeripheralBackend(
             supportedNotificationModes = configuredNotificationModes
             allocatedGeneration
         }
-        val listener = AndroidBluetoothStackListener { event ->
-            onStackEvent(startGeneration, event)
+        val listener = object : AndroidBluetoothStackListener {
+            override fun onEvent(event: AndroidGattEvent) {
+                onStackEvent(startGeneration, event)
+            }
+
+            override fun onPlatformFailure(cause: Throwable) {
+                publishPlatformFailure(startGeneration, cause)
+            }
         }
 
         try {
@@ -143,7 +155,7 @@ internal class AndroidPeripheralBackend(
             withContext(NonCancellable) {
                 rollbackStart(startGeneration)
             }
-            throw cause
+            throw cause.toPeripheralStartFailure()
         }
     }
 
@@ -242,6 +254,13 @@ internal class AndroidPeripheralBackend(
             throw PeripheralUnsupportedException("Android connectable advertising")
         }
     }
+
+    private fun Throwable.toPeripheralStartFailure(): Throwable =
+        if (this is SecurityException) {
+            BluetoothPermissionException().also { it.initCause(this) }
+        } else {
+            this
+        }
 
     private fun notificationModes(
         config: PeripheralConfig,
@@ -409,26 +428,67 @@ internal class AndroidPeripheralBackend(
     private fun teardownPlatform() {
         runCatching { stack.stopAdvertising() }
             .onFailure { logger?.warn("Failed to stop Android peripheral advertising", it) }
+        runCatching { stack.clearServices() }
+            .onFailure { logger?.warn("Failed to clear Android peripheral GATT services", it) }
         runCatching { stack.closeGattServer() }
             .onFailure { logger?.warn("Failed to close Android peripheral GATT server", it) }
     }
 
     private fun onStackEvent(eventGeneration: Long, event: AndroidGattEvent) {
+        var shutdownResponse: AndroidGattResponse? = null
         val owner = synchronized(lock) {
-            if (state != BackendState.Running(eventGeneration)) {
-                false
-            } else {
-                val delivery = eventSink?.let { sink ->
-                    handleEventLocked(eventGeneration, event, sink)
+            when (state) {
+                BackendState.Running(eventGeneration) -> {
+                    val delivery = eventSink?.let { sink ->
+                        handleEventLocked(eventGeneration, event, sink)
+                    }
+                    if (delivery == null) {
+                        false
+                    } else {
+                        enqueueEventDeliveryLocked(EventDelivery(eventGeneration, delivery))
+                    }
                 }
-                if (delivery == null) {
+
+                is BackendState.ShuttingDown -> {
+                    val shuttingDown = state as BackendState.ShuttingDown
+                    if (shuttingDown.generation == eventGeneration) {
+                        shutdownResponse = event.shutdownFailureResponse()
+                    }
                     false
-                } else {
-                    enqueueEventDeliveryLocked(EventDelivery(eventGeneration, delivery))
                 }
+
+                else -> false
             }
         }
+        shutdownResponse?.let(::sendShutdownFailureResponse)
         if (owner) drainEventDeliveries()
+    }
+
+    private fun AndroidGattEvent.shutdownFailureResponse(): AndroidGattResponse? {
+        val request = when (this) {
+            is AndroidGattEvent.CharacteristicRead -> requestId to offset
+            is AndroidGattEvent.CharacteristicWrite ->
+                if (responseNeeded || preparedWrite) requestId to offset else null
+            is AndroidGattEvent.DescriptorRead -> requestId to offset
+            is AndroidGattEvent.DescriptorWrite ->
+                if (responseNeeded || preparedWrite) requestId to offset else null
+            is AndroidGattEvent.ExecuteWrite -> requestId to 0
+            else -> null
+        } ?: return null
+        return AndroidGattResponse(
+            sessionId = sessionId,
+            requestId = request.first,
+            status = GattResponseStatus.UnlikelyError,
+            offset = request.second,
+            value = null,
+        )
+    }
+
+    private fun sendShutdownFailureResponse(response: AndroidGattResponse) {
+        runCatching { stack.sendResponse(response) }
+            .onFailure {
+                logger?.warn("Failed to reject Android GATT request during shutdown", it)
+            }
     }
 
     private fun enqueueEventDeliveryLocked(delivery: EventDelivery): Boolean {
@@ -494,7 +554,17 @@ internal class AndroidPeripheralBackend(
             if (!removeSessionStateLocked(event.sessionId)) {
                 null
             } else {
-                val delivery = { sink.onSessionClosed(event.sessionId) }
+                val delivery = {
+                    try {
+                        sink.onSessionClosed(event.sessionId)
+                    } finally {
+                        if (event.status != BluetoothGatt.GATT_SUCCESS) {
+                            sink.onPlatformFailure(
+                                AndroidConnectionStateException(event.sessionId, event.status),
+                            )
+                        }
+                    }
+                }
                 delivery
             }
         }
@@ -589,6 +659,9 @@ internal class AndroidPeripheralBackend(
                                 when {
                                     write.preparedWrite && status == GattResponseStatus.Success ->
                                         stagePreparedCccdWrite(eventGeneration, write)
+
+                                    write.preparedWrite ->
+                                        discardPreparedCccdWrite(eventGeneration, write.sessionId)
 
                                     !write.preparedWrite && status == GattResponseStatus.Success ->
                                         commitCccdWrite(
@@ -697,6 +770,17 @@ internal class AndroidPeripheralBackend(
                 ).also { preparedCccdWrites[event.sessionId] = it }
             }
             prepared.fragments[event.offset] = event.value
+        }
+    }
+
+    private fun discardPreparedCccdWrite(
+        eventGeneration: Long,
+        sessionId: PeripheralSessionId,
+    ) {
+        synchronized(lock) {
+            if (state == BackendState.Running(eventGeneration)) {
+                preparedCccdWrites.remove(sessionId)
+            }
         }
     }
 
@@ -935,4 +1019,11 @@ internal class AndroidNotificationCallbackException(
 
 internal class AndroidDisconnectException(sessionId: PeripheralSessionId) : IllegalStateException(
     "Android rejected disconnect for session ${sessionId.value}",
+)
+
+internal class AndroidConnectionStateException(
+    val sessionId: PeripheralSessionId,
+    val status: Int,
+) : IllegalStateException(
+    "Android GATT connection failed for session ${sessionId.value} with status $status",
 )
