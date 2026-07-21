@@ -2,6 +2,7 @@ package com.example.bluefalconcomposemultiplatform.ble.presentation
 
 import dev.bluefalcon.core.BlueFalcon
 import dev.bluefalcon.core.BluetoothPeripheralState
+import dev.bluefalcon.core.ServiceDiscoveryPhase
 import dev.bluefalcon.core.ServiceFilter
 import dev.bluefalcon.core.toUuid
 import dev.bluefalcon.peripheral.BluetoothAdvertiser
@@ -126,6 +127,35 @@ class BluetoothDeviceViewModel(
                 }
             }
         }
+
+        // React to GATT service/characteristic discovery so we never need arbitrary delays.
+        // ServicesDiscovered: kick off characteristic discovery for each service.
+        // CharacteristicsDiscovered: force a UI refresh so the detail screen updates immediately.
+        viewModelScope.launch(Dispatchers.IO) {
+            blueFalcon.serviceDiscoveryUpdates.collect { update ->
+                when (update.phase) {
+                    ServiceDiscoveryPhase.ServicesDiscovered -> {
+                        try {
+                            update.peripheral.services.forEach { service ->
+                                blueFalcon.discoverCharacteristics(update.peripheral, service)
+                            }
+                        } catch (e: Exception) {
+                            println("Failed to discover characteristics: ${e.message}")
+                        }
+                    }
+                    ServiceDiscoveryPhase.CharacteristicsDiscovered -> {
+                        _deviceState.update { state ->
+                            val updatedDevices = state.devices.toMutableMap()
+                            updatedDevices[update.peripheral.uuid]?.let { device ->
+                                updatedDevices[update.peripheral.uuid] =
+                                    device.copy(updateCount = device.updateCount + 1)
+                            }
+                            state.copy(devices = HashMap(updatedDevices))
+                        }
+                    }
+                }
+            }
+        }
     }
 
     fun onEvent(event: UiEvent) {
@@ -226,22 +256,15 @@ class BluetoothDeviceViewModel(
 
             is UiEvent.OnDeviceSelected -> {
                 _deviceState.update { it.copy(selectedDeviceId = event.macId) }
-                // Discover services when device detail is opened
+                // Kick off service discovery if not already done.
+                // Characteristic discovery and UI refresh are driven by serviceDiscoveryUpdates.
                 _deviceState.value.devices[event.macId]?.let { device ->
                     if (device.connected && device.peripheral.services.isEmpty()) {
-                        CoroutineScope(Dispatchers.IO).launch {
+                        viewModelScope.launch(Dispatchers.IO) {
                             try {
-                                // Add a small delay to ensure peripheral is fully connected on iOS
-                                kotlinx.coroutines.delay(500)
-                                // Check connection state before discovering
                                 val state = blueFalcon.connectionState(device.peripheral)
-                                if (state == dev.bluefalcon.core.BluetoothPeripheralState.Connected) {
+                                if (state == BluetoothPeripheralState.Connected) {
                                     blueFalcon.discoverServices(device.peripheral)
-                                    // Wait for services to be populated, then discover characteristics
-                                    kotlinx.coroutines.delay(1000)
-                                    device.peripheral.services.forEach { service ->
-                                        blueFalcon.discoverCharacteristics(device.peripheral, service)
-                                    }
                                 }
                             } catch (e: Exception) {
                                 println("Failed to discover services: ${e.message}")
@@ -257,15 +280,10 @@ class BluetoothDeviceViewModel(
 
             is UiEvent.OnRefreshDevice -> {
                 _deviceState.value.devices[event.macId]?.let { device ->
-                    CoroutineScope(Dispatchers.IO).launch {
+                    viewModelScope.launch(Dispatchers.IO) {
                         try {
-                            // Re-discover services to refresh data
+                            // Re-discover services; characteristic discovery is driven by serviceDiscoveryUpdates.
                             blueFalcon.discoverServices(device.peripheral)
-                            // Wait for services, then discover characteristics
-                            kotlinx.coroutines.delay(1000)
-                            device.peripheral.services.forEach { service ->
-                                blueFalcon.discoverCharacteristics(device.peripheral, service)
-                            }
                         } catch (e: Exception) {
                             println("Failed to refresh device: ${e.message}")
                         }

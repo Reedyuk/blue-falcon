@@ -457,6 +457,16 @@ didDiscoverCharacteristicsForService:(CBService *)service
             // Kick off descriptor discovery so they're ready when needed
             [peripheral discoverDescriptorsForCharacteristic:c];
         }
+
+        // Notify Kotlin that all characteristics for this service have been discovered.
+        jclass cls2 = (*env)->GetObjectClass(env, gEngineRef);
+        jmethodID m2 = (*env)->GetMethodID(env, cls2, "onCharacteristicsDiscoveredForService",
+            "(Ljava/lang/String;Ljava/lang/String;)V");
+        (*env)->DeleteLocalRef(env, cls2);
+        if (m2) {
+            (*env)->CallVoidMethod(env, gEngineRef, m2, jpuuid, jsuuid);
+        }
+
         (*env)->DeleteLocalRef(env, jpuuid);
         (*env)->DeleteLocalRef(env, jsuuid);
     }

@@ -51,3 +51,49 @@ enum class BlueFalconBondState {
     Bonding,
     Bonded
 }
+
+/**
+ * Phases of GATT service/characteristic discovery emitted by
+ * [BlueFalconEngine.serviceDiscoveryUpdates].
+ */
+enum class ServiceDiscoveryPhase {
+    /** The peripheral's service list has been populated. */
+    ServicesDiscovered,
+    /**
+     * Characteristics for [ServiceDiscoveryUpdate.service] have been populated.
+     * Emitted once per service as its characteristics become available.
+     */
+    CharacteristicsDiscovered,
+}
+
+/**
+ * Reactive GATT discovery event emitted by [BlueFalconEngine.serviceDiscoveryUpdates].
+ *
+ * Subscribe to [BlueFalconEngine.serviceDiscoveryUpdates] (or [BlueFalcon.serviceDiscoveryUpdates])
+ * to be notified when services and characteristics are ready without polling or using arbitrary
+ * delays.
+ *
+ * Typical usage:
+ * ```
+ * blueFalcon.serviceDiscoveryUpdates
+ *     .filter { it.peripheral.uuid == myPeripheral.uuid }
+ *     .collect { update ->
+ *         when (update.phase) {
+ *             ServiceDiscoveryPhase.ServicesDiscovered ->
+ *                 update.peripheral.services.forEach { blueFalcon.discoverCharacteristics(update.peripheral, it) }
+ *             ServiceDiscoveryPhase.CharacteristicsDiscovered ->
+ *                 println("Ready: ${update.service?.uuid}")
+ *         }
+ *     }
+ * ```
+ *
+ * @property peripheral The peripheral whose discovery state changed.
+ * @property phase      The current phase of discovery.
+ * @property service    The service whose characteristics were discovered; non-null only when
+ *                      [phase] is [ServiceDiscoveryPhase.CharacteristicsDiscovered].
+ */
+data class ServiceDiscoveryUpdate(
+    val peripheral: BluetoothPeripheral,
+    val phase: ServiceDiscoveryPhase,
+    val service: BluetoothService? = null,
+)

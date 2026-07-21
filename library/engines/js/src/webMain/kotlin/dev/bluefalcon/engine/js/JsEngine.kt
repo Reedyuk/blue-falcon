@@ -34,6 +34,9 @@ class JsEngine : BlueFalconEngine {
     private val _connectionStateUpdates = MutableSharedFlow<ConnectionStateUpdate>(extraBufferCapacity = 64)
     override val connectionStateUpdates: SharedFlow<ConnectionStateUpdate> = _connectionStateUpdates
 
+    private val _serviceDiscoveryUpdates = MutableSharedFlow<ServiceDiscoveryUpdate>(extraBufferCapacity = 64)
+    override val serviceDiscoveryUpdates: SharedFlow<ServiceDiscoveryUpdate> = _serviceDiscoveryUpdates
+
     override var isScanning: Boolean = false
         private set
 
@@ -127,6 +130,9 @@ class JsEngine : BlueFalconEngine {
 
         val services = jsPeripheral.device.getPrimaryServices(serviceUUIDs.map { it.toString() })
         jsPeripheral.updateServices(services.map { JsBluetoothService(it) })
+        _serviceDiscoveryUpdates.tryEmit(
+            ServiceDiscoveryUpdate(peripheral, ServiceDiscoveryPhase.ServicesDiscovered)
+        )
     }
 
     override suspend fun discoverCharacteristics(
@@ -139,6 +145,9 @@ class JsEngine : BlueFalconEngine {
 
         val characteristics = jsService.service.getCharacteristics(characteristicUUIDs.map { it.toString() })
         jsService.updateCharacteristics(characteristics.map { JsBluetoothCharacteristic(it, jsService) })
+        _serviceDiscoveryUpdates.tryEmit(
+            ServiceDiscoveryUpdate(peripheral, ServiceDiscoveryPhase.CharacteristicsDiscovered, service)
+        )
     }
 
     override suspend fun readCharacteristic(
