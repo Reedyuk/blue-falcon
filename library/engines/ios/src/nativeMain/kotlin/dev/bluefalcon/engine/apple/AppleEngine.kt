@@ -36,6 +36,9 @@ class AppleEngine : BlueFalconEngine, CBCentralManagerCallback, CBPeripheralCall
 
     private val _connectionStateUpdates = MutableSharedFlow<ConnectionStateUpdate>(extraBufferCapacity = 64)
     override val connectionStateUpdates: SharedFlow<ConnectionStateUpdate> = _connectionStateUpdates
+
+    private val _serviceDiscoveryUpdates = MutableSharedFlow<ServiceDiscoveryUpdate>(extraBufferCapacity = 64)
+    override val serviceDiscoveryUpdates: SharedFlow<ServiceDiscoveryUpdate> = _serviceDiscoveryUpdates
     
     override var isScanning: Boolean = false
         private set
@@ -434,12 +437,20 @@ class AppleEngine : BlueFalconEngine, CBCentralManagerCallback, CBPeripheralCall
     // CBPeripheralCallback implementation
     
     override fun onServicesDiscovered(peripheral: CBPeripheral, error: NSError?) {
-        // Services discovered - automatically handled through peripheral.services property
+        if (error != null) return
+        val device = connectedPeripherals[peripheral.identifier.UUIDString] ?: return
+        _serviceDiscoveryUpdates.tryEmit(
+            ServiceDiscoveryUpdate(device, ServiceDiscoveryPhase.ServicesDiscovered)
+        )
     }
-    
+
     override fun onCharacteristicsDiscovered(peripheral: CBPeripheral, service: CBService, error: NSError?) {
-        // Characteristics discovered - automatically handled through service.characteristics property
-        
+        if (error != null) return
+        val device = connectedPeripherals[peripheral.identifier.UUIDString] ?: return
+        val bluetoothService = AppleBluetoothService(service)
+        _serviceDiscoveryUpdates.tryEmit(
+            ServiceDiscoveryUpdate(device, ServiceDiscoveryPhase.CharacteristicsDiscovered, bluetoothService)
+        )
         // Discover descriptors for all characteristics
         service.characteristics?.mapNotNull { it as? CBCharacteristic }?.forEach { characteristic ->
             peripheral.discoverDescriptorsForCharacteristic(characteristic)

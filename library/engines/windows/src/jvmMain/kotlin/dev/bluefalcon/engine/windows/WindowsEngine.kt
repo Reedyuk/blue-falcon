@@ -27,6 +27,9 @@ class WindowsEngine : BlueFalconEngine {
 
     private val _connectionStateUpdates = MutableSharedFlow<ConnectionStateUpdate>(extraBufferCapacity = 64)
     override val connectionStateUpdates: SharedFlow<ConnectionStateUpdate> = _connectionStateUpdates
+
+    private val _serviceDiscoveryUpdates = MutableSharedFlow<ServiceDiscoveryUpdate>(extraBufferCapacity = 64)
+    override val serviceDiscoveryUpdates: SharedFlow<ServiceDiscoveryUpdate> = _serviceDiscoveryUpdates
     
     override var isScanning: Boolean = false
         private set
@@ -358,7 +361,7 @@ class WindowsEngine : BlueFalconEngine {
     @Suppress("unused")
     private fun onServicesDiscovered(address: Long, serviceUuids: Array<String>) {
         val peripheral = connections[address] ?: return
-        
+
         val services = serviceUuids.map { uuidStr ->
             WindowsBluetoothService(
                 uuid = Uuid.parse(uuidStr),
@@ -366,8 +369,20 @@ class WindowsEngine : BlueFalconEngine {
                 address = address
             )
         }
-        
+
         peripheral.updateServices(services)
+        _serviceDiscoveryUpdates.tryEmit(
+            ServiceDiscoveryUpdate(peripheral, ServiceDiscoveryPhase.ServicesDiscovered)
+        )
+    }
+
+    @Suppress("unused")
+    private fun onCharacteristicsDiscoveredForService(address: Long, serviceUuid: String) {
+        val peripheral = connections[address] ?: return
+        val service = peripheral.services.find { it.uuid.toString() == serviceUuid } ?: return
+        _serviceDiscoveryUpdates.tryEmit(
+            ServiceDiscoveryUpdate(peripheral, ServiceDiscoveryPhase.CharacteristicsDiscovered, service)
+        )
     }
     
     @Suppress("unused")

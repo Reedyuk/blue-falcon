@@ -60,6 +60,31 @@ class BlueFalcon(
      * ```
      */
     val connectionStateUpdates: SharedFlow<ConnectionStateUpdate> get() = engine.connectionStateUpdates
+
+    /**
+     * Reactive stream of GATT service and characteristic discovery events.
+     *
+     * Subscribe to this flow to be notified when services or characteristics become available
+     * without polling [BluetoothPeripheral.services] or inserting arbitrary delays.
+     *
+     * ```kotlin
+     * launch {
+     *     blueFalcon.serviceDiscoveryUpdates
+     *         .filter { it.peripheral.uuid == targetUuid }
+     *         .collect { update ->
+     *             when (update.phase) {
+     *                 ServiceDiscoveryPhase.ServicesDiscovered ->
+     *                     update.peripheral.services.forEach {
+     *                         blueFalcon.discoverCharacteristics(update.peripheral, it)
+     *                     }
+     *                 ServiceDiscoveryPhase.CharacteristicsDiscovered ->
+     *                     println("Characteristics ready for ${update.service?.uuid}")
+     *             }
+     *         }
+     * }
+     * ```
+     */
+    val serviceDiscoveryUpdates: SharedFlow<ServiceDiscoveryUpdate> get() = engine.serviceDiscoveryUpdates
     
     /**
      * Scan for BLE devices

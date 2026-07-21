@@ -47,6 +47,9 @@ class AndroidEngine(
 
     private val _connectionStateUpdates = MutableSharedFlow<ConnectionStateUpdate>(extraBufferCapacity = 64)
     override val connectionStateUpdates: SharedFlow<ConnectionStateUpdate> = _connectionStateUpdates
+
+    private val _serviceDiscoveryUpdates = MutableSharedFlow<ServiceDiscoveryUpdate>(extraBufferCapacity = 64)
+    override val serviceDiscoveryUpdates: SharedFlow<ServiceDiscoveryUpdate> = _serviceDiscoveryUpdates
     
     override var isScanning: Boolean = false
         private set
@@ -728,8 +731,18 @@ class AndroidEngine(
                 return
             }
             gatt?.device?.let { device ->
-                peripheralFor(device.address)?._servicesFlow?.value =
-                    gatt.services.map { AndroidBluetoothService(it) }
+                val peripheral = peripheralFor(device.address) ?: return@let
+                val services = gatt.services.map { AndroidBluetoothService(it) }
+                peripheral._servicesFlow.value = services
+                // Android discovers services and characteristics atomically — emit both phases.
+                _serviceDiscoveryUpdates.tryEmit(
+                    ServiceDiscoveryUpdate(peripheral, ServiceDiscoveryPhase.ServicesDiscovered)
+                )
+                services.forEach { service ->
+                    _serviceDiscoveryUpdates.tryEmit(
+                        ServiceDiscoveryUpdate(peripheral, ServiceDiscoveryPhase.CharacteristicsDiscovered, service)
+                    )
+                }
             }
         }
         
