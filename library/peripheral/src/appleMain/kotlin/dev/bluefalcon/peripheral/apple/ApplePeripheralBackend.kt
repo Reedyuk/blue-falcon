@@ -7,6 +7,7 @@ import dev.bluefalcon.peripheral.DisconnectResult
 import dev.bluefalcon.peripheral.GattCharacteristicId
 import dev.bluefalcon.peripheral.GattResponseStatus
 import dev.bluefalcon.peripheral.NotificationMode
+import dev.bluefalcon.peripheral.NotificationReadiness
 import dev.bluefalcon.peripheral.NotificationResult
 import dev.bluefalcon.peripheral.PeripheralCapabilities
 import dev.bluefalcon.peripheral.PeripheralConfig
@@ -19,6 +20,7 @@ import dev.bluefalcon.peripheral.internal.BackendCharacteristicWriteRequest
 import dev.bluefalcon.peripheral.internal.BackendGattResponder
 import dev.bluefalcon.peripheral.internal.PeripheralBackend
 import dev.bluefalcon.peripheral.internal.PeripheralBackendEventSink
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -166,7 +168,39 @@ internal class ApplePeripheralBackend(
         characteristic: GattCharacteristicId,
         value: ByteArray,
         mode: NotificationMode,
-    ): NotificationResult = NotificationResult.Unsupported
+    ): NotificationResult = lifecycleMutex.withLock {
+        val request = locked {
+            if (sessionId !in activeSessions) {
+                return NotificationResult.Disconnected
+            }
+            if (supportedModes[characteristic]?.contains(mode) != true) {
+                return NotificationResult.Unsupported
+            }
+            if (characteristic !in subscriptions[sessionId].orEmpty()) {
+                return NotificationResult.Unsupported
+            }
+            val maximumLength = maximumLengths[sessionId]
+                ?: return NotificationResult.Disconnected
+            if (value.size > maximumLength) {
+                return NotificationResult.Failed(
+                    AppleNotificationValueTooLongException(value.size, maximumLength),
+                )
+            }
+            AppleNotificationRequest(sessionId, characteristic, mode, value)
+        }
+
+        try {
+            when (val result = stack.notify(request)) {
+                AppleNotificationStartResult.Accepted -> NotificationResult.Sent
+                AppleNotificationStartResult.Busy -> NotificationResult.Busy
+                AppleNotificationStartResult.Disconnected -> NotificationResult.Disconnected
+                is AppleNotificationStartResult.Rejected -> NotificationResult.Failed(result.cause)
+            }
+        } catch (cause: Throwable) {
+            if (cause is CancellationException) throw cause
+            NotificationResult.Failed(cause)
+        }
+    }
 
     override suspend fun disconnect(sessionId: PeripheralSessionId): DisconnectResult =
         DisconnectResult.Unsupported
@@ -290,7 +324,9 @@ internal class ApplePeripheralBackend(
             subscribed = false,
         )
 
-        AppleGattEvent.NotificationReady -> null
+        AppleGattEvent.NotificationReady -> {
+            { sink.onNotificationReady(NotificationReadiness.Manager) }
+        }
     }
 
     private fun subscriptionDeliveryLocked(
@@ -556,4 +592,11 @@ internal class AppleGattResponseException(
     requestToken: AppleRequestToken,
 ) : IllegalStateException(
     "Core Bluetooth rejected GATT response for session $sessionId and token ${requestToken.value}",
+)
+
+internal class AppleNotificationValueTooLongException(
+    valueSize: Int,
+    maximumSize: Int,
+) : IllegalArgumentException(
+    "Apple notification value has $valueSize bytes, maximum for this central is $maximumSize",
 )
