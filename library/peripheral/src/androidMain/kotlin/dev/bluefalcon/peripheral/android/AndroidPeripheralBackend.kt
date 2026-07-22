@@ -896,8 +896,9 @@ internal class AndroidPeripheralBackend(
                 publishPlatformFailure(eventGeneration, cause)
                 return@BackendGattResponder
             }
-            onResponse?.invoke(status)
-            if (!sent) {
+            if (sent) {
+                onResponse?.invoke(status)
+            } else {
                 publishPlatformFailure(
                     eventGeneration,
                     AndroidGattResponseException(requestId),

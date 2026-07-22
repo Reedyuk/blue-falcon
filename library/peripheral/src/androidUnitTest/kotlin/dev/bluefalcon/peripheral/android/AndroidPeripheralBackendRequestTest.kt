@@ -240,6 +240,18 @@ class AndroidPeripheralBackendRequestTest {
     }
 
     @Test
+    fun platformRejectedCccdResponseDoesNotCommitSubscription() = runTest {
+        val fixture = startedFixture()
+        fixture.stack.acceptResponses = false
+
+        fixture.emitCccdWrite(requestId = 54, value = NotificationCccdValue)
+        fixture.lastDescriptorWrite().responder?.respond(GattResponseStatus.Success, null)
+
+        assertEquals(emptyList(), fixture.sink.subscriptionChanges)
+        assertEquals(1, fixture.sink.platformFailures.size)
+    }
+
+    @Test
     fun indicationCccdCommitsSubscription() = runTest {
         val fixture = startedFixture()
 
@@ -314,6 +326,25 @@ class AndroidPeripheralBackendRequestTest {
             listOf(SessionId to setOf(CharacteristicId)),
             fixture.sink.subscriptionChanges,
         )
+    }
+
+    @Test
+    fun platformRejectedPreparedCccdResponseIsNotStaged() = runTest {
+        val fixture = startedFixture()
+        fixture.stack.acceptResponses = false
+        fixture.emitCccdWrite(
+            requestId = 55,
+            value = NotificationCccdValue,
+            preparedWrite = true,
+        )
+        fixture.lastDescriptorWrite().responder?.respond(GattResponseStatus.Success, null)
+
+        fixture.stack.acceptResponses = true
+        fixture.emitExecuteWrite(requestId = 56, execute = true)
+        fixture.lastExecuteWrite().responder.respond(GattResponseStatus.Success, null)
+
+        assertEquals(emptyList(), fixture.sink.subscriptionChanges)
+        assertEquals(1, fixture.sink.platformFailures.size)
     }
 
     @Test
