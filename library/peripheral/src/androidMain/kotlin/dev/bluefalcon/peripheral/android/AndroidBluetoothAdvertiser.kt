@@ -1,363 +1,379 @@
 package dev.bluefalcon.peripheral.android
 
-import android.bluetooth.*
-import android.bluetooth.le.*
 import android.content.Context
-import android.os.Build
-import android.os.ParcelUuid
 import dev.bluefalcon.core.Logger
-import dev.bluefalcon.peripheral.*
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
+import dev.bluefalcon.core.Uuid
+import dev.bluefalcon.peripheral.AdvertiseConfig
+import dev.bluefalcon.peripheral.AdvertiserState
+import dev.bluefalcon.peripheral.BluetoothAdvertiser
+import dev.bluefalcon.peripheral.CharacteristicProperty
+import dev.bluefalcon.peripheral.CharacteristicWriteRequest
+import dev.bluefalcon.peripheral.GattCharacteristicId
+import dev.bluefalcon.peripheral.GattDescriptorId
+import dev.bluefalcon.peripheral.GattResponseStatus
+import dev.bluefalcon.peripheral.GattServiceId
+import dev.bluefalcon.peripheral.NoOpBluetoothAdvertiser
+import dev.bluefalcon.peripheral.NotificationMode
+import dev.bluefalcon.peripheral.NotificationReadiness
+import dev.bluefalcon.peripheral.NotificationResult
+import dev.bluefalcon.peripheral.PeripheralConfig
+import dev.bluefalcon.peripheral.PeripheralSessionId
+import dev.bluefalcon.peripheral.internal.BackendCharacteristicReadRequest
+import dev.bluefalcon.peripheral.internal.BackendCharacteristicWriteRequest
+import dev.bluefalcon.peripheral.internal.BackendDescriptorReadRequest
+import dev.bluefalcon.peripheral.internal.BackendDescriptorWriteRequest
+import dev.bluefalcon.peripheral.internal.BackendExecuteWriteRequest
+import dev.bluefalcon.peripheral.internal.BackendGattServerRequest
+import dev.bluefalcon.peripheral.internal.PeripheralBackendEventSink
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.launch
-import java.util.UUID
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
-/**
- * Android implementation of [BluetoothAdvertiser].
- *
- * Uses [BluetoothLeAdvertiser] for the advertisement packet and
- * [BluetoothGattServer] to host a local GATT service tree.
- *
- * Requires:
- *   - `android.permission.BLUETOOTH_ADVERTISE` on API 31+
- *   - `android.permission.BLUETOOTH_CONNECT` on API 31+
- *
- * Obtain via [createBluetoothAdvertiser].
- */
-class AndroidBluetoothAdvertiser(
-    private val context: Context,
-    private val logger: Logger? = null
-) : BluetoothAdvertiser {
-
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+@Deprecated(
+    message = "Use createBlueFalconPeripheral for production peripheral-role BLE",
+    replaceWith = ReplaceWith("createBlueFalconPeripheral(context, logger)"),
+)
+class AndroidBluetoothAdvertiser : BluetoothAdvertiser {
+    private val logger: Logger?
+    private val backend: AndroidPeripheralBackend
+    private val lock = Any()
+    private val lifecycleMutex = Mutex()
+    private val eventSink = LegacyBackendEventSink()
 
     private val _state = MutableStateFlow(AdvertiserState.Idle)
     override val state: StateFlow<AdvertiserState> = _state.asStateFlow()
 
-    private val _writeRequests = MutableSharedFlow<CharacteristicWriteRequest>(extraBufferCapacity = 64)
-    override val characteristicWriteRequests: SharedFlow<CharacteristicWriteRequest> = _writeRequests
+    private val _writeRequests =
+        MutableSharedFlow<CharacteristicWriteRequest>(extraBufferCapacity = 64)
+    override val characteristicWriteRequests: SharedFlow<CharacteristicWriteRequest> =
+        _writeRequests
 
-    private val bluetoothManager =
-        context.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
-    private val adapter: BluetoothAdapter get() = bluetoothManager.adapter
+    private val characteristicValues = mutableMapOf<CharacteristicKey, ByteArray>()
+    private val descriptorValues = mutableMapOf<DescriptorKey, ByteArray>()
+    private val notificationModes = mutableMapOf<GattCharacteristicId, List<NotificationMode>>()
+    private val activeSessions = linkedSetOf<PeripheralSessionId>()
+    private val subscriptions = mutableMapOf<PeripheralSessionId, Set<GattCharacteristicId>>()
 
-    private var leAdvertiser: BluetoothLeAdvertiser? = null
-    private var gattServer: BluetoothGattServer? = null
-    private var currentConfig: AdvertiseConfig? = null
+    constructor(
+        context: Context,
+        logger: Logger? = null,
+    ) : this(FrameworkAndroidBluetoothStack(context, logger), logger)
 
-    // Map of serviceUUID -> characteristicUUID -> characteristic, for value updates
-    private val hostedCharacteristics =
-        mutableMapOf<String, MutableMap<String, BluetoothGattCharacteristic>>()
-
-    // -------------------------------------------------------------------------
-    // GATT server callback
-    // -------------------------------------------------------------------------
-
-    private val gattServerCallback = object : BluetoothGattServerCallback() {
-
-        override fun onConnectionStateChange(device: BluetoothDevice, status: Int, newState: Int) {
-            logger?.debug("AndroidAdvertiser: connection state $newState for ${device.address}")
-        }
-
-        override fun onCharacteristicReadRequest(
-            device: BluetoothDevice,
-            requestId: Int,
-            offset: Int,
-            characteristic: BluetoothGattCharacteristic
-        ) {
-            val value = characteristic.value ?: ByteArray(0)
-            val slice = if (offset < value.size) value.copyOfRange(offset, value.size) else ByteArray(0)
-            gattServer?.sendResponse(device, requestId, BluetoothGatt.GATT_SUCCESS, offset, slice)
-        }
-
-        override fun onCharacteristicWriteRequest(
-            device: BluetoothDevice,
-            requestId: Int,
-            characteristic: BluetoothGattCharacteristic,
-            preparedWrite: Boolean,
-            responseNeeded: Boolean,
-            offset: Int,
-            value: ByteArray?
-        ) {
-            val written = value ?: ByteArray(0)
-            // Update the stored value so subsequent reads reflect the write
-            characteristic.value = written
-
-            if (responseNeeded) {
-                gattServer?.sendResponse(device, requestId, BluetoothGatt.GATT_SUCCESS, offset, written)
-            }
-
-            val serviceUuid = characteristic.service?.uuid?.toString() ?: return
-            scope.launch {
-                _writeRequests.emit(
-                    CharacteristicWriteRequest(
-                        serviceUuid = serviceUuid,
-                        characteristicUuid = characteristic.uuid.toString(),
-                        value = written,
-                        requestId = if (responseNeeded) requestId else -1
-                    )
-                )
-            }
-        }
-
-        override fun onDescriptorWriteRequest(
-            device: BluetoothDevice,
-            requestId: Int,
-            descriptor: BluetoothGattDescriptor,
-            preparedWrite: Boolean,
-            responseNeeded: Boolean,
-            offset: Int,
-            value: ByteArray?
-        ) {
-            descriptor.value = value
-            if (responseNeeded) {
-                gattServer?.sendResponse(device, requestId, BluetoothGatt.GATT_SUCCESS, offset, value)
-            }
-        }
-
-        override fun onDescriptorReadRequest(
-            device: BluetoothDevice,
-            requestId: Int,
-            offset: Int,
-            descriptor: BluetoothGattDescriptor
-        ) {
-            val value = descriptor.value ?: ByteArray(0)
-            gattServer?.sendResponse(device, requestId, BluetoothGatt.GATT_SUCCESS, offset, value)
-        }
+    internal constructor(
+        stack: AndroidBluetoothStack,
+        logger: Logger? = null,
+    ) {
+        this.logger = logger
+        backend = AndroidPeripheralBackend(
+            stack = stack,
+            logger = logger,
+            allowAdvertisingWithoutGattServer = true,
+        )
     }
-
-    // -------------------------------------------------------------------------
-    // Advertising callback
-    // -------------------------------------------------------------------------
-
-    private val advertiseCallback = object : AdvertiseCallback() {
-        override fun onStartSuccess(settingsInEffect: AdvertiseSettings) {
-            logger?.info("AndroidAdvertiser: advertising started")
-            _state.value = AdvertiserState.Advertising
-        }
-
-        override fun onStartFailure(errorCode: Int) {
-            logger?.error("AndroidAdvertiser: advertising failed, errorCode=$errorCode")
-            _state.value = AdvertiserState.Error
-            teardownGattServer()
-        }
-    }
-
-    // -------------------------------------------------------------------------
-    // BluetoothAdvertiser implementation
-    // -------------------------------------------------------------------------
 
     override suspend fun startAdvertising(config: AdvertiseConfig) {
-        stopAdvertising()
-        currentConfig = config
+        lifecycleMutex.withLock {
+            if (_state.value != AdvertiserState.Idle) {
+                stopAdvertisingLocked()
+            }
+            seedAttributeState(config)
 
-        // Build GATT server first so it is ready before the advertisement is visible
-        setupGattServer(config)
-
-        leAdvertiser = adapter.bluetoothLeAdvertiser
-            ?: run {
-                logger?.error("AndroidAdvertiser: BluetoothLeAdvertiser not available (BLE advertising not supported)")
+            try {
+                backend.start(PeripheralConfig(config), eventSink)
+                _state.value = AdvertiserState.Advertising
+                logger?.info("AndroidAdvertiser: advertising started")
+            } catch (cause: Throwable) {
+                clearLegacyState()
                 _state.value = AdvertiserState.Error
-                return
-            }
-
-        val settings = AdvertiseSettings.Builder()
-            .setAdvertiseMode(AdvertiseSettings.ADVERTISE_MODE_BALANCED)
-            .setConnectable(config.services.isNotEmpty())
-            .setTxPowerLevel(AdvertiseSettings.ADVERTISE_TX_POWER_MEDIUM)
-            .build()
-
-        val dataBuilder = AdvertiseData.Builder().apply {
-            setIncludeDeviceName(config.localName != null)
-            setIncludeTxPowerLevel(config.includeTxPower)
-            config.serviceUuids.forEach { uuid ->
-                addServiceUuid(ParcelUuid(UUID.fromString(uuid)))
-            }
-            config.manufacturerData.forEach { (id, data) ->
-                addManufacturerData(id, data)
+                logger?.error("AndroidAdvertiser: advertising failed", cause)
+                throw cause
             }
         }
-
-        leAdvertiser?.startAdvertising(settings, dataBuilder.build(), advertiseCallback)
     }
 
-    override suspend fun stopAdvertising() {
+    override suspend fun stopAdvertising() = lifecycleMutex.withLock {
+        stopAdvertisingLocked()
+    }
+
+    private suspend fun stopAdvertisingLocked() {
         if (_state.value == AdvertiserState.Idle) return
+
         try {
-            leAdvertiser?.stopAdvertising(advertiseCallback)
-        } catch (e: Exception) {
-            logger?.error("AndroidAdvertiser: error stopping advertising", e)
+            backend.stop()
+        } finally {
+            clearLegacyState()
+            _state.value = AdvertiserState.Idle
+            logger?.info("AndroidAdvertiser: stopped")
         }
-        leAdvertiser = null
-        teardownGattServer()
-        _state.value = AdvertiserState.Idle
-        logger?.info("AndroidAdvertiser: stopped")
     }
 
     override suspend fun updateCharacteristicValue(
         serviceUuid: String,
         characteristicUuid: String,
-        value: ByteArray
+        value: ByteArray,
     ) {
-        val characteristic = hostedCharacteristics[serviceUuid.lowercase()]
-            ?.get(characteristicUuid.lowercase())
-            ?: run {
-                logger?.error("AndroidAdvertiser: characteristic $characteristicUuid not found in service $serviceUuid")
-                return
-            }
+        val serviceId = serviceUuid.toServiceIdOrNull()
+        val characteristicId = characteristicUuid.toCharacteristicIdOrNull()
+        if (serviceId == null || characteristicId == null) {
+            logger?.error(
+                "AndroidAdvertiser: invalid characteristic $characteristicUuid or service $serviceUuid",
+            )
+            return
+        }
 
-        characteristic.value = value
-
-        // Notify / indicate all connected centrals that have subscribed
-        val connectedDevices = bluetoothManager.getConnectedDevices(BluetoothProfile.GATT)
-        val server = gattServer ?: return
-        for (device in connectedDevices) {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                server.notifyCharacteristicChanged(device, characteristic, false, value)
+        val key = CharacteristicKey(serviceId, characteristicId)
+        val update = synchronized(lock) {
+            if (key !in characteristicValues) {
+                null
             } else {
-                @Suppress("DEPRECATION")
-                server.notifyCharacteristicChanged(device, characteristic, false)
+                val copiedValue = value.copyOf()
+                characteristicValues[key] = copiedValue
+                NotificationUpdate(
+                    sessions = activeSessions.filter { sessionId ->
+                        characteristicId in subscriptions[sessionId].orEmpty()
+                    },
+                    modes = notificationModes[characteristicId]
+                        ?: listOf(NotificationMode.Notification),
+                    value = copiedValue,
+                )
+            }
+        }
+
+        if (update == null) {
+            logger?.error(
+                "AndroidAdvertiser: characteristic $characteristicUuid not found in service $serviceUuid",
+            )
+            return
+        }
+
+        update.sessions.forEach { sessionId ->
+            for (mode in update.modes) {
+                val result = backend.notify(
+                    sessionId = sessionId,
+                    characteristic = characteristicId,
+                    value = update.value,
+                    mode = mode,
+                )
+                if (result != NotificationResult.Unsupported) break
             }
         }
     }
 
-    // -------------------------------------------------------------------------
-    // Helpers
-    // -------------------------------------------------------------------------
+    private fun seedAttributeState(config: AdvertiseConfig) {
+        synchronized(lock) {
+            characteristicValues.clear()
+            descriptorValues.clear()
+            notificationModes.clear()
+            activeSessions.clear()
+            subscriptions.clear()
 
-    private fun setupGattServer(config: AdvertiseConfig) {
-        if (config.services.isEmpty()) return
-        hostedCharacteristics.clear()
-
-        gattServer = bluetoothManager.openGattServer(context, gattServerCallback)
-
-        for (serviceConfig in config.services) {
-            val service = BluetoothGattService(
-                UUID.fromString(serviceConfig.uuid),
-                BluetoothGattService.SERVICE_TYPE_PRIMARY
-            )
-
-            val charMap = mutableMapOf<String, BluetoothGattCharacteristic>()
-
-            for (charConfig in serviceConfig.characteristics) {
-                val properties = charConfig.properties.toAndroidProperties()
-                val permissions = if (charConfig.permissions != 0) {
-                    charConfig.permissions
-                } else {
-                    charConfig.properties.toAndroidPermissions()
-                }
-
-                val characteristic = BluetoothGattCharacteristic(
-                    UUID.fromString(charConfig.uuid),
-                    properties,
-                    permissions
-                )
-                charConfig.initialValue?.let { characteristic.value = it }
-
-                for (descConfig in charConfig.descriptors) {
-                    val descriptor = BluetoothGattDescriptor(
-                        UUID.fromString(descConfig.uuid),
-                        if (descConfig.permissions != 0) descConfig.permissions
-                        else BluetoothGattDescriptor.PERMISSION_READ or BluetoothGattDescriptor.PERMISSION_WRITE
-                    )
-                    descConfig.initialValue?.let { descriptor.value = it }
-                    characteristic.addDescriptor(descriptor)
-                }
-
-                // Auto-add CCCD for notify/indicate characteristics if not already present
-                if (charConfig.properties.any { it == CharacteristicProperty.NOTIFY || it == CharacteristicProperty.INDICATE }) {
-                    val cccdUuid = UUID.fromString(CCCD_UUID)
-                    if (characteristic.getDescriptor(cccdUuid) == null) {
-                        characteristic.addDescriptor(
-                            BluetoothGattDescriptor(
-                                cccdUuid,
-                                BluetoothGattDescriptor.PERMISSION_READ or BluetoothGattDescriptor.PERMISSION_WRITE
-                            ).also { it.value = BluetoothGattDescriptor.DISABLE_NOTIFICATION_VALUE }
-                        )
+            config.services.forEach { service ->
+                val serviceId = GattServiceId(Uuid.parse(service.uuid))
+                service.characteristics.forEach { characteristic ->
+                    val characteristicId = GattCharacteristicId(Uuid.parse(characteristic.uuid))
+                    characteristicValues[CharacteristicKey(serviceId, characteristicId)] =
+                        characteristic.initialValue?.copyOf() ?: ByteArray(0)
+                    notificationModes(characteristic.properties).takeIf { it.isNotEmpty() }
+                        ?.let { modes ->
+                            notificationModes[characteristicId] = modes
+                        }
+                    characteristic.descriptors.forEach { descriptor ->
+                        val descriptorId = GattDescriptorId(Uuid.parse(descriptor.uuid))
+                        descriptorValues[
+                            DescriptorKey(serviceId, characteristicId, descriptorId)
+                        ] = descriptor.initialValue?.copyOf() ?: ByteArray(0)
                     }
                 }
-
-                service.addCharacteristic(characteristic)
-                charMap[charConfig.uuid.lowercase()] = characteristic
-            }
-
-            gattServer?.addService(service)
-            hostedCharacteristics[serviceConfig.uuid.lowercase()] = charMap
-        }
-
-        logger?.info("AndroidAdvertiser: GATT server set up with ${config.services.size} service(s)")
-    }
-
-    private fun teardownGattServer() {
-        gattServer?.close()
-        gattServer = null
-        hostedCharacteristics.clear()
-    }
-
-    // -------------------------------------------------------------------------
-    // Platform conversion helpers
-    // -------------------------------------------------------------------------
-
-    private fun Set<CharacteristicProperty>.toAndroidProperties(): Int {
-        var props = 0
-        for (p in this) {
-            props = props or when (p) {
-                CharacteristicProperty.READ -> BluetoothGattCharacteristic.PROPERTY_READ
-                CharacteristicProperty.WRITE -> BluetoothGattCharacteristic.PROPERTY_WRITE
-                CharacteristicProperty.WRITE_NO_RESPONSE -> BluetoothGattCharacteristic.PROPERTY_WRITE_NO_RESPONSE
-                CharacteristicProperty.NOTIFY -> BluetoothGattCharacteristic.PROPERTY_NOTIFY
-                CharacteristicProperty.INDICATE -> BluetoothGattCharacteristic.PROPERTY_INDICATE
-                CharacteristicProperty.SIGNED_WRITE -> BluetoothGattCharacteristic.PROPERTY_SIGNED_WRITE
-                CharacteristicProperty.EXTENDED_PROPERTIES -> BluetoothGattCharacteristic.PROPERTY_EXTENDED_PROPS
             }
         }
-        return props
     }
 
-    private fun Set<CharacteristicProperty>.toAndroidPermissions(): Int {
-        var perms = 0
-        for (p in this) {
-            perms = perms or when (p) {
-                CharacteristicProperty.READ -> BluetoothGattCharacteristic.PERMISSION_READ
-                CharacteristicProperty.WRITE,
-                CharacteristicProperty.WRITE_NO_RESPONSE,
-                CharacteristicProperty.SIGNED_WRITE -> BluetoothGattCharacteristic.PERMISSION_WRITE
-                else -> 0
+    private fun clearLegacyState() {
+        synchronized(lock) {
+            characteristicValues.clear()
+            descriptorValues.clear()
+            notificationModes.clear()
+            activeSessions.clear()
+            subscriptions.clear()
+        }
+    }
+
+    private fun handleRequest(request: BackendGattServerRequest) {
+        when (request) {
+            is BackendCharacteristicReadRequest -> {
+                val value = synchronized(lock) {
+                    (characteristicValues[
+                        CharacteristicKey(request.serviceId, request.characteristicId)
+                    ] ?: ByteArray(0)).sliceFrom(request.offset)
+                }
+                request.responder.respond(GattResponseStatus.Success, value)
+            }
+
+            is BackendCharacteristicWriteRequest -> {
+                val value = request.value
+                synchronized(lock) {
+                    val key = CharacteristicKey(request.serviceId, request.characteristicId)
+                    characteristicValues[key] = (characteristicValues[key] ?: ByteArray(0))
+                        .writtenAt(request.offset, value)
+                }
+                request.responder?.respond(GattResponseStatus.Success, value)
+                _writeRequests.tryEmit(
+                    CharacteristicWriteRequest(
+                        serviceUuid = request.serviceId.uuid.toString(),
+                        characteristicUuid = request.characteristicId.uuid.toString(),
+                        value = value.copyOf(),
+                        requestId = request.requestId,
+                    ),
+                )
+            }
+
+            is BackendDescriptorReadRequest -> {
+                val value = synchronized(lock) {
+                    (descriptorValues[
+                        DescriptorKey(
+                            request.serviceId,
+                            request.characteristicId,
+                            request.descriptorId,
+                        )
+                    ] ?: ByteArray(0)).sliceFrom(request.offset)
+                }
+                request.responder.respond(GattResponseStatus.Success, value)
+            }
+
+            is BackendDescriptorWriteRequest -> {
+                val value = request.value
+                synchronized(lock) {
+                    val key = DescriptorKey(
+                        request.serviceId,
+                        request.characteristicId,
+                        request.descriptorId,
+                    )
+                    descriptorValues[key] = (descriptorValues[key] ?: ByteArray(0))
+                        .writtenAt(request.offset, value)
+                }
+                request.responder?.respond(GattResponseStatus.Success, value)
+            }
+
+            is BackendExecuteWriteRequest ->
+                request.responder.respond(GattResponseStatus.Success, null)
+        }
+    }
+
+    private inner class LegacyBackendEventSink : PeripheralBackendEventSink {
+        override fun onSessionOpened(
+            sessionId: PeripheralSessionId,
+            maximumUpdateValueLength: Int?,
+        ) {
+            synchronized(lock) {
+                activeSessions += sessionId
+                subscriptions.putIfAbsent(sessionId, emptySet())
             }
         }
-        return perms
+
+        override fun onSessionClosed(sessionId: PeripheralSessionId, cause: Throwable?) {
+            synchronized(lock) {
+                activeSessions -= sessionId
+                subscriptions.remove(sessionId)
+            }
+        }
+
+        override fun onSubscriptionsChanged(
+            sessionId: PeripheralSessionId,
+            subscriptions: Set<GattCharacteristicId>,
+        ) {
+            synchronized(lock) {
+                this@AndroidBluetoothAdvertiser.subscriptions[sessionId] = subscriptions.toSet()
+            }
+        }
+
+        override fun onMaximumUpdateValueLengthChanged(
+            sessionId: PeripheralSessionId,
+            maximumUpdateValueLength: Int?,
+        ) = Unit
+
+        override fun onNotificationReady(readiness: NotificationReadiness) = Unit
+
+        override fun onRequest(request: BackendGattServerRequest) {
+            handleRequest(request)
+        }
+
+        override fun onPlatformFailure(cause: Throwable) {
+            logger?.error("AndroidAdvertiser: peripheral platform failure", cause)
+        }
     }
 
-    companion object {
-        /** Client Characteristic Configuration Descriptor UUID */
-        private const val CCCD_UUID = "00002902-0000-1000-8000-00805f9b34fb"
+    private data class CharacteristicKey(
+        val serviceId: GattServiceId,
+        val characteristicId: GattCharacteristicId,
+    )
+
+    private data class DescriptorKey(
+        val serviceId: GattServiceId,
+        val characteristicId: GattCharacteristicId,
+        val descriptorId: GattDescriptorId,
+    )
+
+    private class NotificationUpdate(
+        val sessions: List<PeripheralSessionId>,
+        val modes: List<NotificationMode>,
+        value: ByteArray,
+    ) {
+        private val copiedValue = value.copyOf()
+        val value: ByteArray
+            get() = copiedValue.copyOf()
+    }
+
+    private companion object {
+        fun notificationModes(
+            properties: Set<CharacteristicProperty>,
+        ): List<NotificationMode> = buildList {
+            if (CharacteristicProperty.NOTIFY in properties) {
+                add(NotificationMode.Notification)
+            }
+            if (CharacteristicProperty.INDICATE in properties) {
+                add(NotificationMode.Indication)
+            }
+        }
+
+        fun String.toServiceIdOrNull(): GattServiceId? = runCatching {
+            GattServiceId(Uuid.parse(this))
+        }.getOrNull()
+
+        fun String.toCharacteristicIdOrNull(): GattCharacteristicId? = runCatching {
+            GattCharacteristicId(Uuid.parse(this))
+        }.getOrNull()
+
+        fun ByteArray.sliceFrom(offset: Int): ByteArray =
+            if (offset in indices) copyOfRange(offset, size) else ByteArray(0)
+
+        fun ByteArray.writtenAt(offset: Int, value: ByteArray): ByteArray {
+            if (offset <= 0) return value.copyOf()
+            val result = copyOf(maxOf(size, offset + value.size))
+            value.copyInto(result, destinationOffset = offset)
+            return result
+        }
     }
 }
 
-/**
- * Create an [AndroidBluetoothAdvertiser] for this Android context.
- *
- * Returns a [NoOpBluetoothAdvertiser] if BLE advertising is not supported
- * on this device (e.g. no hardware support, or Bluetooth is off).
- */
+@Deprecated(
+    message = "Use createBlueFalconPeripheral for production peripheral-role BLE",
+    replaceWith = ReplaceWith("createBlueFalconPeripheral(context, logger)"),
+)
 fun createBluetoothAdvertiser(
     context: Context,
     logger: Logger? = null,
-): BluetoothAdvertiser {
-    return try {
-        val mgr = context.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager
-        if (mgr?.adapter?.isMultipleAdvertisementSupported == true) {
-            AndroidBluetoothAdvertiser(context, logger)
-        } else {
-            NoOpBluetoothAdvertiser()
-        }
-    } catch (e: Exception) {
+): BluetoothAdvertiser = try {
+    val stack = FrameworkAndroidBluetoothStack(context, logger)
+    if (stack.capabilities.connectableAdvertising) {
+        @Suppress("DEPRECATION")
+        AndroidBluetoothAdvertiser(stack, logger)
+    } else {
         NoOpBluetoothAdvertiser()
     }
+} catch (_: Exception) {
+    NoOpBluetoothAdvertiser()
 }
