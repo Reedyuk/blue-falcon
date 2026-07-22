@@ -54,6 +54,42 @@ class GattCharacteristicWriteRequest(
     }
 }
 
+class GattCharacteristicWrite(
+    val serviceId: GattServiceId,
+    val characteristicId: GattCharacteristicId,
+    val offset: Int,
+    value: ByteArray,
+) {
+    private val copiedValue = value.copyOf()
+
+    val value: ByteArray
+        get() = copiedValue.copyOf()
+}
+
+class GattCharacteristicWriteBatchRequest(
+    override val session: PeripheralSession,
+    writes: List<GattCharacteristicWrite>,
+    override val response: GattResponseHandle,
+) : GattServerRequest {
+    private val copiedWrites = writes.map { write -> write.copyForRequest() }
+
+    val writes: List<GattCharacteristicWrite>
+        get() = copiedWrites.map { write -> write.copyForRequest() }
+
+    init {
+        require(copiedWrites.isNotEmpty()) {
+            "Characteristic write batch must not be empty"
+        }
+    }
+
+    private fun GattCharacteristicWrite.copyForRequest() = GattCharacteristicWrite(
+        serviceId = serviceId,
+        characteristicId = characteristicId,
+        offset = offset,
+        value = value,
+    )
+}
+
 class GattDescriptorReadRequest(
     override val session: PeripheralSession,
     override val serviceId: GattServiceId,

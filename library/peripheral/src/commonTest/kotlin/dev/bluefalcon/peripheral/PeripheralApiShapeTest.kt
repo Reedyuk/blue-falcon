@@ -58,6 +58,47 @@ class PeripheralApiShapeTest {
     }
 
     @Test
+    fun characteristicWriteBatchCopiesListAndPayloads() {
+        val session = RecordingSession()
+        val response = RecordingResponseHandle()
+        val serviceId = GattServiceId(SERVICE_UUID.toUuid())
+        val characteristicId = GattCharacteristicId(CHARACTERISTIC_UUID.toUuid())
+        val otherCharacteristicId = GattCharacteristicId(OTHER_CHARACTERISTIC_UUID.toUuid())
+        val firstBytes = byteArrayOf(1, 2)
+        val source = mutableListOf(
+            GattCharacteristicWrite(serviceId, characteristicId, 0, firstBytes),
+            GattCharacteristicWrite(serviceId, otherCharacteristicId, 3, byteArrayOf(3, 4)),
+        )
+        val request = GattCharacteristicWriteBatchRequest(
+            session = session,
+            writes = source,
+            response = response,
+        )
+
+        firstBytes[0] = 99
+        source.clear()
+
+        assertEquals(2, request.writes.size)
+        assertContentEquals(byteArrayOf(1, 2), request.writes.first().value)
+        request.writes.first().value[0] = 88
+        assertContentEquals(byteArrayOf(1, 2), request.writes.first().value)
+        assertEquals(session, request.session)
+        assertEquals(session.id, request.sessionId)
+        assertEquals(response, request.response)
+    }
+
+    @Test
+    fun characteristicWriteBatchRejectsEmptyOperations() {
+        assertFailsWith<IllegalArgumentException> {
+            GattCharacteristicWriteBatchRequest(
+                session = RecordingSession(),
+                writes = emptyList(),
+                response = RecordingResponseHandle(),
+            )
+        }
+    }
+
+    @Test
     fun responseRequiredRequestsExposeNonNullHandle() {
         val response = RecordingResponseHandle()
         val descriptorId = GattDescriptorId(DESCRIPTOR_UUID.toUuid())
@@ -147,6 +188,7 @@ class PeripheralApiShapeTest {
     private companion object {
         const val SERVICE_UUID = "0000180d-0000-1000-8000-00805f9b34fb"
         const val CHARACTERISTIC_UUID = "00002a37-0000-1000-8000-00805f9b34fb"
+        const val OTHER_CHARACTERISTIC_UUID = "00002a38-0000-1000-8000-00805f9b34fb"
         const val DESCRIPTOR_UUID = "00002902-0000-1000-8000-00805f9b34fb"
     }
 }

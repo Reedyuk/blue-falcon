@@ -8,6 +8,7 @@ sealed interface NotificationReadiness {
 enum class GattRequestType {
     CharacteristicRead,
     CharacteristicWrite,
+    CharacteristicWriteBatch,
     DescriptorRead,
     DescriptorWrite,
     ExecuteWrite,

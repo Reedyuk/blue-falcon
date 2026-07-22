@@ -19,6 +19,7 @@ import dev.bluefalcon.peripheral.NotificationResult
 import dev.bluefalcon.peripheral.PeripheralConfig
 import dev.bluefalcon.peripheral.PeripheralSessionId
 import dev.bluefalcon.peripheral.internal.BackendCharacteristicReadRequest
+import dev.bluefalcon.peripheral.internal.BackendCharacteristicWriteBatchRequest
 import dev.bluefalcon.peripheral.internal.BackendCharacteristicWriteRequest
 import dev.bluefalcon.peripheral.internal.BackendDescriptorReadRequest
 import dev.bluefalcon.peripheral.internal.BackendDescriptorWriteRequest
@@ -230,6 +231,9 @@ class AndroidBluetoothAdvertiser : BluetoothAdvertiser {
                     ),
                 )
             }
+
+            is BackendCharacteristicWriteBatchRequest ->
+                request.responder.respond(GattResponseStatus.RequestNotSupported, null)
 
             is BackendDescriptorReadRequest -> {
                 val value = synchronized(lock) {

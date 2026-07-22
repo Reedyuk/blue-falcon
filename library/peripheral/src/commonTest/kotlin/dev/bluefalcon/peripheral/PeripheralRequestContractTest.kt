@@ -3,6 +3,7 @@ package dev.bluefalcon.peripheral
 import dev.bluefalcon.core.toUuid
 import dev.bluefalcon.peripheral.fake.FakePeripheralBackend
 import dev.bluefalcon.peripheral.internal.DefaultBlueFalconPeripheral
+import dev.bluefalcon.peripheral.internal.BackendCharacteristicWrite
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.first
@@ -46,6 +47,82 @@ class PeripheralRequestContractTest {
         assertEquals(SessionId, request.session.id)
         assertContentEquals(byteArrayOf(1, 2, 3), request.value)
         assertNull(request.response)
+    }
+
+    @Test
+    fun characteristicWriteBatchUsesOneSessionAndOneResponse() = runTest {
+        val (backend, peripheral) = startedPeripheral()
+        val requestDeferred = async(UnconfinedTestDispatcher(testScheduler)) {
+            peripheral.requests.first()
+        }
+        val otherCharacteristicId = GattCharacteristicId(
+            "00002a38-0000-1000-8000-00805f9b34fb".toUuid(),
+        )
+        val responder = backend.emitCharacteristicWriteBatch(
+            sessionId = SessionId,
+            writes = listOf(
+                BackendCharacteristicWrite(
+                    serviceId = ServiceId,
+                    characteristicId = CharacteristicId,
+                    offset = 0,
+                    value = byteArrayOf(1),
+                ),
+                BackendCharacteristicWrite(
+                    serviceId = ServiceId,
+                    characteristicId = otherCharacteristicId,
+                    offset = 1,
+                    value = byteArrayOf(2),
+                ),
+            ),
+        )
+        runCurrent()
+
+        val request = assertIs<GattCharacteristicWriteBatchRequest>(requestDeferred.await())
+        assertEquals(SessionId, request.sessionId)
+        assertEquals(2, request.writes.size)
+        assertEquals(
+            GattResponseResult.Responded,
+            request.response.respond(GattResponseStatus.Success),
+        )
+        assertEquals(GattResponseStatus.Success, responder.responses.single().status)
+    }
+
+    @Test
+    fun characteristicWriteBatchExpiresWithOneFallbackResponse() = runTest {
+        val (backend, peripheral) = startedPeripheral(responseDeadlineMillis = 100)
+        val requestDeferred = async(UnconfinedTestDispatcher(testScheduler)) {
+            peripheral.requests.first()
+        }
+        val eventDeferred = async(UnconfinedTestDispatcher(testScheduler)) {
+            peripheral.events.first()
+        }
+        val responder = backend.emitCharacteristicWriteBatch(
+            sessionId = SessionId,
+            writes = listOf(
+                BackendCharacteristicWrite(
+                    serviceId = ServiceId,
+                    characteristicId = CharacteristicId,
+                    offset = 0,
+                    value = byteArrayOf(1),
+                ),
+            ),
+        )
+        runCurrent()
+        val request = assertIs<GattCharacteristicWriteBatchRequest>(requestDeferred.await())
+
+        advanceTimeBy(100)
+        runCurrent()
+
+        assertEquals(1, responder.responses.size)
+        assertEquals(GattResponseStatus.UnlikelyError, responder.responses.single().status)
+        assertEquals(
+            PeripheralEvent.ResponseTimedOut(SessionId, GattRequestType.CharacteristicWriteBatch),
+            eventDeferred.await(),
+        )
+        assertEquals(
+            GattResponseResult.Expired,
+            request.response.respond(GattResponseStatus.Success),
+        )
     }
 
     @Test

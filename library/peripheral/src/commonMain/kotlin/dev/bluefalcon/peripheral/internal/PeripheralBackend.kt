@@ -115,6 +115,44 @@ internal class BackendCharacteristicWriteRequest(
     }
 }
 
+internal class BackendCharacteristicWrite(
+    val serviceId: GattServiceId,
+    val characteristicId: GattCharacteristicId,
+    val offset: Int,
+    value: ByteArray,
+) {
+    private val copiedValue = value.copyOf()
+
+    val value: ByteArray
+        get() = copiedValue.copyOf()
+}
+
+internal class BackendCharacteristicWriteBatchRequest(
+    override val sessionId: PeripheralSessionId,
+    writes: List<BackendCharacteristicWrite>,
+    override val responder: BackendGattResponder,
+) : BackendGattServerRequest {
+    private val copiedWrites = writes.map { write -> write.copyForRequest() }
+
+    override val requestType = GattRequestType.CharacteristicWriteBatch
+
+    val writes: List<BackendCharacteristicWrite>
+        get() = copiedWrites.map { write -> write.copyForRequest() }
+
+    init {
+        require(copiedWrites.isNotEmpty()) {
+            "Backend characteristic write batch must not be empty"
+        }
+    }
+
+    private fun BackendCharacteristicWrite.copyForRequest() = BackendCharacteristicWrite(
+        serviceId = serviceId,
+        characteristicId = characteristicId,
+        offset = offset,
+        value = value,
+    )
+}
+
 internal class BackendDescriptorReadRequest(
     override val sessionId: PeripheralSessionId,
     override val serviceId: GattServiceId,
