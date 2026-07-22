@@ -1,6 +1,11 @@
 package dev.bluefalcon.peripheral.apple
 
+import dev.bluefalcon.peripheral.GattCharacteristicId
+import dev.bluefalcon.peripheral.NotificationReadiness
 import dev.bluefalcon.peripheral.PeripheralConfig
+import dev.bluefalcon.peripheral.PeripheralSessionId
+import dev.bluefalcon.peripheral.internal.BackendGattServerRequest
+import dev.bluefalcon.peripheral.internal.PeripheralBackendEventSink
 
 internal class FakeApplePeripheralStack : ApplePeripheralStack {
     var openResult = AppleOpenResult(restored = false, advertising = true)
@@ -68,5 +73,53 @@ internal class FakeApplePeripheralStack : ApplePeripheralStack {
 
     fun fail(cause: Throwable) {
         listener.onPlatformFailure(cause)
+    }
+}
+
+internal class RecordingAppleBackendSink : PeripheralBackendEventSink {
+    val openedSessions = mutableListOf<Pair<PeripheralSessionId, Int?>>()
+    val closedSessions = mutableListOf<Pair<PeripheralSessionId, Throwable?>>()
+    val subscriptionUpdates =
+        mutableListOf<Pair<PeripheralSessionId, Set<GattCharacteristicId>>>()
+    val maximumLengthUpdates = mutableListOf<Pair<PeripheralSessionId, Int?>>()
+    val readinessEvents = mutableListOf<NotificationReadiness>()
+    val requests = mutableListOf<BackendGattServerRequest>()
+    val platformFailures = mutableListOf<Throwable>()
+
+    override fun onSessionOpened(
+        sessionId: PeripheralSessionId,
+        maximumUpdateValueLength: Int?,
+    ) {
+        openedSessions += sessionId to maximumUpdateValueLength
+    }
+
+    override fun onSessionClosed(sessionId: PeripheralSessionId, cause: Throwable?) {
+        closedSessions += sessionId to cause
+    }
+
+    override fun onSubscriptionsChanged(
+        sessionId: PeripheralSessionId,
+        subscriptions: Set<GattCharacteristicId>,
+    ) {
+        subscriptionUpdates += sessionId to subscriptions.toSet()
+    }
+
+    override fun onMaximumUpdateValueLengthChanged(
+        sessionId: PeripheralSessionId,
+        maximumUpdateValueLength: Int?,
+    ) {
+        maximumLengthUpdates += sessionId to maximumUpdateValueLength
+    }
+
+    override fun onNotificationReady(readiness: NotificationReadiness) {
+        readinessEvents += readiness
+    }
+
+    override fun onRequest(request: BackendGattServerRequest) {
+        requests += request
+    }
+
+    override fun onPlatformFailure(cause: Throwable) {
+        platformFailures += cause
     }
 }
