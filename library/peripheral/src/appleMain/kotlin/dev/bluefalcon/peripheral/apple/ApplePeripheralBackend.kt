@@ -5,12 +5,18 @@ import dev.bluefalcon.core.Uuid
 import dev.bluefalcon.peripheral.CharacteristicProperty
 import dev.bluefalcon.peripheral.DisconnectResult
 import dev.bluefalcon.peripheral.GattCharacteristicId
+import dev.bluefalcon.peripheral.GattResponseStatus
 import dev.bluefalcon.peripheral.NotificationMode
 import dev.bluefalcon.peripheral.NotificationResult
 import dev.bluefalcon.peripheral.PeripheralCapabilities
 import dev.bluefalcon.peripheral.PeripheralConfig
 import dev.bluefalcon.peripheral.PeripheralLifecycleException
 import dev.bluefalcon.peripheral.PeripheralSessionId
+import dev.bluefalcon.peripheral.internal.BackendCharacteristicReadRequest
+import dev.bluefalcon.peripheral.internal.BackendCharacteristicWrite
+import dev.bluefalcon.peripheral.internal.BackendCharacteristicWriteBatchRequest
+import dev.bluefalcon.peripheral.internal.BackendCharacteristicWriteRequest
+import dev.bluefalcon.peripheral.internal.BackendGattResponder
 import dev.bluefalcon.peripheral.internal.PeripheralBackend
 import dev.bluefalcon.peripheral.internal.PeripheralBackendEventSink
 import kotlinx.coroutines.NonCancellable
@@ -33,6 +39,8 @@ internal class ApplePeripheralBackend(
     private val subscriptions =
         mutableMapOf<PeripheralSessionId, MutableSet<GattCharacteristicId>>()
     private var supportedModes = emptyMap<GattCharacteristicId, Set<NotificationMode>>()
+    private val eventDeliveries = ArrayDeque<EventDelivery>()
+    private var eventDeliveryOwner = false
 
     override val capabilities = PeripheralCapabilities(
         localGattServer = true,
@@ -164,62 +172,159 @@ internal class ApplePeripheralBackend(
         DisconnectResult.Unsupported
 
     private fun onStackEvent(eventGeneration: Long, event: AppleGattEvent) {
-        when (event) {
-            is AppleGattEvent.Subscribed -> updateSubscription(
-                eventGeneration = eventGeneration,
-                sessionId = event.sessionId,
-                maximumUpdateValueLength = event.maximumUpdateValueLength,
-                characteristicId = event.characteristicId,
-                subscribed = true,
-            )
-
-            is AppleGattEvent.Unsubscribed -> updateSubscription(
-                eventGeneration = eventGeneration,
-                sessionId = event.sessionId,
-                maximumUpdateValueLength = event.maximumUpdateValueLength,
-                characteristicId = event.characteristicId,
-                subscribed = false,
-            )
-
-            else -> Unit
+        var staleResponse: AppleGattResponse? = null
+        val owner = locked {
+            val sink = activeSink(eventGeneration)
+            if (sink == null) {
+                staleResponse = event.failureResponse()
+                false
+            } else {
+                val callback = handleEventLocked(eventGeneration, event, sink)
+                callback?.let {
+                    enqueueEventDeliveryLocked(EventDelivery(eventGeneration, it))
+                } ?: false
+            }
         }
+        staleResponse?.let(::sendStaleRequestResponse)
+        if (owner) drainEventDeliveries()
     }
 
-    private fun updateSubscription(
+    private fun handleEventLocked(
         eventGeneration: Long,
+        event: AppleGattEvent,
+        sink: PeripheralBackendEventSink,
+    ): (() -> Unit)? = when (event) {
+        is AppleGattEvent.CharacteristicRead -> {
+            val sessionDelivery = ensureSessionLocked(
+                sink,
+                event.sessionId,
+                event.maximumUpdateValueLength,
+            )
+            val request = BackendCharacteristicReadRequest(
+                sessionId = event.sessionId,
+                serviceId = event.serviceId,
+                characteristicId = event.characteristicId,
+                offset = event.offset,
+                responder = createGattResponder(
+                    eventGeneration,
+                    event.sessionId,
+                    event.requestToken,
+                ),
+            )
+            val callback: () -> Unit = {
+                sessionDelivery?.deliver()
+                sink.onRequest(request)
+            }
+            callback
+        }
+
+        is AppleGattEvent.CharacteristicWrite -> {
+            val sessionDelivery = ensureSessionLocked(
+                sink,
+                event.sessionId,
+                event.maximumUpdateValueLength,
+            )
+            val write = event.copiedWrite
+            val request = BackendCharacteristicWriteRequest(
+                sessionId = event.sessionId,
+                serviceId = write.serviceId,
+                characteristicId = write.characteristicId,
+                offset = write.offset,
+                value = write.value,
+                preparedWrite = false,
+                responder = createGattResponder(
+                    eventGeneration,
+                    event.sessionId,
+                    event.requestToken,
+                ),
+            )
+            val callback: () -> Unit = {
+                sessionDelivery?.deliver()
+                sink.onRequest(request)
+            }
+            callback
+        }
+
+        is AppleGattEvent.CharacteristicWriteBatch -> {
+            val sessionDelivery = ensureSessionLocked(
+                sink,
+                event.sessionId,
+                event.maximumUpdateValueLength,
+            )
+            val request = BackendCharacteristicWriteBatchRequest(
+                sessionId = event.sessionId,
+                writes = event.writes.map { write ->
+                    BackendCharacteristicWrite(
+                        serviceId = write.serviceId,
+                        characteristicId = write.characteristicId,
+                        offset = write.offset,
+                        value = write.value,
+                    )
+                },
+                responder = createGattResponder(
+                    eventGeneration,
+                    event.sessionId,
+                    event.requestToken,
+                ),
+            )
+            val callback: () -> Unit = {
+                sessionDelivery?.deliver()
+                sink.onRequest(request)
+            }
+            callback
+        }
+
+        is AppleGattEvent.Subscribed -> subscriptionDeliveryLocked(
+            sink = sink,
+            sessionId = event.sessionId,
+            maximumUpdateValueLength = event.maximumUpdateValueLength,
+            characteristicId = event.characteristicId,
+            subscribed = true,
+        )
+
+        is AppleGattEvent.Unsubscribed -> subscriptionDeliveryLocked(
+            sink = sink,
+            sessionId = event.sessionId,
+            maximumUpdateValueLength = event.maximumUpdateValueLength,
+            characteristicId = event.characteristicId,
+            subscribed = false,
+        )
+
+        AppleGattEvent.NotificationReady -> null
+    }
+
+    private fun subscriptionDeliveryLocked(
+        sink: PeripheralBackendEventSink,
         sessionId: PeripheralSessionId,
         maximumUpdateValueLength: Int,
         characteristicId: GattCharacteristicId,
         subscribed: Boolean,
-    ) {
-        val delivery = locked {
-            val sink = activeSink(eventGeneration) ?: return
-            val sessionDelivery = ensureSessionLocked(
-                sink,
-                sessionId,
-                maximumUpdateValueLength,
-            )
-            val sessionSubscriptions = subscriptions.getOrPut(sessionId, ::mutableSetOf)
-            if (subscribed) {
-                sessionSubscriptions += characteristicId
-            } else {
-                sessionSubscriptions -= characteristicId
-            }
-            SubscriptionDelivery(
-                sessionDelivery = sessionDelivery,
-                sink = sink,
-                sessionId = sessionId,
-                subscriptions = sessionSubscriptions.toSet(),
-            )
+    ): () -> Unit {
+        val sessionDelivery = ensureSessionLocked(
+            sink,
+            sessionId,
+            maximumUpdateValueLength,
+        )
+        val sessionSubscriptions = subscriptions.getOrPut(sessionId, ::mutableSetOf)
+        if (subscribed) {
+            sessionSubscriptions += characteristicId
+        } else {
+            sessionSubscriptions -= characteristicId
         }
-        delivery.deliver()
+        val delivery = SubscriptionDelivery(
+            sessionDelivery = sessionDelivery,
+            sink = sink,
+            sessionId = sessionId,
+            subscriptions = sessionSubscriptions.toSet(),
+        )
+        return delivery::deliver
     }
 
     private fun restoreSession(
         startGeneration: Long,
         restored: AppleRestoredSession,
     ) {
-        val delivery = locked {
+        val owner = locked {
             val sink = activeSink(startGeneration) ?: return
             val sessionDelivery = ensureSessionLocked(
                 sink,
@@ -227,14 +332,15 @@ internal class ApplePeripheralBackend(
                 restored.maximumUpdateValueLength,
             )
             subscriptions[restored.sessionId] = restored.subscriptions.toMutableSet()
-            SubscriptionDelivery(
+            val delivery = SubscriptionDelivery(
                 sessionDelivery = sessionDelivery,
                 sink = sink,
                 sessionId = restored.sessionId,
                 subscriptions = restored.subscriptions,
             )
+            enqueueEventDeliveryLocked(EventDelivery(startGeneration, delivery::deliver))
         }
-        delivery.deliver()
+        if (owner) drainEventDeliveries()
     }
 
     private fun ensureSessionLocked(
@@ -252,6 +358,88 @@ internal class ApplePeripheralBackend(
         }
     }
 
+    private fun createGattResponder(
+        eventGeneration: Long,
+        sessionId: PeripheralSessionId,
+        requestToken: AppleRequestToken,
+    ): BackendGattResponder {
+        val responseLock = NSLock()
+        var pending = true
+        return BackendGattResponder { status, value ->
+            responseLock.lock()
+            val accepted = try {
+                pending.also { pending = false }
+            } finally {
+                responseLock.unlock()
+            }
+            if (!accepted) return@BackendGattResponder
+
+            val active = locked { activeSink(eventGeneration) != null }
+            if (!active) return@BackendGattResponder
+            val sent = try {
+                stack.sendResponse(
+                    AppleGattResponse(
+                        sessionId = sessionId,
+                        requestToken = requestToken,
+                        status = status,
+                        value = value,
+                    ),
+                )
+            } catch (cause: Throwable) {
+                publishPlatformFailure(eventGeneration, cause)
+                return@BackendGattResponder
+            }
+            if (!sent) {
+                publishPlatformFailure(
+                    eventGeneration,
+                    AppleGattResponseException(sessionId, requestToken),
+                )
+            }
+        }
+    }
+
+    private fun AppleGattEvent.failureResponse(): AppleGattResponse? {
+        val request = when (this) {
+            is AppleGattEvent.CharacteristicRead -> sessionId to requestToken
+            is AppleGattEvent.CharacteristicWrite -> sessionId to requestToken
+            is AppleGattEvent.CharacteristicWriteBatch -> sessionId to requestToken
+            else -> null
+        } ?: return null
+        return AppleGattResponse(
+            sessionId = request.first,
+            requestToken = request.second,
+            status = GattResponseStatus.UnlikelyError,
+            value = null,
+        )
+    }
+
+    private fun sendStaleRequestResponse(response: AppleGattResponse) {
+        runCatching { stack.sendResponse(response) }
+            .onFailure { logger?.warn("Failed to reject stale Apple GATT request", it) }
+    }
+
+    private fun enqueueEventDeliveryLocked(delivery: EventDelivery): Boolean {
+        eventDeliveries.addLast(delivery)
+        if (eventDeliveryOwner) return false
+        eventDeliveryOwner = true
+        return true
+    }
+
+    private fun drainEventDeliveries() {
+        while (true) {
+            val delivery = locked {
+                eventDeliveries.removeFirstOrNull().also { next ->
+                    if (next == null) eventDeliveryOwner = false
+                }
+            } ?: return
+            val active = locked { activeSink(delivery.generation) != null }
+            if (active) {
+                runCatching(delivery.callback)
+                    .onFailure { logger?.warn("Apple peripheral event delivery failed", it) }
+            }
+        }
+    }
+
     private fun activeSink(eventGeneration: Long): PeripheralBackendEventSink? {
         val active = when (val current = state) {
             is BackendState.Starting -> current.generation == eventGeneration
@@ -262,8 +450,13 @@ internal class ApplePeripheralBackend(
     }
 
     private fun publishPlatformFailure(eventGeneration: Long, cause: Throwable) {
-        val sink = locked { activeSink(eventGeneration) } ?: return
-        sink.onPlatformFailure(cause)
+        val owner = locked {
+            val sink = activeSink(eventGeneration) ?: return
+            enqueueEventDeliveryLocked(
+                EventDelivery(eventGeneration) { sink.onPlatformFailure(cause) },
+            )
+        }
+        if (owner) drainEventDeliveries()
     }
 
     private fun clearRuntimeState() {
@@ -272,6 +465,8 @@ internal class ApplePeripheralBackend(
         maximumLengths.clear()
         subscriptions.clear()
         supportedModes = emptyMap()
+        eventDeliveries.clear()
+        eventDeliveryOwner = false
     }
 
     private inline fun <T> locked(block: () -> T): T {
@@ -310,6 +505,11 @@ internal class ApplePeripheralBackend(
         data class Stopping(val generation: Long) : BackendState
         data object Closed : BackendState
     }
+
+    private class EventDelivery(
+        val generation: Long,
+        val callback: () -> Unit,
+    )
 
     private sealed interface SessionDelivery {
         fun deliver()
@@ -350,3 +550,10 @@ internal class ApplePeripheralBackend(
         }
     }
 }
+
+internal class AppleGattResponseException(
+    sessionId: PeripheralSessionId,
+    requestToken: AppleRequestToken,
+) : IllegalStateException(
+    "Core Bluetooth rejected GATT response for session $sessionId and token ${requestToken.value}",
+)

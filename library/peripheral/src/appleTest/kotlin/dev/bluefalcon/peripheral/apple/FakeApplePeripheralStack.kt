@@ -15,6 +15,7 @@ internal class FakeApplePeripheralStack : ApplePeripheralStack {
     val openConfigs = mutableListOf<PeripheralConfig>()
     val responses = mutableListOf<AppleGattResponse>()
     val notifications = mutableListOf<AppleNotificationRequest>()
+    val listeners = mutableListOf<ApplePeripheralStackListener>()
     var stopAdvertisingCalls = 0
         private set
     var clearServicesCalls = 0
@@ -31,6 +32,7 @@ internal class FakeApplePeripheralStack : ApplePeripheralStack {
     ): AppleOpenResult {
         openConfigs += config
         this.listener = listener
+        listeners += listener
         openFailure?.let { throw it }
         return openResult
     }
@@ -85,12 +87,16 @@ internal class RecordingAppleBackendSink : PeripheralBackendEventSink {
     val readinessEvents = mutableListOf<NotificationReadiness>()
     val requests = mutableListOf<BackendGattServerRequest>()
     val platformFailures = mutableListOf<Throwable>()
+    val eventNames = mutableListOf<String>()
+    var onSessionOpenedCallback: (() -> Unit)? = null
 
     override fun onSessionOpened(
         sessionId: PeripheralSessionId,
         maximumUpdateValueLength: Int?,
     ) {
         openedSessions += sessionId to maximumUpdateValueLength
+        eventNames += "sessionOpened"
+        onSessionOpenedCallback?.invoke()
     }
 
     override fun onSessionClosed(sessionId: PeripheralSessionId, cause: Throwable?) {
@@ -102,6 +108,7 @@ internal class RecordingAppleBackendSink : PeripheralBackendEventSink {
         subscriptions: Set<GattCharacteristicId>,
     ) {
         subscriptionUpdates += sessionId to subscriptions.toSet()
+        eventNames += "subscriptionsChanged"
     }
 
     override fun onMaximumUpdateValueLengthChanged(
@@ -117,6 +124,7 @@ internal class RecordingAppleBackendSink : PeripheralBackendEventSink {
 
     override fun onRequest(request: BackendGattServerRequest) {
         requests += request
+        eventNames += "request"
     }
 
     override fun onPlatformFailure(cause: Throwable) {
