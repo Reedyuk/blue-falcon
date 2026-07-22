@@ -6,7 +6,6 @@ import dev.bluefalcon.peripheral.GattServiceId
 import dev.bluefalcon.peripheral.NotificationMode
 import dev.bluefalcon.peripheral.PeripheralConfig
 import dev.bluefalcon.peripheral.PeripheralSessionId
-import kotlin.jvm.JvmInline
 
 internal interface ApplePeripheralStack {
     suspend fun open(
@@ -59,8 +58,7 @@ internal class AppleRestoredSession(
     )
 }
 
-@JvmInline
-internal value class AppleRequestToken(val value: Long)
+internal data class AppleRequestToken(val value: Long)
 
 internal sealed interface AppleGattEvent {
     class CharacteristicRead(
