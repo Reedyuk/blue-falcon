@@ -6,6 +6,7 @@ import kotlinx.coroutines.flow.StateFlow
 interface BlueFalconPeripheral {
     val state: StateFlow<PeripheralManagerState>
     val capabilities: PeripheralCapabilities
+    val plugins: PeripheralPluginRegistry
     val sessions: StateFlow<Set<PeripheralSession>>
     val requests: Flow<GattServerRequest>
     val events: Flow<PeripheralEvent>

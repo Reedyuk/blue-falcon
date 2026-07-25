@@ -63,6 +63,7 @@ internal class DefaultBlueFalconPeripheral(
     private val managerScope = CoroutineScope(
         coroutineContext.minusKey(Job) + managerJob,
     )
+    private val pluginRegistry = DefaultPeripheralPluginRegistry(this, managerScope.coroutineContext)
     private val sessionRegistry = mutableMapOf<PeripheralSessionId, DefaultPeripheralSession>()
     private val pendingResponses =
         mutableMapOf<PeripheralSessionId, MutableSet<DefaultGattResponseHandle>>()
@@ -81,6 +82,8 @@ internal class DefaultBlueFalconPeripheral(
     override val state: StateFlow<PeripheralManagerState> = mutableState.asStateFlow()
 
     override val capabilities: PeripheralCapabilities = backend.capabilities
+
+    override val plugins = pluginRegistry
 
     private val mutableSessions = MutableStateFlow<Set<PeripheralSession>>(emptySet())
     override val sessions: StateFlow<Set<PeripheralSession>> = mutableSessions.asStateFlow()
@@ -239,6 +242,15 @@ internal class DefaultBlueFalconPeripheral(
 
         requestIngressProcessor.join()
         backendEventProcessor.join()
+        try {
+            pluginRegistry.close()
+        } catch (cause: Throwable) {
+            if (failure == null) {
+                failure = cause
+            } else {
+                failure.addSuppressed(cause)
+            }
+        }
         managerJob.cancelAndJoin()
         lifecycleMutex.withLock {
             mutableState.value = PeripheralManagerState.Closed
