@@ -3,6 +3,7 @@ package dev.bluefalcon.plugins.queue
 import dev.bluefalcon.peripheral.BlueFalconPeripheral
 import dev.bluefalcon.peripheral.GattCharacteristicId
 import dev.bluefalcon.peripheral.NotificationMode
+import dev.bluefalcon.peripheral.NotificationReadiness
 import dev.bluefalcon.peripheral.PeripheralPlugin
 import dev.bluefalcon.peripheral.PeripheralPluginConfig
 import dev.bluefalcon.peripheral.PeripheralPluginFactory
@@ -10,11 +11,13 @@ import dev.bluefalcon.peripheral.PeripheralSession
 import dev.bluefalcon.peripheral.PeripheralSessionId
 import dev.bluefalcon.peripheral.NotificationResult
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
@@ -74,10 +77,14 @@ private class InstalledQueuePlugin(
     private val wakeUp = Channel<Unit>(Channel.CONFLATED)
     private val queues = mutableMapOf<PeripheralSessionId, ArrayDeque<QueuedNotification>>()
     private val roundRobin = ArrayDeque<PeripheralSessionId>()
+    private val blockedSessions = mutableSetOf<PeripheralSessionId>()
+    private val sessionReadinessEpochs = mutableMapOf<PeripheralSessionId, Long>()
     private var installed = false
     private var closed = false
     private var queuedBytes = 0
+    private var managerReadinessEpoch = 0L
     private var worker: Job? = null
+    private var readinessCollector: Job? = null
 
     override fun install(
         peripheral: BlueFalconPeripheral,
@@ -89,6 +96,9 @@ private class InstalledQueuePlugin(
             for (signal in wakeUp) {
                 drainAvailable()
             }
+        }
+        readinessCollector = scope.launch {
+            peripheral.notificationReadiness.collect(::onNotificationReady)
         }
         return this
     }
@@ -128,7 +138,12 @@ private class InstalledQueuePlugin(
         }
         if (!accepted) return QueueSendResult.QueueFull
         wakeUp.trySend(Unit)
-        return queued.completion.await()
+        return try {
+            queued.completion.await()
+        } catch (cause: CancellationException) {
+            cancelIfPending(queued)
+            throw cause
+        }
     }
 
     override suspend fun close() {
@@ -138,6 +153,8 @@ private class InstalledQueuePlugin(
             worker.also { worker = null }
         }
         wakeUp.close()
+        readinessCollector?.cancelAndJoin()
+        readinessCollector = null
         job?.cancelAndJoin()
     }
 
@@ -150,14 +167,105 @@ private class InstalledQueuePlugin(
                     queues.remove(sessionId)
                     null
                 } else {
-                    sessionId to item
+                    item.submitting = true
+                    NotificationAttempt(
+                        sessionId = sessionId,
+                        item = item,
+                        managerReadinessEpoch = managerReadinessEpoch,
+                        sessionReadinessEpoch = sessionReadinessEpochs[sessionId] ?: 0L,
+                    )
                 }
             } ?: continue
-            val (sessionId, item) = candidate
+            val item = candidate.item
             when (val result = item.session.notify(item.characteristic, item.value, item.mode)) {
-                NotificationResult.Busy -> return
-                else -> completeHead(sessionId, item, result.toQueueResult())
+                NotificationResult.Busy -> handleBusy(candidate)
+                else -> completeHead(candidate.sessionId, item, result.toQueueResult())
             }
+        }
+    }
+
+    private suspend fun handleBusy(attempt: NotificationAttempt) {
+        mutex.withLock {
+            val queue = queues[attempt.sessionId] ?: return
+            if (queue.firstOrNull() !== attempt.item) return
+            attempt.item.submitting = false
+            if (attempt.item.cancelled) {
+                removeItem(attempt.item)
+                return
+            }
+            val readinessAdvanced =
+                managerReadinessEpoch != attempt.managerReadinessEpoch ||
+                    (sessionReadinessEpochs[attempt.sessionId] ?: 0L) !=
+                    attempt.sessionReadinessEpoch
+            if (readinessAdvanced) {
+                addEligibleSession(attempt.sessionId)
+            } else {
+                blockedSessions += attempt.sessionId
+            }
+        }
+    }
+
+    private suspend fun onNotificationReady(readiness: NotificationReadiness) {
+        val unblocked = mutex.withLock {
+            when (readiness) {
+                NotificationReadiness.Manager -> {
+                    managerReadinessEpoch++
+                    blockedSessions.toList().also { blockedSessions.clear() }
+                }
+
+                is NotificationReadiness.Session -> {
+                    sessionReadinessEpochs[readiness.sessionId] =
+                        (sessionReadinessEpochs[readiness.sessionId] ?: 0L) + 1L
+                    if (blockedSessions.remove(readiness.sessionId)) {
+                        listOf(readiness.sessionId)
+                    } else {
+                        emptyList()
+                    }
+                }
+            }
+        }
+        if (unblocked.isEmpty()) return
+        mutex.withLock {
+            unblocked.forEach(::addEligibleSession)
+        }
+        wakeUp.trySend(Unit)
+    }
+
+    private suspend fun cancelIfPending(item: QueuedNotification) {
+        val removed = mutex.withLock {
+            if (item.submitting) {
+                item.cancelled = true
+                false
+            } else {
+                removeItem(item)
+            }
+        }
+        if (removed) wakeUp.trySend(Unit)
+    }
+
+    private fun removeItem(item: QueuedNotification): Boolean {
+        val sessionId = item.session.id
+        val queue = queues[sessionId] ?: return false
+        if (!queue.remove(item)) return false
+        queuedBytes -= item.value.size
+        if (queue.isEmpty()) {
+            queues.remove(sessionId)
+            blockedSessions.remove(sessionId)
+            roundRobin.remove(sessionId)
+        } else if (queue.firstOrNull()?.submitting != true) {
+            blockedSessions.remove(sessionId)
+            addEligibleSession(sessionId)
+        }
+        return true
+    }
+
+    private fun addEligibleSession(sessionId: PeripheralSessionId) {
+        if (
+            queues[sessionId]?.isNotEmpty() == true &&
+            sessionId !in blockedSessions &&
+            sessionId !in roundRobin
+        ) {
+            roundRobin.addLast(sessionId)
         }
     }
 
@@ -173,6 +281,7 @@ private class InstalledQueuePlugin(
             queuedBytes -= item.value.size
             val pending = mutableListOf(item to result)
             if (result == QueueSendResult.Disconnected) {
+                blockedSessions.remove(sessionId)
                 while (queue.isNotEmpty()) {
                     val dropped = queue.removeFirst()
                     queuedBytes -= dropped.value.size
@@ -216,4 +325,13 @@ private class QueuedNotification(
     val value: ByteArray
         get() = copiedValue.copyOf()
     val completion = CompletableDeferred<QueueSendResult>()
+    var submitting = false
+    var cancelled = false
 }
+
+private data class NotificationAttempt(
+    val sessionId: PeripheralSessionId,
+    val item: QueuedNotification,
+    val managerReadinessEpoch: Long,
+    val sessionReadinessEpoch: Long,
+)
