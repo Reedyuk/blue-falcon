@@ -557,7 +557,6 @@ internal class DefaultBlueFalconPeripheral(
             },
             response = requireNotNull(responseHandle),
         )
-
         is BackendDescriptorReadRequest -> GattDescriptorReadRequest(
             session = session,
             serviceId = serviceId,

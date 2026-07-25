@@ -216,15 +216,16 @@ class AppleBluetoothAdvertiser private constructor(
     }
 
     private suspend fun applySingleWrite(request: GattCharacteristicWriteRequest) {
-        val applied = valueMutex.withLock {
+        val status = valueMutex.withLock {
             val key = CharacteristicKey(request.serviceId, request.characteristicId)
-            val current = values[key] ?: return@withLock false
-            val merged = current.merge(request.offset, request.value) ?: return@withLock false
+            val current = values[key] ?: return@withLock GattResponseStatus.InvalidHandle
+            val merged = current.merge(request.offset, request.value)
+                ?: return@withLock GattResponseStatus.InvalidOffset
             values[key] = merged
-            true
+            GattResponseStatus.Success
         }
-        if (!applied) {
-            request.response?.respond(GattResponseStatus.InvalidOffset)
+        if (status != GattResponseStatus.Success) {
+            request.response?.respond(status)
             return
         }
         emitLegacyWrite(request.serviceId, request.characteristicId, request.value)
@@ -233,20 +234,21 @@ class AppleBluetoothAdvertiser private constructor(
 
     private suspend fun applyWriteBatch(request: GattCharacteristicWriteBatchRequest) {
         val writes = request.writes
-        val applied = valueMutex.withLock {
+        val status = valueMutex.withLock {
             val updated = values.mapValuesTo(mutableMapOf()) { (_, value) -> value.copyOf() }
             for (write in writes) {
                 val key = CharacteristicKey(write.serviceId, write.characteristicId)
-                val current = updated[key] ?: return@withLock false
-                updated[key] = current.merge(write.offset, write.value)
-                    ?: return@withLock false
+                val current = updated[key] ?: return@withLock GattResponseStatus.InvalidHandle
+                val merged = current.merge(write.offset, write.value)
+                    ?: return@withLock GattResponseStatus.InvalidOffset
+                updated[key] = merged
             }
             values.clear()
             values.putAll(updated)
-            true
+            GattResponseStatus.Success
         }
-        if (!applied) {
-            request.response.respond(GattResponseStatus.InvalidOffset)
+        if (status != GattResponseStatus.Success) {
+            request.response.respond(status)
             return
         }
         writes.forEach { write ->

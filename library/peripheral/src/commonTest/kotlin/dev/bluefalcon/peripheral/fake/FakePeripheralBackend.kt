@@ -195,7 +195,6 @@ internal class FakePeripheralBackend(
         )
         return responder
     }
-
     private companion object {
         val SupportedCapabilities = PeripheralCapabilities(
             localGattServer = true,

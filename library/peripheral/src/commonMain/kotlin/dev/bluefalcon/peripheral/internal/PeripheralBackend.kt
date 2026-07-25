@@ -152,7 +152,6 @@ internal class BackendCharacteristicWriteBatchRequest(
         value = value,
     )
 }
-
 internal class BackendDescriptorReadRequest(
     override val sessionId: PeripheralSessionId,
     override val serviceId: GattServiceId,

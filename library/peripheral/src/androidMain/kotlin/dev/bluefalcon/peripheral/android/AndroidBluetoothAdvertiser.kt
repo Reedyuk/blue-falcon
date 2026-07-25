@@ -234,7 +234,6 @@ class AndroidBluetoothAdvertiser : BluetoothAdvertiser {
 
             is BackendCharacteristicWriteBatchRequest ->
                 request.responder.respond(GattResponseStatus.RequestNotSupported, null)
-
             is BackendDescriptorReadRequest -> {
                 val value = synchronized(lock) {
                     (descriptorValues[

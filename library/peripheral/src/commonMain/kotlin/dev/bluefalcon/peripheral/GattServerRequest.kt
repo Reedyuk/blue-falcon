@@ -89,7 +89,6 @@ class GattCharacteristicWriteBatchRequest(
         value = value,
     )
 }
-
 class GattDescriptorReadRequest(
     override val session: PeripheralSession,
     override val serviceId: GattServiceId,

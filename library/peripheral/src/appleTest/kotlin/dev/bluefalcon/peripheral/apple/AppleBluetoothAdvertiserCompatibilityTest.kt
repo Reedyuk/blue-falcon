@@ -140,6 +140,70 @@ class AppleBluetoothAdvertiserCompatibilityTest {
     }
 
     @Test
+    fun writeRequestsDistinguishInvalidHandleFromInvalidOffset() = runTest {
+        val stack = FakeApplePeripheralStack()
+        val advertiser = AppleBluetoothAdvertiser(stack, coroutineContext = coroutineContext)
+        advertiser.startAdvertising(Config)
+
+        // Single write to unknown characteristic -> InvalidHandle
+        stack.emit(
+            AppleGattEvent.CharacteristicWrite(
+                sessionId = SessionId,
+                maximumUpdateValueLength = 20,
+                requestToken = AppleRequestToken(10),
+                write = AppleCharacteristicWrite(
+                    ServiceId,
+                    GattCharacteristicId("00009999-0000-1000-8000-00805f9b34fb".toUuid()),
+                    offset = 0,
+                    value = byteArrayOf(1),
+                ),
+            ),
+        )
+        runCurrent()
+        assertEquals(GattResponseStatus.InvalidHandle, stack.responses.single().status)
+
+        // Single write with invalid offset -> InvalidOffset
+        stack.responses.clear()
+        stack.emit(
+            AppleGattEvent.CharacteristicWrite(
+                sessionId = SessionId,
+                maximumUpdateValueLength = 20,
+                requestToken = AppleRequestToken(11),
+                write = AppleCharacteristicWrite(
+                    ServiceId,
+                    CharacteristicId,
+                    offset = 99,
+                    value = byteArrayOf(1),
+                ),
+            ),
+        )
+        runCurrent()
+        assertEquals(GattResponseStatus.InvalidOffset, stack.responses.single().status)
+
+        // Batch write with unknown characteristic -> InvalidHandle
+        stack.responses.clear()
+        stack.emit(
+            AppleGattEvent.CharacteristicWriteBatch(
+                sessionId = SessionId,
+                maximumUpdateValueLength = 20,
+                requestToken = AppleRequestToken(12),
+                writes = listOf(
+                    AppleCharacteristicWrite(
+                        ServiceId,
+                        GattCharacteristicId("00009999-0000-1000-8000-00805f9b34fb".toUuid()),
+                        offset = 0,
+                        value = byteArrayOf(1),
+                    ),
+                ),
+            ),
+        )
+        runCurrent()
+        assertEquals(GattResponseStatus.InvalidHandle, stack.responses.single().status)
+
+        advertiser.stopAdvertising()
+    }
+
+    @Test
     fun updateTargetsEverySubscribedSessionAndBusyRemainsBestEffort() = runTest {
         val stack = FakeApplePeripheralStack()
         val advertiser = AppleBluetoothAdvertiser(stack, coroutineContext = coroutineContext)

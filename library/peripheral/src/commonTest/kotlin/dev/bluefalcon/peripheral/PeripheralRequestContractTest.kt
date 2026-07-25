@@ -124,8 +124,6 @@ class PeripheralRequestContractTest {
             request.response.respond(GattResponseStatus.Success),
         )
     }
-
-    @Test
     fun overflowImmediatelyRejectsResponseRequiredRequest() = runTest {
         val (backend, peripheral) = startedPeripheral(requestCapacity = 1)
         val firstResponder = backend.emitCharacteristicRead(

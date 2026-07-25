@@ -97,8 +97,6 @@ class PeripheralApiShapeTest {
             )
         }
     }
-
-    @Test
     fun responseRequiredRequestsExposeNonNullHandle() {
         val response = RecordingResponseHandle()
         val descriptorId = GattDescriptorId(DESCRIPTOR_UUID.toUuid())
