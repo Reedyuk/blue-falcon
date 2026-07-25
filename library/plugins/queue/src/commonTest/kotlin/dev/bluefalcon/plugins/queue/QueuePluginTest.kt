@@ -18,16 +18,22 @@ import dev.bluefalcon.peripheral.PeripheralPluginRegistry
 import dev.bluefalcon.peripheral.PeripheralSession
 import dev.bluefalcon.peripheral.PeripheralSessionId
 import dev.bluefalcon.peripheral.SessionState
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.test.runCurrent
 import kotlin.test.Test
+import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
 
+@OptIn(ExperimentalCoroutinesApi::class)
 class QueuePluginTest {
 
     @Test
@@ -58,6 +64,49 @@ class QueuePluginTest {
         }
     }
 
+    @Test
+    fun oneSessionDrainsValuesInFifoOrderAndCopiesEachPayload() = runTest {
+        val session = FakeSession(maximumUpdateValueLength = 20)
+        val peripheral = FakePeripheral(session)
+        val plugin = QueuePlugin.create(QueuePlugin.createConfig())
+        val queue = plugin.install(peripheral, backgroundScope)
+        val first = byteArrayOf(1)
+
+        val one = async(start = CoroutineStart.UNDISPATCHED) {
+            queue.send(session, CharacteristicId, first)
+        }
+        val two = async(start = CoroutineStart.UNDISPATCHED) {
+            queue.send(session, CharacteristicId, byteArrayOf(2))
+        }
+        first[0] = 99
+        runCurrent()
+
+        assertEquals(QueueSendResult.Sent, one.await())
+        assertEquals(QueueSendResult.Sent, two.await())
+        assertEquals(2, session.calls.size)
+        assertContentEquals(byteArrayOf(1), session.calls[0])
+        assertContentEquals(byteArrayOf(2), session.calls[1])
+        plugin.close()
+    }
+
+    @Test
+    fun notifyTerminalResultMapsWithoutRetrying() = runTest {
+        val session = FakeSession(
+            maximumUpdateValueLength = 20,
+            notificationResult = NotificationResult.Unsupported,
+        )
+        val peripheral = FakePeripheral(session)
+        val plugin = QueuePlugin.create(QueuePlugin.createConfig())
+        val queue = plugin.install(peripheral, backgroundScope)
+
+        assertEquals(
+            QueueSendResult.Unsupported,
+            queue.send(session, CharacteristicId, byteArrayOf(1)),
+        )
+        assertEquals(1, session.calls.size)
+        plugin.close()
+    }
+
     private class FakePeripheral(session: PeripheralSession) : BlueFalconPeripheral {
         override val state: StateFlow<PeripheralManagerState> =
             MutableStateFlow(PeripheralManagerState.Running)
@@ -73,7 +122,10 @@ class QueuePluginTest {
         override suspend fun close() = Unit
     }
 
-    private class FakeSession(maximumUpdateValueLength: Int?) : PeripheralSession {
+    private class FakeSession(
+        maximumUpdateValueLength: Int?,
+        private val notificationResult: NotificationResult = NotificationResult.Sent,
+    ) : PeripheralSession {
         override val id = PeripheralSessionId("central-1")
         override val state: StateFlow<SessionState> = MutableStateFlow(SessionState.Active)
         override val subscriptions: StateFlow<Set<GattCharacteristicId>> =
@@ -89,7 +141,7 @@ class QueuePluginTest {
             mode: NotificationMode,
         ): NotificationResult {
             calls += value.copyOf()
-            return NotificationResult.Sent
+            return notificationResult
         }
 
         override suspend fun disconnect(): DisconnectResult = DisconnectResult.Disconnected
