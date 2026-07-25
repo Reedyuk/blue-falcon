@@ -11,6 +11,7 @@ interface BlueFalconPeripheral {
     val requests: Flow<GattServerRequest>
     val events: Flow<PeripheralEvent>
     val notificationReadiness: Flow<NotificationReadiness>
+    val notificationReadinessState: StateFlow<NotificationReadinessState>
 
     suspend fun start(config: PeripheralConfig)
     suspend fun stop()

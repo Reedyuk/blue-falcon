@@ -5,6 +5,11 @@ sealed interface NotificationReadiness {
     data class Session(val sessionId: PeripheralSessionId) : NotificationReadiness
 }
 
+data class NotificationReadinessState(
+    val managerEpoch: Long = 0L,
+    val sessionEpochs: Map<PeripheralSessionId, Long> = emptyMap(),
+)
+
 enum class GattRequestType {
     CharacteristicRead,
     CharacteristicWrite,

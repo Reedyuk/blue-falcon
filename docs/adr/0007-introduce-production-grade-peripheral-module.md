@@ -133,6 +133,7 @@ interface BlueFalconPeripheral {
     val requests: Flow<GattServerRequest>
     val events: Flow<PeripheralEvent>
     val notificationReadiness: Flow<NotificationReadiness>
+    val notificationReadinessState: StateFlow<NotificationReadinessState>
 
     suspend fun start(config: PeripheralConfig)
     suspend fun stop()
@@ -284,6 +285,12 @@ Manager scope is required because Apple
 `notificationReady` flow is a convenience projection of the manager flow. Readiness is a hint
 to retry, not a reservation of a platform write slot.
 
+The public `notificationReadiness` event flow is bounded and non-blocking so a slow application
+collector cannot stall the manager's backend-event processor. The manager also exposes durable
+manager and active-session epochs through `notificationReadinessState`. QueuePlugin uses that
+`StateFlow` for its loss-free `Busy` handoff; public hint delivery and scheduler correctness are
+therefore independent.
+
 The platform backend will not hide an unbounded notification queue. It will serialize only the
 operations required by the platform contract and surface `Busy` when it cannot accept the value.
 
@@ -327,9 +334,9 @@ The plugin will implement:
 - `RejectNewest` as the default overflow policy.
 
 If at least one item is accepted during a scheduling pass, the plugin immediately begins the next
-round-robin pass without waiting for a flow emission. It waits on `notificationReadiness` only when
-all currently eligible readiness scopes are busy. This avoids a coroutine wake-up between every
-accepted packet while preserving fairness and bounded memory.
+round-robin pass without waiting for a state update. It waits for `notificationReadinessState` to
+advance only when all currently eligible readiness scopes are busy. This avoids a coroutine wake-up
+between every accepted packet while preserving fairness and bounded memory.
 
 The plugin will never silently discard data. Queue overflow returns `QueueFull`. A value larger
 than `maximumUpdateValueLength` returns `PayloadTooLarge`.

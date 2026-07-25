@@ -54,6 +54,11 @@ suspend fun send(
 `QueueSendResult` has `Sent`, `QueueFull`, `PayloadTooLarge`, `Disconnected`, `Unsupported`, and
 `Failed(cause)` variants. `send` defensively copies its payload before it enters the queue.
 
+`notificationReadiness` remains a bounded, non-blocking hint stream for application observers.
+`notificationReadinessState` exposes durable manager and active-session epochs in a `StateFlow`.
+QueuePlugin consumes the epoch state so a slow unrelated observer cannot drop its wake-up or
+backpressure the manager's backend-event processor.
+
 ## Plugin Lifecycle
 
 `PeripheralPlugin` receives the owning `BlueFalconPeripheral` and a child `CoroutineScope` when
@@ -82,6 +87,8 @@ limit or the total byte limit would be exceeded; it does not evict an older item
 positive. A known `session.maximumUpdateValueLength` smaller than the supplied value returns
 `PayloadTooLarge` before the value is queued. If the platform has not exposed a limit yet (`null`),
 the plugin submits the complete value and preserves the result reported by `session.notify`.
+An empty payload consumes one accounting unit from the total byte budget so queued object metadata
+cannot become globally unbounded across many sessions.
 
 No payload is split. A zero maximum permits only an empty payload.
 
@@ -94,12 +101,13 @@ window without a `Flow` collection suspension between packets, while a continuou
 cannot starve another session.
 
 When `notify` returns `Busy`, the item remains at the head of its FIFO and that session is marked
-blocked. A permanent collector records every `NotificationReadiness` event as a monotonically
-increasing epoch for either its manager scope or its target session. The scheduler reads the relevant
-epoch before calling `notify`; after `Busy`, it rechecks the epoch under the queue mutex. If it has
-already advanced, the session is retried in the next pass. Otherwise the scheduler suspends until a
-matching readiness event advances the epoch. This makes the handoff from `Busy` to waiting loss-free
-without treating readiness as a reserved platform write slot.
+blocked. The manager records every readiness callback in durable monotonically increasing manager
+or active-session epochs. A permanent collector observes `notificationReadinessState`. The
+scheduler reads the relevant epoch before calling `notify`; after `Busy`, it rechecks the epoch under
+the queue mutex. If it has already advanced, the session is retried in the next pass. Otherwise the
+scheduler suspends until a matching epoch advances. This makes the handoff from `Busy` to waiting
+loss-free without treating readiness as a reserved platform write slot or allowing a slow public
+hint-flow collector to stall backend events.
 
 `Disconnected`, `Unsupported`, and `Failed` complete only the submitted head item with the matching
 typed result. `Disconnected` also removes the rest of that session queue. A session that disappears

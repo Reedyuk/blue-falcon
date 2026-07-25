@@ -7,6 +7,7 @@ import dev.bluefalcon.peripheral.GattCharacteristicId
 import dev.bluefalcon.peripheral.GattServerRequest
 import dev.bluefalcon.peripheral.NotificationMode
 import dev.bluefalcon.peripheral.NotificationReadiness
+import dev.bluefalcon.peripheral.NotificationReadinessState
 import dev.bluefalcon.peripheral.NotificationResult
 import dev.bluefalcon.peripheral.PeripheralCapabilities
 import dev.bluefalcon.peripheral.PeripheralConfig
@@ -35,6 +36,7 @@ import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
+import kotlin.test.assertSame
 import kotlin.test.assertTrue
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -234,20 +236,261 @@ class QueuePluginTest {
         plugin.close()
     }
 
+    @Test
+    fun removedSessionCompletesQueuedItemsAsDisconnected() = runTest {
+        val session = FakeSession(
+            maximumUpdateValueLength = 20,
+            notificationResults = listOf(NotificationResult.Busy),
+        )
+        val peripheral = FakePeripheral(session)
+        val plugin = QueuePlugin.create(QueuePlugin.createConfig())
+        val queue = plugin.install(peripheral, backgroundScope)
+        val first = async(start = CoroutineStart.UNDISPATCHED) {
+            queue.send(session, CharacteristicId, byteArrayOf(1))
+        }
+        val second = async(start = CoroutineStart.UNDISPATCHED) {
+            queue.send(session, CharacteristicId, byteArrayOf(2))
+        }
+        runCurrent()
+
+        peripheral.remove(session)
+        runCurrent()
+
+        assertTrue(first.isCompleted)
+        assertTrue(second.isCompleted)
+        assertEquals(QueueSendResult.Disconnected, first.await())
+        assertEquals(QueueSendResult.Disconnected, second.await())
+        plugin.close()
+    }
+
+    @Test
+    fun closingPluginCompletesEveryPendingItemAsDisconnected() = runTest {
+        val session = FakeSession(
+            maximumUpdateValueLength = 20,
+            notificationResults = listOf(NotificationResult.Busy),
+        )
+        val peripheral = FakePeripheral(session)
+        val plugin = QueuePlugin.create(QueuePlugin.createConfig())
+        val queue = plugin.install(peripheral, backgroundScope)
+        val sending = async(start = CoroutineStart.UNDISPATCHED) {
+            queue.send(session, CharacteristicId, byteArrayOf(1))
+        }
+        runCurrent()
+
+        plugin.close()
+        runCurrent()
+
+        assertTrue(sending.isCompleted)
+        assertEquals(QueueSendResult.Disconnected, sending.await())
+        plugin.close()
+    }
+
+    @Test
+    fun queueRejectsNewestItemWhenPerSessionLimitIsReached() = runTest {
+        val session = FakeSession(
+            maximumUpdateValueLength = 20,
+            notificationResults = listOf(NotificationResult.Busy),
+        )
+        val peripheral = FakePeripheral(session)
+        val plugin = QueuePlugin.create(
+            QueuePlugin.createConfig().apply { maxPendingItemsPerSession = 1 },
+        )
+        val queue = plugin.install(peripheral, backgroundScope)
+        val first = async(start = CoroutineStart.UNDISPATCHED) {
+            queue.send(session, CharacteristicId, byteArrayOf(1))
+        }
+        runCurrent()
+
+        assertEquals(
+            QueueSendResult.QueueFull,
+            queue.send(session, CharacteristicId, byteArrayOf(2)),
+        )
+        first.cancel()
+        runCurrent()
+        plugin.close()
+    }
+
+    @Test
+    fun queueRejectsNewestItemWhenTotalByteBudgetIsReached() = runTest {
+        val firstSession = FakeSession(
+            id = PeripheralSessionId("first"),
+            maximumUpdateValueLength = 20,
+            notificationResults = listOf(NotificationResult.Busy),
+        )
+        val secondSession = FakeSession(
+            id = PeripheralSessionId("second"),
+            maximumUpdateValueLength = 20,
+        )
+        val peripheral = FakePeripheral(firstSession, secondSession)
+        val plugin = QueuePlugin.create(
+            QueuePlugin.createConfig().apply { maxPendingBytes = 2 },
+        )
+        val queue = plugin.install(peripheral, backgroundScope)
+        val first = async(start = CoroutineStart.UNDISPATCHED) {
+            queue.send(firstSession, CharacteristicId, byteArrayOf(1, 2))
+        }
+        runCurrent()
+
+        assertEquals(
+            QueueSendResult.QueueFull,
+            queue.send(secondSession, CharacteristicId, byteArrayOf(3)),
+        )
+        first.cancel()
+        runCurrent()
+        plugin.close()
+    }
+
+    @Test
+    fun emptyPayloadsStillConsumeTheGlobalBudget() = runTest {
+        val firstSession = FakeSession(
+            id = PeripheralSessionId("first"),
+            maximumUpdateValueLength = 20,
+            notificationResults = listOf(NotificationResult.Busy),
+        )
+        val secondSession = FakeSession(
+            id = PeripheralSessionId("second"),
+            maximumUpdateValueLength = 20,
+        )
+        val peripheral = FakePeripheral(firstSession, secondSession)
+        val plugin = QueuePlugin.create(
+            QueuePlugin.createConfig().apply { maxPendingBytes = 1 },
+        )
+        val queue = plugin.install(peripheral, backgroundScope)
+        val first = async(start = CoroutineStart.UNDISPATCHED) {
+            queue.send(firstSession, CharacteristicId, byteArrayOf())
+        }
+        runCurrent()
+
+        assertEquals(
+            QueueSendResult.QueueFull,
+            queue.send(secondSession, CharacteristicId, byteArrayOf()),
+        )
+        first.cancel()
+        runCurrent()
+        plugin.close()
+    }
+
+    @Test
+    fun replacingSessionInstanceWithSameIdDisconnectsOldQueue() = runTest {
+        val sharedId = PeripheralSessionId("reused-id")
+        val oldSession = FakeSession(
+            id = sharedId,
+            maximumUpdateValueLength = 20,
+            notificationResults = listOf(NotificationResult.Busy),
+        )
+        val newSession = FakeSession(
+            id = sharedId,
+            maximumUpdateValueLength = 20,
+        )
+        val peripheral = FakePeripheral(oldSession)
+        val plugin = QueuePlugin.create(QueuePlugin.createConfig())
+        val queue = plugin.install(peripheral, backgroundScope)
+        val oldSending = async(start = CoroutineStart.UNDISPATCHED) {
+            queue.send(oldSession, CharacteristicId, byteArrayOf(1))
+        }
+        runCurrent()
+
+        peripheral.replace(oldSession, newSession)
+        runCurrent()
+
+        assertTrue(oldSending.isCompleted)
+        assertEquals(QueueSendResult.Disconnected, oldSending.await())
+        assertEquals(
+            QueueSendResult.Sent,
+            queue.send(newSession, CharacteristicId, byteArrayOf(2)),
+        )
+        plugin.close()
+    }
+
+    @Test
+    fun managerReadinessResumesBusySession() = runTest {
+        val session = FakeSession(
+            maximumUpdateValueLength = 20,
+            notificationResults = listOf(NotificationResult.Busy, NotificationResult.Sent),
+        )
+        val peripheral = FakePeripheral(session)
+        val plugin = QueuePlugin.create(QueuePlugin.createConfig())
+        val queue = plugin.install(peripheral, backgroundScope)
+        val sending = async(start = CoroutineStart.UNDISPATCHED) {
+            queue.send(session, CharacteristicId, byteArrayOf(1))
+        }
+        runCurrent()
+
+        peripheral.emitReadiness(NotificationReadiness.Manager)
+        runCurrent()
+
+        assertTrue(sending.isCompleted)
+        assertEquals(QueueSendResult.Sent, sending.await())
+        plugin.close()
+    }
+
+    @Test
+    fun thrownNotifyFailureCompletesCallerWithTypedFailure() = runTest {
+        val failure = IllegalStateException("stack failed")
+        val session = FakeSession(
+            maximumUpdateValueLength = 20,
+            notifyFailure = failure,
+        )
+        val peripheral = FakePeripheral(session)
+        val plugin = QueuePlugin.create(QueuePlugin.createConfig())
+        val queue = plugin.install(peripheral, backgroundScope)
+        val sending = async(start = CoroutineStart.UNDISPATCHED) {
+            queue.send(session, CharacteristicId, byteArrayOf(1))
+        }
+        runCurrent()
+
+        assertTrue(sending.isCompleted)
+        val result = sending.await() as QueueSendResult.Failed
+        assertSame(failure, result.cause)
+        plugin.close()
+    }
+
     private class FakePeripheral(vararg initialSessions: PeripheralSession) : BlueFalconPeripheral {
         private val readiness = Channel<NotificationReadiness>(Channel.UNLIMITED)
+        private val mutableSessions = MutableStateFlow(initialSessions.toSet())
+        private val mutableReadinessState = MutableStateFlow(NotificationReadinessState())
+        private var nextSessionReadinessEpoch = 0L
         override val state: StateFlow<PeripheralManagerState> =
             MutableStateFlow(PeripheralManagerState.Running)
         override val capabilities = PeripheralCapabilities.Unsupported
         override val plugins: PeripheralPluginRegistry = UnsupportedPluginRegistry
-        override val sessions: StateFlow<Set<PeripheralSession>> =
-            MutableStateFlow(initialSessions.toSet())
+        override val sessions: StateFlow<Set<PeripheralSession>> = mutableSessions
         override val requests: Flow<GattServerRequest> = emptyFlow()
         override val events: Flow<PeripheralEvent> = emptyFlow()
         override val notificationReadiness: Flow<NotificationReadiness> = readiness.receiveAsFlow()
+        override val notificationReadinessState: StateFlow<NotificationReadinessState> =
+            mutableReadinessState
 
         fun emitReadiness(value: NotificationReadiness) {
+            val current = mutableReadinessState.value
+            mutableReadinessState.value = when (value) {
+                NotificationReadiness.Manager -> current.copy(
+                    managerEpoch = current.managerEpoch + 1L,
+                )
+
+                is NotificationReadiness.Session -> {
+                    val nextEpoch = ++nextSessionReadinessEpoch
+                    current.copy(
+                        sessionEpochs = current.sessionEpochs +
+                            (value.sessionId to nextEpoch),
+                    )
+                }
+            }
             readiness.trySend(value).getOrThrow()
+        }
+
+        fun remove(session: PeripheralSession) {
+            mutableSessions.value = mutableSessions.value - session
+            mutableReadinessState.value = mutableReadinessState.value.copy(
+                sessionEpochs = mutableReadinessState.value.sessionEpochs - session.id,
+            )
+        }
+
+        fun replace(old: PeripheralSession, new: PeripheralSession) {
+            mutableSessions.value = mutableSessions.value - old + new
+            mutableReadinessState.value = mutableReadinessState.value.copy(
+                sessionEpochs = mutableReadinessState.value.sessionEpochs - old.id,
+            )
         }
 
         override suspend fun start(config: PeripheralConfig) = Unit
@@ -259,6 +502,7 @@ class QueuePluginTest {
         maximumUpdateValueLength: Int?,
         notificationResult: NotificationResult = NotificationResult.Sent,
         notificationResults: List<NotificationResult> = emptyList(),
+        private val notifyFailure: Throwable? = null,
         override val id: PeripheralSessionId = PeripheralSessionId("central-1"),
         private val label: String = "session",
         private val submissions: MutableList<String>? = null,
@@ -284,6 +528,7 @@ class QueuePluginTest {
             calls += value.copyOf()
             submissions?.add("$label:${value.firstOrNull()}")
             onNotify()
+            notifyFailure?.let { throw it }
             return results.removeFirstOrNull() ?: fallbackResult
         }
 

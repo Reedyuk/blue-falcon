@@ -10,6 +10,8 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlin.coroutines.CoroutineContext
 
 internal class DefaultPeripheralPluginRegistry(
@@ -17,34 +19,58 @@ internal class DefaultPeripheralPluginRegistry(
     coroutineContext: CoroutineContext,
 ) : PeripheralPluginRegistry {
 
-    private val lock = Any()
+    private val lifecycleMutex = Mutex()
     private val pluginJob = SupervisorJob(coroutineContext[Job])
-    private val pluginScope = CoroutineScope(coroutineContext.minusKey(Job) + pluginJob)
-    private val installedFactories = mutableSetOf<PeripheralPluginFactory<*, *>>()
-    private val installedPlugins = mutableListOf<PeripheralPlugin<*>>()
+    private val pluginCoroutineContext = coroutineContext.minusKey(Job)
+    private val installedFactories = mutableListOf<PeripheralPluginFactory<*, *>>()
+    private val installedPlugins = mutableListOf<InstalledPeripheralPlugin>()
     private val closeCompletion = CompletableDeferred<Throwable?>()
     private var closeStarted = false
 
     override fun <C : PeripheralPluginConfig, T> install(
         factory: PeripheralPluginFactory<C, T>,
         configure: C.() -> Unit,
-    ): T = synchronized(lock) {
-        check(!closeStarted) { "Peripheral plugins cannot be installed after close begins" }
-        check(installedFactories.add(factory)) { "Peripheral plugin factory is already installed" }
-        val plugin = factory.create(factory.createConfig().apply(configure))
+    ): T {
+        check(lifecycleMutex.tryLock()) {
+            "Concurrent peripheral plugin installation is not supported"
+        }
         try {
-            plugin.install(peripheral, pluginScope).also { installedPlugins += plugin }
-        } catch (cause: Throwable) {
-            installedFactories.remove(factory)
-            throw cause
+            check(!closeStarted) { "Peripheral plugins cannot be installed after close begins" }
+            check(installedFactories.none { it === factory }) {
+                "Peripheral plugin factory is already installed"
+            }
+            installedFactories += factory
+            var installationJob: Job? = null
+            try {
+                val plugin = factory.create(factory.createConfig().apply(configure))
+                val childJob = SupervisorJob(pluginJob)
+                installationJob = childJob
+                val installationScope = CoroutineScope(
+                    pluginCoroutineContext + childJob,
+                )
+                return plugin.install(peripheral, installationScope).also {
+                    installedPlugins += InstalledPeripheralPlugin(plugin, childJob)
+                }
+            } catch (cause: Throwable) {
+                installationJob?.cancel()
+                installedFactories.removeAt(
+                    installedFactories.indexOfFirst { it === factory },
+                )
+                throw cause
+            }
+        } finally {
+            lifecycleMutex.unlock()
         }
     }
 
     suspend fun close() {
-        val plugins = synchronized(lock) {
-            if (closeStarted) return@synchronized null
+        val plugins = lifecycleMutex.withLock {
+            if (closeStarted) return@withLock null
             closeStarted = true
-            installedPlugins.asReversed().toList().also { installedPlugins.clear() }
+            installedPlugins.asReversed().toList().also {
+                installedPlugins.clear()
+                installedFactories.clear()
+            }
         }
         if (plugins == null) {
             closeCompletion.await()?.let { throw it }
@@ -52,9 +78,9 @@ internal class DefaultPeripheralPluginRegistry(
         }
 
         var failure: Throwable? = null
-        plugins.forEach { plugin ->
+        plugins.forEach { installed ->
             try {
-                plugin.close()
+                installed.plugin.close()
             } catch (cause: Throwable) {
                 if (failure == null) {
                     failure = cause
@@ -62,9 +88,15 @@ internal class DefaultPeripheralPluginRegistry(
                     failure.addSuppressed(cause)
                 }
             }
+            installed.job.cancelAndJoin()
         }
         pluginJob.cancelAndJoin()
         closeCompletion.complete(failure)
         failure?.let { throw it }
     }
+
+    private data class InstalledPeripheralPlugin(
+        val plugin: PeripheralPlugin<*>,
+        val job: Job,
+    )
 }

@@ -26,6 +26,7 @@ class PeripheralApiShapeTest {
         manager.requests
         manager.events
         manager.notificationReadiness
+        manager.notificationReadinessState
 
         assertEquals(PeripheralSessionId("central-1"), session.id)
         assertEquals(SessionState.Active, session.state.value)
@@ -157,6 +158,8 @@ class PeripheralApiShapeTest {
         override val requests: Flow<GattServerRequest> = emptyFlow()
         override val events: Flow<PeripheralEvent> = emptyFlow()
         override val notificationReadiness: Flow<NotificationReadiness> = emptyFlow()
+        override val notificationReadinessState: StateFlow<NotificationReadinessState> =
+            MutableStateFlow(NotificationReadinessState())
 
         override suspend fun start(config: PeripheralConfig) = Unit
         override suspend fun stop() = Unit

@@ -12,6 +12,7 @@ import dev.bluefalcon.peripheral.GattExecuteWriteRequest
 import dev.bluefalcon.peripheral.GattResponseStatus
 import dev.bluefalcon.peripheral.GattServerRequest
 import dev.bluefalcon.peripheral.NotificationReadiness
+import dev.bluefalcon.peripheral.NotificationReadinessState
 import dev.bluefalcon.peripheral.PeripheralCapabilities
 import dev.bluefalcon.peripheral.PeripheralConfig
 import dev.bluefalcon.peripheral.PeripheralEvent
@@ -28,12 +29,16 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.channelFlow
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
@@ -71,10 +76,12 @@ internal class DefaultBlueFalconPeripheral(
     private val inactivityTokens = mutableMapOf<PeripheralSessionId, Long>()
     private var nextGeneration = 0L
     private var nextInactivityToken = 0L
+    private var nextSessionReadinessEpoch = 0L
     private var activeGeneration = NoGeneration
     private var activeConfig: PeripheralConfig? = null
     private var closeStarted = false
     private val closeCompletion = CompletableDeferred<Throwable?>()
+    private val readinessCloseCompletion = CompletableDeferred<Throwable?>()
 
     private val mutableState = MutableStateFlow<PeripheralManagerState>(
         PeripheralManagerState.Stopped,
@@ -109,9 +116,22 @@ internal class DefaultBlueFalconPeripheral(
     private val eventChannel = Channel<PeripheralEvent>(eventCapacity)
     override val events: Flow<PeripheralEvent> = eventChannel.receiveAsFlow()
 
-    private val readinessChannel = Channel<NotificationReadiness>(eventCapacity)
-    override val notificationReadiness: Flow<NotificationReadiness> =
-        readinessChannel.receiveAsFlow()
+    private val mutableNotificationReadiness = MutableSharedFlow<NotificationReadiness>(
+        extraBufferCapacity = eventCapacity,
+        onBufferOverflow = BufferOverflow.DROP_OLDEST,
+    )
+    private val mutableNotificationReadinessState =
+        MutableStateFlow(NotificationReadinessState())
+    override val notificationReadinessState: StateFlow<NotificationReadinessState> =
+        mutableNotificationReadinessState.asStateFlow()
+    override val notificationReadiness: Flow<NotificationReadiness> = channelFlow {
+        val forwarding = launch(start = CoroutineStart.UNDISPATCHED) {
+            mutableNotificationReadiness.collect { send(it) }
+        }
+        val failure = readinessCloseCompletion.await()
+        forwarding.cancelAndJoin()
+        failure?.let { throw it }
+    }
 
     private val backendEventChannel = Channel<BackendEvent>(Channel.UNLIMITED)
     private val backendEventProcessor = managerScope.launch(start = CoroutineStart.UNDISPATCHED) {
@@ -231,7 +251,7 @@ internal class DefaultBlueFalconPeripheral(
             requestIngressChannel.close(failure)
             requestChannel.close(failure)
             eventChannel.close(failure)
-            readinessChannel.close(failure)
+            readinessCloseCompletion.complete(failure)
             true
         }
 
@@ -261,6 +281,7 @@ internal class DefaultBlueFalconPeripheral(
     }
 
     private suspend fun processBackendEvent(event: BackendEvent) {
+        var readinessToPublish: NotificationReadiness? = null
         lifecycleMutex.withLock {
             if (event.generation != activeGeneration) {
                 return
@@ -286,14 +307,29 @@ internal class DefaultBlueFalconPeripheral(
                 }
 
                 is BackendEvent.NotificationReady -> {
-                    readinessChannel.trySend(event.readiness)
+                    readinessToPublish = event.readiness
                     when (event.readiness) {
-                        NotificationReadiness.Manager -> sessionRegistry.values.forEach {
-                            it.signalNotificationReady()
+                        NotificationReadiness.Manager -> {
+                            val current = mutableNotificationReadinessState.value
+                            mutableNotificationReadinessState.value = current.copy(
+                                managerEpoch = current.managerEpoch + 1L,
+                            )
+                            sessionRegistry.values.forEach {
+                                it.signalNotificationReady()
+                            }
                         }
 
-                        is NotificationReadiness.Session ->
+                        is NotificationReadiness.Session -> {
+                            if (event.readiness.sessionId in sessionRegistry) {
+                                val current = mutableNotificationReadinessState.value
+                                val nextEpoch = ++nextSessionReadinessEpoch
+                                mutableNotificationReadinessState.value = current.copy(
+                                    sessionEpochs = current.sessionEpochs +
+                                        (event.readiness.sessionId to nextEpoch),
+                                )
+                            }
                             sessionRegistry[event.readiness.sessionId]?.signalNotificationReady()
+                        }
                     }
                 }
 
@@ -312,6 +348,7 @@ internal class DefaultBlueFalconPeripheral(
                 }
             }
         }
+        readinessToPublish?.let { mutableNotificationReadiness.tryEmit(it) }
     }
 
     private suspend fun openSession(
@@ -349,6 +386,7 @@ internal class DefaultBlueFalconPeripheral(
             sessionRegistry.remove(sessionId).also { publishSessions() }
         } ?: return
 
+        removeSessionReadinessState(sessionId)
         session.beginClose()
         session.finishClose()
         eventChannel.trySend(PeripheralEvent.SessionClosed(sessionId, cause))
@@ -365,6 +403,8 @@ internal class DefaultBlueFalconPeripheral(
                 publishSessions()
             }
         }
+        mutableNotificationReadinessState.value =
+            mutableNotificationReadinessState.value.copy(sessionEpochs = emptyMap())
         sessions.forEach { it.beginClose() }
         return sessions
     }
@@ -375,6 +415,14 @@ internal class DefaultBlueFalconPeripheral(
 
     private fun publishSessions() {
         mutableSessions.value = sessionRegistry.values.toSet()
+    }
+
+    private fun removeSessionReadinessState(sessionId: PeripheralSessionId) {
+        val current = mutableNotificationReadinessState.value
+        if (sessionId !in current.sessionEpochs) return
+        mutableNotificationReadinessState.value = current.copy(
+            sessionEpochs = current.sessionEpochs - sessionId,
+        )
     }
 
     private suspend fun processRegisteredRequest(

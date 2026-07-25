@@ -3,9 +3,13 @@ package dev.bluefalcon.peripheral
 import dev.bluefalcon.core.toUuid
 import dev.bluefalcon.peripheral.fake.FakePeripheralBackend
 import dev.bluefalcon.peripheral.internal.DefaultBlueFalconPeripheral
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.async
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.toList
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.advanceTimeBy
@@ -110,6 +114,141 @@ class PeripheralSessionContractTest {
 
         assertEquals(NotificationReadiness.Session(SessionId), managerReadiness.await())
         assertEquals(Unit, sessionReadiness.await())
+    }
+
+    @Test
+    fun managerReadinessIsBroadcastToEveryCollector() = runTest {
+        val (backend, peripheral) = startedPeripheral()
+        val firstReadiness = async(UnconfinedTestDispatcher(testScheduler)) {
+            withTimeoutOrNull(1.milliseconds) {
+                peripheral.notificationReadiness.first()
+            }
+        }
+        val secondReadiness = async(UnconfinedTestDispatcher(testScheduler)) {
+            withTimeoutOrNull(1.milliseconds) {
+                peripheral.notificationReadiness.first()
+            }
+        }
+
+        backend.signalNotificationReady(NotificationReadiness.Manager)
+        runCurrent()
+
+        assertEquals(NotificationReadiness.Manager, firstReadiness.await())
+        assertEquals(NotificationReadiness.Manager, secondReadiness.await())
+    }
+
+    @Test
+    fun readinessStateRetainsEpochsWhenHintCollectorIsSlow() = runTest {
+        val backend = FakePeripheralBackend()
+        val peripheral = DefaultBlueFalconPeripheral(
+            backend = backend,
+            coroutineContext = coroutineContext,
+            eventCapacity = 1,
+        )
+        peripheral.start(PeripheralConfig(AdvertiseConfig()))
+        backend.openSession(SessionId)
+        runCurrent()
+        val releaseCollector = CompletableDeferred<Unit>()
+        val collector = backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
+            peripheral.notificationReadiness.collect {
+                releaseCollector.await()
+            }
+        }
+
+        repeat(100) {
+            backend.signalNotificationReady(NotificationReadiness.Session(SessionId))
+        }
+        runCurrent()
+
+        assertEquals(
+            100L,
+            peripheral.notificationReadinessState.value.sessionEpochs[SessionId],
+        )
+        collector.cancelAndJoin()
+    }
+
+    @Test
+    fun sessionReadinessEpochDoesNotRepeatWhenSessionIdIsReused() = runTest {
+        val (backend, peripheral) = startedPeripheral()
+        backend.openSession(SessionId)
+        backend.signalNotificationReady(NotificationReadiness.Session(SessionId))
+        runCurrent()
+        val firstEpoch = peripheral.notificationReadinessState.value.sessionEpochs[SessionId]
+
+        backend.closeSession(SessionId)
+        backend.openSession(SessionId)
+        backend.signalNotificationReady(NotificationReadiness.Session(SessionId))
+        runCurrent()
+
+        assertEquals(
+            firstEpoch?.plus(1L),
+            peripheral.notificationReadinessState.value.sessionEpochs[SessionId],
+        )
+    }
+
+    @Test
+    fun managerReadinessFlowCompletesWhenPeripheralCloses() = runTest {
+        val (_, peripheral) = startedPeripheral()
+        val collected = backgroundScope.async(UnconfinedTestDispatcher(testScheduler)) {
+            peripheral.notificationReadiness.toList()
+        }
+
+        peripheral.close()
+        runCurrent()
+
+        assertTrue(collected.isCompleted)
+        assertEquals(emptyList(), collected.await())
+    }
+
+    @Test
+    fun closeDoesNotWaitForSlowReadinessCollector() = runTest {
+        val backend = FakePeripheralBackend()
+        val peripheral = DefaultBlueFalconPeripheral(
+            backend = backend,
+            coroutineContext = coroutineContext,
+            eventCapacity = 1,
+        )
+        peripheral.start(PeripheralConfig(AdvertiseConfig()))
+        val releaseCollector = CompletableDeferred<Unit>()
+        val collector = backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
+            peripheral.notificationReadiness.collect {
+                releaseCollector.await()
+            }
+        }
+        repeat(100) {
+            backend.signalNotificationReady(NotificationReadiness.Manager)
+        }
+        runCurrent()
+
+        val closing = async(UnconfinedTestDispatcher(testScheduler)) {
+            peripheral.close()
+        }
+        runCurrent()
+
+        assertTrue(closing.isCompleted)
+        closing.await()
+        collector.cancelAndJoin()
+    }
+
+    @Test
+    fun slowReadinessCollectorDoesNotBlockLaterSessionClose() = runTest {
+        val (backend, peripheral) = startedPeripheral()
+        backend.openSession(SessionId)
+        runCurrent()
+        val releaseCollector = CompletableDeferred<Unit>()
+        val collector = backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
+            peripheral.notificationReadiness.collect {
+                releaseCollector.await()
+            }
+        }
+        repeat(100) {
+            backend.signalNotificationReady(NotificationReadiness.Manager)
+        }
+        backend.closeSession(SessionId)
+        runCurrent()
+
+        assertTrue(peripheral.sessions.value.isEmpty())
+        collector.cancelAndJoin()
     }
 
     @Test
