@@ -13,6 +13,8 @@ import dev.bluefalcon.peripheral.NotificationReadiness
 import dev.bluefalcon.peripheral.internal.PeripheralBackend
 import dev.bluefalcon.peripheral.internal.PeripheralBackendEventSink
 import dev.bluefalcon.peripheral.internal.BackendCharacteristicReadRequest
+import dev.bluefalcon.peripheral.internal.BackendCharacteristicWrite
+import dev.bluefalcon.peripheral.internal.BackendCharacteristicWriteBatchRequest
 import dev.bluefalcon.peripheral.internal.BackendCharacteristicWriteRequest
 import dev.bluefalcon.peripheral.internal.BackendGattResponder
 import kotlinx.coroutines.CompletableDeferred
@@ -179,6 +181,20 @@ internal class FakePeripheralBackend(
         return responder
     }
 
+    fun emitCharacteristicWriteBatch(
+        sessionId: PeripheralSessionId,
+        writes: List<BackendCharacteristicWrite>,
+    ): RecordedGattResponder {
+        val responder = RecordedGattResponder()
+        eventSink.onRequest(
+            BackendCharacteristicWriteBatchRequest(
+                sessionId = sessionId,
+                writes = writes,
+                responder = responder,
+            ),
+        )
+        return responder
+    }
     private companion object {
         val SupportedCapabilities = PeripheralCapabilities(
             localGattServer = true,

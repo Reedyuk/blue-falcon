@@ -2,6 +2,8 @@ package dev.bluefalcon.peripheral.internal
 
 import dev.bluefalcon.peripheral.BlueFalconPeripheral
 import dev.bluefalcon.peripheral.GattCharacteristicReadRequest
+import dev.bluefalcon.peripheral.GattCharacteristicWrite
+import dev.bluefalcon.peripheral.GattCharacteristicWriteBatchRequest
 import dev.bluefalcon.peripheral.GattCharacteristicWriteRequest
 import dev.bluefalcon.peripheral.GattCharacteristicId
 import dev.bluefalcon.peripheral.GattDescriptorReadRequest
@@ -543,6 +545,18 @@ internal class DefaultBlueFalconPeripheral(
             response = responseHandle,
         )
 
+        is BackendCharacteristicWriteBatchRequest -> GattCharacteristicWriteBatchRequest(
+            session = session,
+            writes = writes.map { write ->
+                GattCharacteristicWrite(
+                    serviceId = write.serviceId,
+                    characteristicId = write.characteristicId,
+                    offset = write.offset,
+                    value = write.value,
+                )
+            },
+            response = requireNotNull(responseHandle),
+        )
         is BackendDescriptorReadRequest -> GattDescriptorReadRequest(
             session = session,
             serviceId = serviceId,
