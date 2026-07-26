@@ -22,6 +22,7 @@ Copy [`src/PeripheralEchoServer.kt`](src/PeripheralEchoServer.kt) into your comm
 create exactly one server for each application-owned peripheral manager:
 
 ```kotlin
+import dev.bluefalcon.example.peripheral.PeripheralEchoServer
 import dev.bluefalcon.peripheral.android.createBlueFalconPeripheral
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -39,6 +40,7 @@ applicationScope.launch {
 ```
 
 ```kotlin
+import dev.bluefalcon.example.peripheral.PeripheralEchoServer
 import dev.bluefalcon.peripheral.apple.createBlueFalconPeripheral
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
@@ -60,14 +62,17 @@ applicationScope.launch(start = CoroutineStart.UNDISPATCHED) {
 
 ### Android
 
-Declare `BLUETOOTH_ADVERTISE` and `BLUETOOTH_CONNECT`. Add `BLUETOOTH_SCAN` only when the
-application also acts as a BLE client and scans for remote devices. Request the permissions required
-by the Android version at runtime.
+For Android 11 (API 30) and lower, declare the legacy `BLUETOOTH` and `BLUETOOTH_ADMIN`
+permissions for the peripheral role. For Android 12 (API 31) and higher, declare and request
+`BLUETOOTH_ADVERTISE` and `BLUETOOTH_CONNECT` at runtime. `BLUETOOTH_SCAN` and location permissions
+are central-scanning concerns rather than GATT-server requirements; whether scanning requires
+location depends on the Android version and how the application declares its scan usage.
 
 Create the manager with the application context. If the server must remain available while the app
-is not visible, own its lifecycle from a foreground service and follow Android's background
-execution and foreground-service restrictions. Do not leave it owned by a screen or short-lived
-view model.
+is not visible, own its lifecycle from a foreground service rather than a screen or short-lived view
+model. That paragraph is architectural guidance, not a complete manifest recipe: the target SDK and
+current Android platform rules determine the required connected-device foreground-service type,
+permissions, and background-start eligibility.
 
 ### Apple
 
@@ -114,6 +119,9 @@ Using a BLE client:
 - `QueueSendResult.Disconnected`
 - `QueueSendResult.Unsupported`
 - `QueueSendResult.Failed(cause)`
+
+`Sent` means the local platform or its bounded queue accepted/sent the update. It is not an
+application-level acknowledgement from the remote peer.
 
 The server snapshots the currently subscribed sessions and enqueues for them concurrently, so one
 slow peer does not prevent the other peers from being offered the payload.

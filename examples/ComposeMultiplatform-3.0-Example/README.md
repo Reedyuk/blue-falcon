@@ -54,6 +54,9 @@ The activity log keeps each session's typed outcome visible:
 - `QueueSendResult.Unsupported`
 - `QueueSendResult.Failed(cause)`
 
+`Sent` means the local platform or its bounded queue accepted/sent the update. It is not an
+application-level acknowledgement from the remote peer.
+
 The example intentionally does not add application-layer fragmentation, acknowledgements, retry, or
 persistence. A notification payload must fit each session's `maximumUpdateValueLength`; otherwise
 that session reports `PayloadTooLarge`.
@@ -62,15 +65,27 @@ that session reports `PayloadTooLarge`.
 
 ### Android
 
-The manifest declares `BLUETOOTH_ADVERTISE`, `BLUETOOTH_CONNECT`, and the central-mode
-`BLUETOOTH_SCAN` permission. Android 12 and newer require the applicable Bluetooth permissions at
-runtime.
+For Android 11 (API 30) and lower, the peripheral role uses the manifest permissions `BLUETOOTH`
+and `BLUETOOTH_ADMIN`. For Android 12 (API 31) and higher, it uses the runtime permissions
+`BLUETOOTH_ADVERTISE` and `BLUETOOTH_CONNECT`. `BLUETOOTH_SCAN` and location permissions belong to
+the central scanning flow and remain version- and role-dependent; neither is inherently required by
+this GATT server.
+
+The current sample manifest declares the two legacy permissions, `BLUETOOTH_ADVERTISE`,
+`BLUETOOTH_CONNECT`, `BLUETOOTH_SCAN`, and `ACCESS_FINE_LOCATION`. On Android 12 and higher,
+`MainActivity` currently requests Scan, Connect, Advertise, and Fine Location together and treats
+all four grants as required. That is the sample's existing combined central/peripheral compatibility
+flow, not a peripheral-server requirement. A production API 31+ application that declares
+`neverForLocation` and does not otherwise use location should version-gate or remove the location
+permission and request rather than copy this combined flow unchanged.
 
 `BlueFalconApplication.onCreate()` creates one process-owned `AppModule`, and the activity reuses it.
 This keeps the peripheral manager and QueuePlugin out of screen and view-model lifecycles. The
 interactive demo still opens the GATT server only when the user presses Start. If a production
 server must remain available while the UI is not visible, a foreground service must own its
-desired-running state and BLE lifecycle under Android's background-execution rules.
+desired-running state and BLE lifecycle. This is architectural guidance, not a complete service
+manifest: the target SDK and current Android platform rules determine the connected-device
+foreground-service type, associated permissions, and background-start eligibility.
 
 ### iOS and macOS
 
@@ -99,26 +114,26 @@ provides Android, iOS, and JVM desktop runners, but no native macOS application 
 
 ## Build against the current branch
 
-`shared/build.gradle.kts` defines one `falconVersion` for all Blue Falcon modules. The example
-currently uses `3.6.1`. The peripheral and QueuePlugin changes on this branch are not yet guaranteed
-to exist in a remote Maven repository, so publish those two matching artifacts to Maven Local
-before resolving the example:
+`shared/build.gradle.kts` defines one `falconVersion` for all Blue Falcon dependencies in this
+example. The example currently uses `3.6.1`. The peripheral and QueuePlugin changes on this branch
+are not yet guaranteed to exist in a remote Maven repository, so run the following from the
+repository root to publish matching artifacts to Maven Local:
 
 ```bash
-cd library
-./gradlew \
-  -PversionPeripheral=3.6.1 \
-  -PversionPlugins=3.6.1 \
+FALCON_VERSION=3.6.1
+
+./library/gradlew -p library \
+  -PversionPeripheral="$FALCON_VERSION" \
+  -PversionPlugins="$FALCON_VERSION" \
   :peripheral:publishToMavenLocal \
   :plugins:queue:publishToMavenLocal
-
-cd ../examples/ComposeMultiplatform-3.0-Example
 ```
 
 The example's `settings.gradle.kts` restricts Maven Local resolution to the `dev.bluefalcon` group,
-so unrelated locally published Kotlin libraries do not override normal repository artifacts. When
-the project version changes, update only `falconVersion` and publish the local modules with that
-same version; do not assign different module versions in dependency snippets.
+so unrelated locally published Kotlin libraries do not override normal repository artifacts. The
+shell `FALCON_VERSION` must match `val falconVersion` in `shared/build.gradle.kts`. Library modules
+are independently versioned by `library/gradle.properties`; the two `-P` values above deliberately
+override the peripheral and plugin publication versions for this local build.
 
 ## Build and run
 
@@ -127,7 +142,9 @@ Use JDK 21 and configure the Android SDK for Android builds.
 ### Android
 
 ```bash
-./gradlew :androidBlueFalconExampleMP:installDebug
+./examples/ComposeMultiplatform-3.0-Example/gradlew \
+  -p examples/ComposeMultiplatform-3.0-Example \
+  :androidBlueFalconExampleMP:installDebug
 ```
 
 Run on BLE hardware and grant the requested Bluetooth permissions.
@@ -137,17 +154,22 @@ Run on BLE hardware and grant the requested Bluetooth permissions.
 Build the Kotlin framework:
 
 ```bash
-./gradlew :shared:linkDebugFrameworkIosSimulatorArm64
+./examples/ComposeMultiplatform-3.0-Example/gradlew \
+  -p examples/ComposeMultiplatform-3.0-Example \
+  :shared:linkDebugFrameworkIosSimulatorArm64
 ```
 
-Then open `iosBlueFalconExampleMP/iosBlueFalconExampleMP.xcodeproj` in Xcode and run the iOS app.
-BLE peripheral behavior should be exercised on supported hardware; simulator support is not a
-substitute for device testing.
+Then open
+`examples/ComposeMultiplatform-3.0-Example/iosBlueFalconExampleMP/iosBlueFalconExampleMP.xcodeproj`
+in Xcode and run the iOS app. BLE peripheral behavior should be exercised on supported hardware;
+simulator support is not a substitute for device testing.
 
 ### JVM desktop
 
 ```bash
-./gradlew :desktopBlueFalconExampleMP:run
+./examples/ComposeMultiplatform-3.0-Example/gradlew \
+  -p examples/ComposeMultiplatform-3.0-Example \
+  :desktopBlueFalconExampleMP:run
 ```
 
 Central mode selects the Windows, Linux, or macOS JVM engine at runtime. Peripheral mode is
@@ -158,7 +180,9 @@ unsupported as described above.
 There is no native macOS runner in this example, but the shared integration can be compiled with:
 
 ```bash
-./gradlew :shared:compileKotlinMacosArm64
+./examples/ComposeMultiplatform-3.0-Example/gradlew \
+  -p examples/ComposeMultiplatform-3.0-Example \
+  :shared:compileKotlinMacosArm64
 ```
 
 ## Project structure
