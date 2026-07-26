@@ -11,6 +11,10 @@ data class PeripheralServerState(
     val log: List<String> = emptyList(),
 ) {
     val canStart get() = supported && managerState == PeripheralManagerState.Stopped
-    val canStop get() = supported && managerState == PeripheralManagerState.Running
+    val canStop
+        get() = supported && (
+            managerState == PeripheralManagerState.Running ||
+                managerState is PeripheralManagerState.Failed
+        )
     val canSend get() = canStop && subscribedSessionCount > 0 && payloadText.isNotEmpty()
 }

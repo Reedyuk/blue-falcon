@@ -81,7 +81,7 @@ class PeripheralEchoController(
             manager.start(config)
         } catch (cause: CancellationException) {
             throw cause
-        } catch (cause: Throwable) {
+        } catch (cause: Exception) {
             appendLog("Start failed: ${cause.message ?: "unknown error"}")
         }
     }
@@ -92,7 +92,7 @@ class PeripheralEchoController(
             manager.stop()
         } catch (cause: CancellationException) {
             throw cause
-        } catch (cause: Throwable) {
+        } catch (cause: Exception) {
             appendLog("Stop failed: ${cause.message ?: "unknown error"}")
         }
     }

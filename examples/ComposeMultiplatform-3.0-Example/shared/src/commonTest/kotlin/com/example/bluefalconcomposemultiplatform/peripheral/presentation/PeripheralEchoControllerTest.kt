@@ -36,7 +36,9 @@ import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
+import kotlin.test.assertIs
 import kotlin.test.assertNotNull
 import kotlin.test.assertSame
 import kotlin.test.assertTrue
@@ -133,6 +135,104 @@ class PeripheralEchoControllerTest {
     }
 
     @Test
+    fun startFailureRemainsStoppableAndRecoversToStopped() = runTest {
+        val manager = FakePeripheral()
+        val controller = PeripheralEchoController(
+            runtime = PeripheralExampleRuntime(manager, FakeQueue()),
+            scope = backgroundScope,
+        )
+        val failure = IllegalStateException("start unavailable")
+
+        manager.startFailure = failure
+        controller.start()
+        runCurrent()
+
+        val failedState = assertIs<PeripheralManagerState.Failed>(
+            controller.state.value.managerState,
+        )
+        assertSame(failure, failedState.cause)
+        assertEquals(
+            listOf("Start failed: start unavailable"),
+            controller.state.value.log,
+        )
+        assertTrue(controller.state.value.canStop)
+        assertFalse(controller.state.value.canStart)
+
+        manager.startFailure = null
+        controller.stop()
+        runCurrent()
+
+        assertEquals(PeripheralManagerState.Stopped, controller.state.value.managerState)
+        assertTrue(controller.state.value.canStart)
+        assertFalse(controller.state.value.canStop)
+    }
+
+    @Test
+    fun stopFailureRemainsStoppableAndRetryRecovers() = runTest {
+        val manager = FakePeripheral()
+        val controller = PeripheralEchoController(
+            runtime = PeripheralExampleRuntime(manager, FakeQueue()),
+            scope = backgroundScope,
+        )
+        controller.start()
+        runCurrent()
+        val failure = IllegalStateException("stop unavailable")
+
+        manager.stopFailure = failure
+        controller.stop()
+        runCurrent()
+
+        val failedState = assertIs<PeripheralManagerState.Failed>(
+            controller.state.value.managerState,
+        )
+        assertSame(failure, failedState.cause)
+        assertEquals(
+            listOf("Stop failed: stop unavailable"),
+            controller.state.value.log,
+        )
+        assertTrue(controller.state.value.canStop)
+        assertFalse(controller.state.value.canStart)
+
+        manager.stopFailure = null
+        controller.stop()
+        runCurrent()
+
+        assertEquals(PeripheralManagerState.Stopped, controller.state.value.managerState)
+        assertTrue(controller.state.value.canStart)
+        assertFalse(controller.state.value.canStop)
+    }
+
+    @Test
+    fun lifecycleErrorsPropagateWithoutLogging() = runTest {
+        val manager = FakePeripheral()
+        val controller = PeripheralEchoController(
+            runtime = PeripheralExampleRuntime(manager, FakeQueue()),
+            scope = backgroundScope,
+        )
+        val startError = AssertionError("fatal start")
+        manager.startFailure = startError
+
+        val thrownStartError = assertFailsWith<AssertionError> {
+            controller.start()
+        }
+
+        assertSame(startError, thrownStartError)
+        assertTrue(controller.state.value.log.isEmpty())
+
+        manager.startFailure = null
+        controller.start()
+        val stopError = AssertionError("fatal stop")
+        manager.stopFailure = stopError
+
+        val thrownStopError = assertFailsWith<AssertionError> {
+            controller.stop()
+        }
+
+        assertSame(stopError, thrownStopError)
+        assertTrue(controller.state.value.log.isEmpty())
+    }
+
+    @Test
     fun sessionsAndManagerStateRemainReactive() = runTest {
         val manager = FakePeripheral()
         val session = FakeSession(
@@ -166,6 +266,50 @@ class PeripheralEchoControllerTest {
         assertEquals(1, controller.state.value.subscribedSessionCount)
         assertTrue(controller.state.value.canSend)
     }
+
+    @Test
+    fun replacingSessionsStopsObservingRemovedSubscriptions() = runTest {
+        val manager = FakePeripheral()
+        val removed = FakeSession(
+            id = PeripheralSessionId("removed"),
+            initialSubscriptions = setOf(EchoGatt.characteristicId),
+        )
+        val retained = FakeSession(
+            id = PeripheralSessionId("retained"),
+            initialSubscriptions = setOf(EchoGatt.characteristicId),
+        )
+        val replacement = FakeSession(
+            id = PeripheralSessionId("replacement"),
+        )
+        val controller = PeripheralEchoController(
+            runtime = PeripheralExampleRuntime(manager, FakeQueue()),
+            scope = backgroundScope,
+        )
+
+        manager.mutableSessions.value = setOf(removed, retained)
+        runCurrent()
+
+        assertEquals(2, controller.state.value.sessionCount)
+        assertEquals(2, controller.state.value.subscribedSessionCount)
+
+        manager.mutableSessions.value = setOf(retained, replacement)
+        runCurrent()
+
+        assertEquals(2, controller.state.value.sessionCount)
+        assertEquals(1, controller.state.value.subscribedSessionCount)
+
+        removed.mutableSubscriptions.value = emptySet()
+        runCurrent()
+        removed.mutableSubscriptions.value = setOf(EchoGatt.characteristicId)
+        runCurrent()
+
+        assertEquals(1, controller.state.value.subscribedSessionCount)
+
+        replacement.mutableSubscriptions.value = setOf(EchoGatt.characteristicId)
+        runCurrent()
+
+        assertEquals(2, controller.state.value.subscribedSessionCount)
+    }
 }
 
 private class FakePeripheral : BlueFalconPeripheral {
@@ -194,13 +338,19 @@ private class FakePeripheral : BlueFalconPeripheral {
     var stopFailure: Throwable? = null
 
     override suspend fun start(config: PeripheralConfig) {
-        startFailure?.let { throw it }
+        startFailure?.let { cause ->
+            mutableState.value = PeripheralManagerState.Failed(cause)
+            throw cause
+        }
         startConfigs += config
         mutableState.value = PeripheralManagerState.Running
     }
 
     override suspend fun stop() {
-        stopFailure?.let { throw it }
+        stopFailure?.let { cause ->
+            mutableState.value = PeripheralManagerState.Failed(cause)
+            throw cause
+        }
         stopCalls += 1
         mutableState.value = PeripheralManagerState.Stopped
     }
