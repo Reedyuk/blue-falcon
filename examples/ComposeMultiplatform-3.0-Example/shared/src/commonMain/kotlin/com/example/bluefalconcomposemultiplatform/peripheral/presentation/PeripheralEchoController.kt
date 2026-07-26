@@ -103,7 +103,7 @@ class PeripheralEchoController(
                                     "failed: ${cause.message ?: "unknown error"}",
                             )
                         } else {
-                            handleProcessingFailure(request, cause)
+                            handleProcessingFailure(terminal, cause)
                         }
                     }
                 }
@@ -238,19 +238,15 @@ class PeripheralEchoController(
     )
 
     private suspend fun handleProcessingFailure(
-        request: GattServerRequest,
+        terminal: TerminalResponse,
         requestFailure: Exception,
     ) {
         val requestMessage =
             "Request failed: ${requestFailure.message ?: "unknown error"}"
-        val response = request.response
-        if (response == null) {
-            appendLog(requestMessage)
-            return
-        }
 
         try {
-            response.respond(GattResponseStatus.UnlikelyError)
+            val result = terminal.respond(GattResponseStatus.UnlikelyError, null)
+            appendLog(requestMessage.withFallbackResponseResult(result))
         } catch (cause: CancellationException) {
             appendLog(requestMessage)
             throw cause
@@ -264,7 +260,6 @@ class PeripheralEchoController(
             )
             return
         }
-        appendLog(requestMessage)
     }
 
     private fun String.withResponseResult(result: GattResponseResult?): String =
@@ -279,6 +274,20 @@ class PeripheralEchoController(
             GattResponseResult.Expired ->
                 "$this; response expired"
         }
+
+    private fun String.withFallbackResponseResult(
+        result: GattResponseResult?,
+    ): String = when (result) {
+        null,
+        GattResponseResult.Responded,
+        -> this
+
+        GattResponseResult.AlreadyResponded ->
+            "$this; fallback response was already completed"
+
+        GattResponseResult.Expired ->
+            "$this; fallback response expired"
+    }
 
     private fun GattCharacteristicReadRequest.hasEchoHandle(): Boolean =
         serviceId == EchoGatt.serviceId &&

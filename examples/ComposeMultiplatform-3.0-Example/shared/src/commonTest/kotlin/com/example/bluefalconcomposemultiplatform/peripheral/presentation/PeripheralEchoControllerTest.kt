@@ -723,6 +723,48 @@ class PeripheralEchoControllerTest {
     }
 
     @Test
+    fun requestProcessingFallbackAlreadyRespondedIsLoggedWithoutRetry() = runTest {
+        val fixture = requestFixture(
+            FakeSession(idFailure = IllegalStateException("processing failed")),
+        )
+        val response = RecordingResponseHandle(
+            result = GattResponseResult.AlreadyResponded,
+        )
+
+        fixture.manager.requestsChannel.send(
+            fixture.readRequest(response = response),
+        )
+        runCurrent()
+
+        assertEquals(1, response.respondInvocations)
+        assertEquals(listOf(GattResponseStatus.UnlikelyError), response.statuses)
+        val log = fixture.controller.state.value.log.single()
+        assertTrue(log.contains("processing failed"))
+        assertTrue(log.contains("already completed"))
+    }
+
+    @Test
+    fun requestProcessingFallbackExpiredIsLoggedWithoutRetry() = runTest {
+        val fixture = requestFixture(
+            FakeSession(idFailure = IllegalStateException("processing failed")),
+        )
+        val response = RecordingResponseHandle(
+            result = GattResponseResult.Expired,
+        )
+
+        fixture.manager.requestsChannel.send(
+            fixture.readRequest(response = response),
+        )
+        runCurrent()
+
+        assertEquals(1, response.respondInvocations)
+        assertEquals(listOf(GattResponseStatus.UnlikelyError), response.statuses)
+        val log = fixture.controller.state.value.log.single()
+        assertTrue(log.contains("processing failed"))
+        assertTrue(log.contains("expired"))
+    }
+
+    @Test
     fun requestFallbackFailureIsLoggedOnceWithoutRecursiveResponse() = runTest {
         val fixture = requestFixture(
             FakeSession(idFailure = IllegalStateException("processing failed")),
