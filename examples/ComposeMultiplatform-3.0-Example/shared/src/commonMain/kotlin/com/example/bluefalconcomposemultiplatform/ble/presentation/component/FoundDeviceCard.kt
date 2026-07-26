@@ -29,8 +29,10 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -51,6 +53,7 @@ fun ScanResultCard(
     serviceUuids: List<String> = emptyList(),
     manufacturerData: Map<Int, String> = emptyMap(),
     connected: Boolean,
+    connecting: Boolean = false,
     onConnect: () -> Unit,
     onSelect: () -> Unit
 ) {
@@ -166,11 +169,20 @@ fun ScanResultCard(
             } else {
                 Button(
                     onClick = onConnect,
+                    enabled = !connecting,
                     colors = ButtonDefaults.buttonColors(
                         containerColor = MaterialTheme.colorScheme.primary
                     )
                 ) {
-                    Text("CONNECT", fontSize = 12.sp)
+                    if (connecting) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(14.dp),
+                            strokeWidth = 2.dp,
+                            color = LocalContentColor.current
+                        )
+                    } else {
+                        Text("CONNECT", fontSize = 12.sp)
+                    }
                 }
             }
         }

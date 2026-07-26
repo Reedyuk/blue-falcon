@@ -121,7 +121,9 @@ class BluetoothDeviceViewModel(
                 _deviceState.update { state ->
                     val updatedDevices = state.devices.toMutableMap()
                     updatedDevices[peripheralId]?.let { device ->
-                        updatedDevices[peripheralId] = device.copy(connected = isNowConnected)
+                        // The connect/disconnect operation has resolved, so clear the
+                        // in-flight spinner regardless of the resulting connection state.
+                        updatedDevices[peripheralId] = device.copy(connected = isNowConnected, connecting = false)
                     }
                     state.copy(devices = HashMap(updatedDevices))
                 }
@@ -218,17 +220,28 @@ class BluetoothDeviceViewModel(
 
             is UiEvent.OnConnectClick -> {
                 _deviceState.value.devices[event.macId]?.let { device ->
-                    // Optimistically record the selected device so the UI can navigate to the
-                    // detail screen. The connected flag is updated reactively via the
-                    // connectionStateUpdates flow once the platform confirms the connection.
+                    // Show a loading spinner on the connect button while the connection is
+                    // in flight. Do NOT navigate to the detail screen here — the user must
+                    // tap the row/cell to navigate once connected. The connected flag (and
+                    // the connecting spinner) are cleared reactively via the
+                    // connectionStateUpdates flow once the platform confirms the outcome.
                     _deviceState.update { state ->
-                        state.copy(selectedDeviceId = event.macId)
+                        val updatedDevices = state.devices.toMutableMap()
+                        updatedDevices[event.macId] = device.copy(connecting = true)
+                        state.copy(devices = HashMap(updatedDevices))
                     }
                     CoroutineScope(Dispatchers.IO).launch {
                         try {
                             blueFalcon.connect(device.peripheral)
                         } catch (e: Exception) {
                             println("Failed to connect: ${e.message}")
+                            _deviceState.update { state ->
+                                val updatedDevices = state.devices.toMutableMap()
+                                updatedDevices[event.macId]?.let { current ->
+                                    updatedDevices[event.macId] = current.copy(connecting = false)
+                                }
+                                state.copy(devices = HashMap(updatedDevices))
+                            }
                         }
                     }
                 }
@@ -236,12 +249,17 @@ class BluetoothDeviceViewModel(
 
             is UiEvent.OnDisconnectClick -> {
                 _deviceState.value.devices[event.macId]?.let { device ->
+                    _deviceState.update { state ->
+                        val updatedDevices = state.devices.toMutableMap()
+                        updatedDevices[event.macId] = device.copy(connecting = true)
+                        state.copy(devices = HashMap(updatedDevices))
+                    }
                     CoroutineScope(Dispatchers.IO).launch {
                         try {
                             blueFalcon.disconnect(device.peripheral)
                             _deviceState.update { state ->
                                 val updateDevices = state.devices.toMutableMap()
-                                updateDevices[event.macId] = device.copy(connected = false)
+                                updateDevices[event.macId] = device.copy(connected = false, connecting = false)
                                 state.copy(
                                     devices = HashMap(updateDevices),
                                     selectedDeviceId = if (state.selectedDeviceId == event.macId) null else state.selectedDeviceId
@@ -249,6 +267,13 @@ class BluetoothDeviceViewModel(
                             }
                         } catch (e: Exception) {
                             println("Failed to disconnect: ${e.message}")
+                            _deviceState.update { state ->
+                                val updatedDevices = state.devices.toMutableMap()
+                                updatedDevices[event.macId]?.let { current ->
+                                    updatedDevices[event.macId] = current.copy(connecting = false)
+                                }
+                                state.copy(devices = HashMap(updatedDevices))
+                            }
                         }
                     }
                 }

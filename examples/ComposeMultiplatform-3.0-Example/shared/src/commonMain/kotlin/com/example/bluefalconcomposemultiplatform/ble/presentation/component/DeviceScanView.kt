@@ -231,6 +231,7 @@ fun DeviceScanView(
                             serviceUuids = device.peripheral.services.map { it.uuid.toString() },
                             manufacturerData = device.manufacturerData,
                             connected = device.connected,
+                            connecting = device.connecting,
                             onConnect = { onEvent(UiEvent.OnConnectClick(device.peripheral.uuid)) },
                             onSelect = { onEvent(UiEvent.OnDeviceSelected(device.peripheral.uuid)) }
                         )

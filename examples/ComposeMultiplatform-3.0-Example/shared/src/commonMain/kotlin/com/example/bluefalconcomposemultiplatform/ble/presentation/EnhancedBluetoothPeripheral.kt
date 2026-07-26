@@ -6,6 +6,8 @@ import dev.bluefalcon.plugins.nordicfota.FotaState
 data class EnhancedBluetoothPeripheral(
     val connected: Boolean,
     val peripheral: BluetoothPeripheral,
+    /** True while a connect/disconnect operation is in flight for this device. */
+    val connecting: Boolean = false,
     val updateCount: Long = 0,
     val mtuStatus: String? = null,
     val fotaState: FotaState = FotaState.Idle,
