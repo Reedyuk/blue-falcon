@@ -2,11 +2,24 @@ package com.example.bluefalconcomposemultiplatform.peripheral.presentation
 
 import com.example.bluefalconcomposemultiplatform.peripheral.EchoGatt
 import com.example.bluefalconcomposemultiplatform.peripheral.PeripheralExampleRuntime
+import dev.bluefalcon.core.toUuid
 import dev.bluefalcon.peripheral.BlueFalconPeripheral
 import dev.bluefalcon.peripheral.CharacteristicProperty
 import dev.bluefalcon.peripheral.DisconnectResult
 import dev.bluefalcon.peripheral.GattCharacteristicId
+import dev.bluefalcon.peripheral.GattCharacteristicReadRequest
+import dev.bluefalcon.peripheral.GattCharacteristicWrite
+import dev.bluefalcon.peripheral.GattCharacteristicWriteBatchRequest
+import dev.bluefalcon.peripheral.GattCharacteristicWriteRequest
+import dev.bluefalcon.peripheral.GattDescriptorId
+import dev.bluefalcon.peripheral.GattDescriptorReadRequest
+import dev.bluefalcon.peripheral.GattDescriptorWriteRequest
+import dev.bluefalcon.peripheral.GattExecuteWriteRequest
+import dev.bluefalcon.peripheral.GattResponseHandle
+import dev.bluefalcon.peripheral.GattResponseResult
+import dev.bluefalcon.peripheral.GattResponseStatus
 import dev.bluefalcon.peripheral.GattServerRequest
+import dev.bluefalcon.peripheral.GattServiceId
 import dev.bluefalcon.peripheral.NotificationMode
 import dev.bluefalcon.peripheral.NotificationReadiness
 import dev.bluefalcon.peripheral.NotificationReadinessState
@@ -24,7 +37,11 @@ import dev.bluefalcon.peripheral.SessionState
 import dev.bluefalcon.plugins.queue.PeripheralQueue
 import dev.bluefalcon.plugins.queue.QueueSendResult
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineExceptionHandler
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -32,6 +49,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.receiveAsFlow
+import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
@@ -43,8 +62,9 @@ import kotlin.test.assertIs
 import kotlin.test.assertNotNull
 import kotlin.test.assertSame
 import kotlin.test.assertTrue
+import kotlin.uuid.ExperimentalUuidApi
 
-@OptIn(ExperimentalCoroutinesApi::class)
+@OptIn(ExperimentalCoroutinesApi::class, ExperimentalUuidApi::class)
 class PeripheralEchoControllerTest {
 
     @Test
@@ -367,6 +387,542 @@ class PeripheralEchoControllerTest {
 
         assertEquals(2, controller.state.value.subscribedSessionCount)
     }
+
+    @Test
+    fun writeCopiesValueAndReadReturnsItFromRequestedOffset() = runTest {
+        val fixture = requestFixture()
+        val written = "echo-value".encodeToByteArray()
+        val writeResponse = RecordingResponseHandle()
+
+        fixture.manager.requestsChannel.send(
+            GattCharacteristicWriteRequest(
+                session = fixture.session,
+                serviceId = EchoGatt.serviceId,
+                characteristicId = EchoGatt.characteristicId,
+                offset = 0,
+                value = written,
+                preparedWrite = false,
+                response = writeResponse,
+            ),
+        )
+        written[0] = 0
+        runCurrent()
+
+        assertEquals(GattResponseStatus.Success, writeResponse.singleStatus)
+
+        val readResponse = RecordingResponseHandle()
+        fixture.manager.requestsChannel.send(
+            GattCharacteristicReadRequest(
+                session = fixture.session,
+                serviceId = EchoGatt.serviceId,
+                characteristicId = EchoGatt.characteristicId,
+                offset = 5,
+                response = readResponse,
+            ),
+        )
+        runCurrent()
+
+        assertEquals(GattResponseStatus.Success, readResponse.singleStatus)
+        assertContentEquals("value".encodeToByteArray(), readResponse.singleValue)
+        val returnedValue = assertNotNull(readResponse.singleValue)
+        returnedValue[0] = 0
+        assertContentEquals("value".encodeToByteArray(), readResponse.singleValue)
+    }
+
+    @Test
+    fun requestWritesOverlayAtValidOffsetsAndAppendAtCurrentSize() = runTest {
+        val fixture = requestFixture()
+
+        fixture.sendWrite(offset = 0, value = "abcdef")
+        fixture.sendWrite(offset = 2, value = "XY")
+        fixture.sendWrite(offset = 6, value = "!!")
+        val response = fixture.sendRead(offset = 0)
+        runCurrent()
+
+        assertEquals(GattResponseStatus.Success, response.singleStatus)
+        assertContentEquals("abXYef!!".encodeToByteArray(), response.singleValue)
+    }
+
+    @Test
+    fun requestRejectsInvalidReadAndWriteOffsets() = runTest {
+        val fixture = requestFixture()
+        fixture.sendWrite(offset = 0, value = "abc")
+
+        val negativeWrite = fixture.sendWrite(offset = -1, value = "x")
+        val largeWrite = fixture.sendWrite(offset = 4, value = "x")
+        val negativeRead = fixture.sendRead(offset = -1)
+        val largeRead = fixture.sendRead(offset = 4)
+        runCurrent()
+
+        listOf(negativeWrite, largeWrite, negativeRead, largeRead).forEach { response ->
+            assertEquals(listOf(GattResponseStatus.InvalidOffset), response.statuses)
+        }
+        val storedResponse = fixture.sendRead(offset = 0)
+        runCurrent()
+        assertContentEquals(
+            "abc".encodeToByteArray(),
+            storedResponse.singleValue,
+        )
+    }
+
+    @Test
+    fun requestRejectsUnknownHandlesBeforeOtherValidation() = runTest {
+        val fixture = requestFixture()
+        val unknownService = GattServiceId(
+            "84f7e122-63fd-4f79-8b08-5b9780a36a94".toUuid(),
+        )
+        val unknownCharacteristic = GattCharacteristicId(
+            "84f7e123-63fd-4f79-8b08-5b9780a36a94".toUuid(),
+        )
+        val serviceResponse = RecordingResponseHandle()
+        val characteristicResponse = RecordingResponseHandle()
+
+        fixture.manager.requestsChannel.send(
+            GattCharacteristicWriteRequest(
+                session = fixture.session,
+                serviceId = unknownService,
+                characteristicId = EchoGatt.characteristicId,
+                offset = -1,
+                value = byteArrayOf(1),
+                preparedWrite = true,
+                response = serviceResponse,
+            ),
+        )
+        fixture.manager.requestsChannel.send(
+            GattCharacteristicReadRequest(
+                session = fixture.session,
+                serviceId = EchoGatt.serviceId,
+                characteristicId = unknownCharacteristic,
+                offset = -1,
+                response = characteristicResponse,
+            ),
+        )
+        runCurrent()
+
+        assertEquals(listOf(GattResponseStatus.InvalidHandle), serviceResponse.statuses)
+        assertEquals(
+            listOf(GattResponseStatus.InvalidHandle),
+            characteristicResponse.statuses,
+        )
+    }
+
+    @Test
+    fun requestRejectsPreparedBatchDescriptorAndExecuteOperations() = runTest {
+        val fixture = requestFixture()
+        val descriptorId = GattDescriptorId(
+            "00002901-0000-1000-8000-00805f9b34fb".toUuid(),
+        )
+        val responses = List(6) { RecordingResponseHandle() }
+
+        fixture.manager.requestsChannel.send(
+            GattCharacteristicWriteRequest(
+                session = fixture.session,
+                serviceId = EchoGatt.serviceId,
+                characteristicId = EchoGatt.characteristicId,
+                offset = 0,
+                value = byteArrayOf(1),
+                preparedWrite = true,
+                response = responses[0],
+            ),
+        )
+        fixture.manager.requestsChannel.send(
+            GattCharacteristicWriteBatchRequest(
+                session = fixture.session,
+                writes = listOf(
+                    GattCharacteristicWrite(
+                        serviceId = EchoGatt.serviceId,
+                        characteristicId = EchoGatt.characteristicId,
+                        offset = 0,
+                        value = byteArrayOf(1),
+                    ),
+                ),
+                response = responses[1],
+            ),
+        )
+        fixture.manager.requestsChannel.send(
+            GattDescriptorReadRequest(
+                session = fixture.session,
+                serviceId = EchoGatt.serviceId,
+                characteristicId = EchoGatt.characteristicId,
+                descriptorId = descriptorId,
+                offset = 0,
+                response = responses[2],
+            ),
+        )
+        fixture.manager.requestsChannel.send(
+            GattDescriptorWriteRequest(
+                session = fixture.session,
+                serviceId = EchoGatt.serviceId,
+                characteristicId = EchoGatt.characteristicId,
+                descriptorId = descriptorId,
+                offset = 0,
+                value = byteArrayOf(1),
+                preparedWrite = false,
+                response = responses[3],
+            ),
+        )
+        fixture.manager.requestsChannel.send(
+            GattDescriptorWriteRequest(
+                session = fixture.session,
+                serviceId = EchoGatt.serviceId,
+                characteristicId = EchoGatt.characteristicId,
+                descriptorId = descriptorId,
+                offset = 0,
+                value = byteArrayOf(1),
+                preparedWrite = true,
+                response = responses[4],
+            ),
+        )
+        fixture.manager.requestsChannel.send(
+            GattExecuteWriteRequest(
+                session = fixture.session,
+                execute = true,
+                response = responses[5],
+            ),
+        )
+        runCurrent()
+
+        responses.forEach { response ->
+            assertEquals(
+                listOf(GattResponseStatus.RequestNotSupported),
+                response.statuses,
+            )
+        }
+    }
+
+    @Test
+    fun requestWriteWithoutResponseUpdatesStoredValueWithoutResponding() = runTest {
+        val fixture = requestFixture()
+
+        fixture.manager.requestsChannel.send(
+            GattCharacteristicWriteRequest(
+                session = fixture.session,
+                serviceId = EchoGatt.serviceId,
+                characteristicId = EchoGatt.characteristicId,
+                offset = 0,
+                value = "without-response".encodeToByteArray(),
+                preparedWrite = false,
+                response = null,
+            ),
+        )
+        runCurrent()
+
+        val readResponse = fixture.sendRead(offset = 0)
+        runCurrent()
+        assertContentEquals(
+            "without-response".encodeToByteArray(),
+            readResponse.singleValue,
+        )
+    }
+
+    @Test
+    fun requestLogRetainsOnlyNewestHundredEntries() = runTest {
+        val fixture = requestFixture()
+        val descriptorId = GattDescriptorId(
+            "00002901-0000-1000-8000-00805f9b34fb".toUuid(),
+        )
+
+        repeat(120) {
+            fixture.manager.requestsChannel.send(
+                GattDescriptorReadRequest(
+                    session = fixture.session,
+                    serviceId = EchoGatt.serviceId,
+                    characteristicId = EchoGatt.characteristicId,
+                    descriptorId = descriptorId,
+                    offset = 0,
+                    response = RecordingResponseHandle(),
+                ),
+            )
+        }
+        runCurrent()
+
+        assertEquals(100, fixture.controller.state.value.log.size)
+    }
+
+    @Test
+    fun requestFailureFallsBackToUnlikelyErrorAndCollectorContinues() = runTest {
+        val fixture = requestFixture()
+        val failingResponse = RecordingResponseHandle(
+            failures = listOf(IllegalStateException("primary response failed")),
+        )
+
+        fixture.manager.requestsChannel.send(
+            fixture.readRequest(response = failingResponse),
+        )
+        runCurrent()
+
+        assertEquals(
+            listOf(GattResponseStatus.Success, GattResponseStatus.UnlikelyError),
+            failingResponse.statuses,
+        )
+        assertEquals(1, fixture.controller.state.value.log.size)
+        assertTrue(
+            fixture.controller.state.value.log.single()
+                .contains("primary response failed"),
+        )
+        val laterResponse = fixture.sendRead(offset = 0)
+        runCurrent()
+        assertEquals(
+            GattResponseStatus.Success,
+            laterResponse.singleStatus,
+        )
+    }
+
+    @Test
+    fun requestFallbackFailureIsLoggedOnceWithoutRecursiveResponse() = runTest {
+        val fixture = requestFixture()
+        val response = RecordingResponseHandle(
+            failures = listOf(
+                IllegalStateException("primary response failed"),
+                IllegalArgumentException("fallback response failed"),
+            ),
+        )
+
+        fixture.manager.requestsChannel.send(fixture.readRequest(response = response))
+        runCurrent()
+
+        assertEquals(
+            listOf(GattResponseStatus.Success, GattResponseStatus.UnlikelyError),
+            response.statuses,
+        )
+        assertEquals(2, fixture.controller.state.value.log.size)
+        assertTrue(
+            fixture.controller.state.value.log.last()
+                .contains("fallback response failed"),
+        )
+        val laterResponse = fixture.sendRead(offset = 0)
+        runCurrent()
+        assertEquals(
+            GattResponseStatus.Success,
+            laterResponse.singleStatus,
+        )
+    }
+
+    @Test
+    fun requestFallbackCancellationPropagatesWithoutRecursiveResponse() = runTest {
+        val fixture = requestFixtureWithIsolatedScope()
+        val response = RecordingResponseHandle(
+            failures = listOf(
+                IllegalStateException("primary response failed"),
+                CancellationException("cancel fallback"),
+            ),
+        )
+
+        fixture.fixture.manager.requestsChannel.send(
+            fixture.fixture.readRequest(response = response),
+        )
+        runCurrent()
+
+        assertEquals(
+            listOf(GattResponseStatus.Success, GattResponseStatus.UnlikelyError),
+            response.statuses,
+        )
+        assertEquals(1, fixture.fixture.controller.state.value.log.size)
+        val laterResponse = RecordingResponseHandle()
+        fixture.fixture.manager.requestsChannel.send(
+            fixture.fixture.readRequest(response = laterResponse),
+        )
+        runCurrent()
+        assertTrue(laterResponse.statuses.isEmpty())
+        fixture.scopeJob.cancel()
+    }
+
+    @Test
+    fun requestFallbackErrorPropagatesWithoutRecursiveResponse() = runTest {
+        val uncaught = mutableListOf<Throwable>()
+        val fixture = requestFixtureWithIsolatedScope(uncaught)
+        val error = AssertionError("fatal fallback")
+        val response = RecordingResponseHandle(
+            failures = listOf(
+                IllegalStateException("primary response failed"),
+                error,
+            ),
+        )
+
+        fixture.fixture.manager.requestsChannel.send(
+            fixture.fixture.readRequest(response = response),
+        )
+        runCurrent()
+
+        assertEquals(
+            listOf(GattResponseStatus.Success, GattResponseStatus.UnlikelyError),
+            response.statuses,
+        )
+        assertEquals(listOf<Throwable>(error), uncaught)
+        assertEquals(1, fixture.fixture.controller.state.value.log.size)
+        val laterResponse = RecordingResponseHandle()
+        fixture.fixture.manager.requestsChannel.send(
+            fixture.fixture.readRequest(response = laterResponse),
+        )
+        runCurrent()
+        assertTrue(laterResponse.statuses.isEmpty())
+        fixture.scopeJob.cancel()
+    }
+
+    @Test
+    fun requestCancellationPropagatesWithoutFallbackOrLogging() = runTest {
+        val fixture = requestFixtureWithIsolatedScope()
+        val response = RecordingResponseHandle(
+            failures = listOf(CancellationException("cancel request")),
+        )
+
+        fixture.fixture.manager.requestsChannel.send(
+            fixture.fixture.readRequest(response = response),
+        )
+        runCurrent()
+
+        assertEquals(listOf(GattResponseStatus.Success), response.statuses)
+        assertTrue(fixture.fixture.controller.state.value.log.isEmpty())
+        val laterResponse = RecordingResponseHandle()
+        fixture.fixture.manager.requestsChannel.send(
+            fixture.fixture.readRequest(response = laterResponse),
+        )
+        runCurrent()
+        assertTrue(laterResponse.statuses.isEmpty())
+        fixture.scopeJob.cancel()
+    }
+
+    @Test
+    fun requestErrorPropagatesWithoutFallbackOrLogging() = runTest {
+        val uncaught = mutableListOf<Throwable>()
+        val fixture = requestFixtureWithIsolatedScope(uncaught)
+        val error = AssertionError("fatal request")
+        val response = RecordingResponseHandle(failures = listOf(error))
+
+        fixture.fixture.manager.requestsChannel.send(
+            fixture.fixture.readRequest(response = response),
+        )
+        runCurrent()
+
+        assertEquals(listOf(GattResponseStatus.Success), response.statuses)
+        assertEquals(listOf<Throwable>(error), uncaught)
+        assertTrue(fixture.fixture.controller.state.value.log.isEmpty())
+        val laterResponse = RecordingResponseHandle()
+        fixture.fixture.manager.requestsChannel.send(
+            fixture.fixture.readRequest(response = laterResponse),
+        )
+        runCurrent()
+        assertTrue(laterResponse.statuses.isEmpty())
+        fixture.scopeJob.cancel()
+    }
+
+    private fun TestScope.requestFixture(): RequestFixture {
+        val manager = FakePeripheral()
+        val session = FakeSession()
+        return RequestFixture(
+            manager = manager,
+            session = session,
+            controller = PeripheralEchoController(
+                runtime = PeripheralExampleRuntime(manager, FakeQueue()),
+                scope = backgroundScope,
+            ),
+        )
+    }
+
+    private fun TestScope.requestFixtureWithIsolatedScope(
+        uncaught: MutableList<Throwable> = mutableListOf(),
+    ): IsolatedRequestFixture {
+        val scopeJob = SupervisorJob()
+        val handler = CoroutineExceptionHandler { _, cause -> uncaught += cause }
+        val scope = CoroutineScope(
+            scopeJob + StandardTestDispatcher(testScheduler) + handler,
+        )
+        val manager = FakePeripheral()
+        val session = FakeSession()
+        return IsolatedRequestFixture(
+            fixture = RequestFixture(
+                manager = manager,
+                session = session,
+                controller = PeripheralEchoController(
+                    runtime = PeripheralExampleRuntime(manager, FakeQueue()),
+                    scope = scope,
+                ),
+            ),
+            scopeJob = scopeJob,
+        )
+    }
+}
+
+private data class RequestFixture(
+    val manager: FakePeripheral,
+    val session: FakeSession,
+    val controller: PeripheralEchoController,
+) {
+    suspend fun sendWrite(
+        offset: Int,
+        value: String,
+        response: RecordingResponseHandle = RecordingResponseHandle(),
+    ): RecordingResponseHandle {
+        manager.requestsChannel.send(
+            GattCharacteristicWriteRequest(
+                session = session,
+                serviceId = EchoGatt.serviceId,
+                characteristicId = EchoGatt.characteristicId,
+                offset = offset,
+                value = value.encodeToByteArray(),
+                preparedWrite = false,
+                response = response,
+            ),
+        )
+        return response
+    }
+
+    suspend fun sendRead(
+        offset: Int,
+        response: RecordingResponseHandle = RecordingResponseHandle(),
+    ): RecordingResponseHandle {
+        manager.requestsChannel.send(readRequest(offset, response))
+        return response
+    }
+
+    fun readRequest(
+        offset: Int = 0,
+        response: RecordingResponseHandle,
+    ) = GattCharacteristicReadRequest(
+        session = session,
+        serviceId = EchoGatt.serviceId,
+        characteristicId = EchoGatt.characteristicId,
+        offset = offset,
+        response = response,
+    )
+}
+
+private data class IsolatedRequestFixture(
+    val fixture: RequestFixture,
+    val scopeJob: Job,
+)
+
+private class RecordingResponseHandle(
+    failures: List<Throwable> = emptyList(),
+) : GattResponseHandle {
+    private val scriptedFailures = failures.toMutableList()
+    private val recordedResponses = mutableListOf<RecordedResponse>()
+
+    val statuses: List<GattResponseStatus>
+        get() = recordedResponses.map { response -> response.status }
+    val singleStatus: GattResponseStatus
+        get() = recordedResponses.single().status
+    val singleValue: ByteArray?
+        get() = recordedResponses.single().value?.copyOf()
+
+    override suspend fun respond(
+        status: GattResponseStatus,
+        value: ByteArray?,
+    ): GattResponseResult {
+        recordedResponses += RecordedResponse(status, value?.copyOf())
+        if (scriptedFailures.isNotEmpty()) {
+            throw scriptedFailures.removeAt(0)
+        }
+        return GattResponseResult.Responded
+    }
+}
+
+private data class RecordedResponse(
+    val status: GattResponseStatus,
+    private val copiedValue: ByteArray?,
+) {
+    val value: ByteArray?
+        get() = copiedValue?.copyOf()
 }
 
 private class FakePeripheral : BlueFalconPeripheral {
@@ -382,8 +938,8 @@ private class FakePeripheral : BlueFalconPeripheral {
     override val sessions: StateFlow<Set<PeripheralSession>> =
         mutableSessions.asStateFlow()
 
-    private val requestChannel = Channel<GattServerRequest>(Channel.BUFFERED)
-    override val requests: Flow<GattServerRequest> = requestChannel.receiveAsFlow()
+    val requestsChannel = Channel<GattServerRequest>(Channel.UNLIMITED)
+    override val requests: Flow<GattServerRequest> = requestsChannel.receiveAsFlow()
     override val events: Flow<PeripheralEvent> = emptyFlow()
     override val notificationReadiness: Flow<NotificationReadiness> = emptyFlow()
     override val notificationReadinessState: StateFlow<NotificationReadinessState> =

@@ -5,6 +5,14 @@ import com.example.bluefalconcomposemultiplatform.peripheral.PeripheralExampleRu
 import dev.bluefalcon.peripheral.AdvertiseConfig
 import dev.bluefalcon.peripheral.CharacteristicProperty
 import dev.bluefalcon.peripheral.GattCharacteristicConfig
+import dev.bluefalcon.peripheral.GattCharacteristicReadRequest
+import dev.bluefalcon.peripheral.GattCharacteristicWriteBatchRequest
+import dev.bluefalcon.peripheral.GattCharacteristicWriteRequest
+import dev.bluefalcon.peripheral.GattDescriptorReadRequest
+import dev.bluefalcon.peripheral.GattDescriptorWriteRequest
+import dev.bluefalcon.peripheral.GattExecuteWriteRequest
+import dev.bluefalcon.peripheral.GattResponseStatus
+import dev.bluefalcon.peripheral.GattServerRequest
 import dev.bluefalcon.peripheral.GattServiceConfig
 import dev.bluefalcon.peripheral.PeripheralConfig
 import kotlinx.coroutines.CancellationException
@@ -30,6 +38,7 @@ class PeripheralEchoController(
 
     private val config = echoConfig()
     private var subscriptionObserverJob: Job? = null
+    private var echoValue = ByteArray(0)
 
     init {
         if (runtime != null) {
@@ -72,6 +81,20 @@ class PeripheralEchoController(
                     }
                 }
             }
+            scope.launch {
+                runtime.manager.requests.collect { request ->
+                    try {
+                        handleRequest(request)
+                    } catch (cause: CancellationException) {
+                        throw cause
+                    } catch (cause: Exception) {
+                        appendLog(
+                            "Request failed: ${cause.message ?: "unknown error"}",
+                        )
+                        respondWithFallback(request)
+                    }
+                }
+            }
         }
     }
 
@@ -96,6 +119,126 @@ class PeripheralEchoController(
             appendLog("Stop failed: ${cause.message ?: "unknown error"}")
         }
     }
+
+    private suspend fun handleRequest(request: GattServerRequest) {
+        when (request) {
+            is GattCharacteristicReadRequest -> handleRead(request)
+            is GattCharacteristicWriteRequest -> handleWrite(request)
+            is GattCharacteristicWriteBatchRequest -> {
+                if (request.writes.any { write ->
+                        write.serviceId != EchoGatt.serviceId ||
+                            write.characteristicId != EchoGatt.characteristicId
+                    }
+                ) {
+                    rejectInvalidHandle(request)
+                } else {
+                    rejectUnsupported(request, "write batch")
+                }
+            }
+
+            is GattDescriptorReadRequest -> {
+                if (!request.hasEchoHandle()) {
+                    rejectInvalidHandle(request)
+                } else {
+                    rejectUnsupported(request, "descriptor read")
+                }
+            }
+
+            is GattDescriptorWriteRequest -> {
+                if (!request.hasEchoHandle()) {
+                    rejectInvalidHandle(request)
+                } else {
+                    rejectUnsupported(request, "descriptor write")
+                }
+            }
+
+            is GattExecuteWriteRequest -> rejectUnsupported(request, "execute write")
+        }
+    }
+
+    private suspend fun handleRead(request: GattCharacteristicReadRequest) {
+        if (!request.hasEchoHandle()) {
+            rejectInvalidHandle(request)
+            return
+        }
+        if (request.offset !in 0..echoValue.size) {
+            request.response.respond(GattResponseStatus.InvalidOffset)
+            appendLog("Read rejected: invalid offset ${request.offset}")
+            return
+        }
+
+        val value = echoValue.copyOfRange(request.offset, echoValue.size)
+        request.response.respond(GattResponseStatus.Success, value.copyOf())
+        appendLog("Read ${value.size} byte(s) at offset ${request.offset}")
+    }
+
+    private suspend fun handleWrite(request: GattCharacteristicWriteRequest) {
+        if (!request.hasEchoHandle()) {
+            rejectInvalidHandle(request)
+            return
+        }
+        if (request.preparedWrite) {
+            rejectUnsupported(request, "prepared write")
+            return
+        }
+        if (request.offset !in 0..echoValue.size) {
+            request.response?.respond(GattResponseStatus.InvalidOffset)
+            appendLog("Write rejected: invalid offset ${request.offset}")
+            return
+        }
+
+        val written = request.value.copyOf()
+        val requiredSize = maxOf(echoValue.size, request.offset + written.size)
+        val updated = ByteArray(requiredSize)
+        echoValue.copyInto(updated)
+        written.copyInto(updated, destinationOffset = request.offset)
+        echoValue = updated.copyOf()
+
+        request.response?.respond(GattResponseStatus.Success)
+        appendLog("Wrote ${written.size} byte(s) at offset ${request.offset}")
+    }
+
+    private suspend fun rejectInvalidHandle(request: GattServerRequest) {
+        request.response?.respond(GattResponseStatus.InvalidHandle)
+        appendLog("Rejected unknown GATT handle")
+    }
+
+    private suspend fun rejectUnsupported(
+        request: GattServerRequest,
+        operation: String,
+    ) {
+        request.response?.respond(GattResponseStatus.RequestNotSupported)
+        appendLog("Unsupported request: $operation")
+    }
+
+    private suspend fun respondWithFallback(request: GattServerRequest) {
+        val response = request.response ?: return
+        try {
+            response.respond(GattResponseStatus.UnlikelyError)
+        } catch (cause: CancellationException) {
+            throw cause
+        } catch (cause: Exception) {
+            appendLog(
+                "Fallback response failed: ${cause.message ?: "unknown error"}",
+            )
+        }
+    }
+
+    private fun GattCharacteristicReadRequest.hasEchoHandle(): Boolean =
+        serviceId == EchoGatt.serviceId &&
+            characteristicId == EchoGatt.characteristicId
+
+    private fun GattCharacteristicWriteRequest.hasEchoHandle(): Boolean =
+        serviceId == EchoGatt.serviceId &&
+            characteristicId == EchoGatt.characteristicId
+
+    private fun GattDescriptorReadRequest.hasEchoHandle(): Boolean =
+        serviceId == EchoGatt.serviceId &&
+            characteristicId == EchoGatt.characteristicId
+
+    private fun GattDescriptorWriteRequest.hasEchoHandle(): Boolean =
+        serviceId == EchoGatt.serviceId &&
+            characteristicId == EchoGatt.characteristicId
 
     private fun appendLog(message: String) {
         mutableState.update { current ->
