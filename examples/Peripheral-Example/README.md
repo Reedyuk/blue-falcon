@@ -22,7 +22,14 @@ Copy [`src/PeripheralEchoServer.kt`](src/PeripheralEchoServer.kt) into your comm
 create exactly one server for each application-owned peripheral manager:
 
 ```kotlin
+import dev.bluefalcon.peripheral.android.createBlueFalconPeripheral
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
+
 // Android application startup
+val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 val peripheral = createBlueFalconPeripheral(applicationContext)
 val server = PeripheralEchoServer(peripheral, applicationScope)
 
@@ -32,6 +39,13 @@ applicationScope.launch {
 ```
 
 ```kotlin
+import dev.bluefalcon.peripheral.apple.createBlueFalconPeripheral
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
+
 // iOS/macOS application startup
 val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 val peripheral = createBlueFalconPeripheral()
@@ -40,13 +54,6 @@ val server = PeripheralEchoServer(peripheral, applicationScope)
 applicationScope.launch(start = CoroutineStart.UNDISPATCHED) {
     server.start()
 }
-```
-
-The platform factory imports are:
-
-```kotlin
-import dev.bluefalcon.peripheral.android.createBlueFalconPeripheral // Android
-import dev.bluefalcon.peripheral.apple.createBlueFalconPeripheral  // iOS/macOS
 ```
 
 ## Platform startup and ownership
