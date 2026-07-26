@@ -38,7 +38,7 @@ class PeripheralEchoController(
 
     private val config = echoConfig()
     private var subscriptionObserverJob: Job? = null
-    private var echoValue = ByteArray(0)
+    private var echoValue = DEFAULT_ECHO_VALUE.copyOf()
 
     init {
         if (runtime != null) {
@@ -88,10 +88,7 @@ class PeripheralEchoController(
                     } catch (cause: CancellationException) {
                         throw cause
                     } catch (cause: Exception) {
-                        appendLog(
-                            "Request failed: ${cause.message ?: "unknown error"}",
-                        )
-                        respondWithFallback(request)
+                        handleRequestFailure(request, cause)
                     }
                 }
             }
@@ -211,17 +208,34 @@ class PeripheralEchoController(
         appendLog("Unsupported request: $operation")
     }
 
-    private suspend fun respondWithFallback(request: GattServerRequest) {
-        val response = request.response ?: return
+    private suspend fun handleRequestFailure(
+        request: GattServerRequest,
+        requestFailure: Exception,
+    ) {
+        val requestMessage =
+            "Request failed: ${requestFailure.message ?: "unknown error"}"
+        val response = request.response
+        if (response == null) {
+            appendLog(requestMessage)
+            return
+        }
+
         try {
             response.respond(GattResponseStatus.UnlikelyError)
         } catch (cause: CancellationException) {
+            appendLog(requestMessage)
+            throw cause
+        } catch (cause: Error) {
+            appendLog(requestMessage)
             throw cause
         } catch (cause: Exception) {
             appendLog(
-                "Fallback response failed: ${cause.message ?: "unknown error"}",
+                "$requestMessage; fallback response failed: " +
+                    (cause.message ?: "unknown error"),
             )
+            return
         }
+        appendLog(requestMessage)
     }
 
     private fun GattCharacteristicReadRequest.hasEchoHandle(): Boolean =

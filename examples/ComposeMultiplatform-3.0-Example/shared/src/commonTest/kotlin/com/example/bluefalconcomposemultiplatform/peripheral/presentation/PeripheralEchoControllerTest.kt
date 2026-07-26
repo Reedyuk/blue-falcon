@@ -389,6 +389,23 @@ class PeripheralEchoControllerTest {
     }
 
     @Test
+    fun initialRequestReadReturnsDefensiveCopyOfConfiguredDefault() = runTest {
+        val fixture = requestFixture()
+        val firstResponse = fixture.sendRead(offset = 0)
+        runCurrent()
+
+        assertEquals(GattResponseStatus.Success, firstResponse.singleStatus)
+        assertContentEquals(DEFAULT_TEST_ECHO_VALUE, firstResponse.singleValue)
+        val exposedValue = assertNotNull(firstResponse.singleValue)
+        exposedValue[0] = 0
+
+        val secondResponse = fixture.sendRead(offset = 0)
+        runCurrent()
+
+        assertContentEquals(DEFAULT_TEST_ECHO_VALUE, secondResponse.singleValue)
+    }
+
+    @Test
     fun writeCopiesValueAndReadReturnsItFromRequestedOffset() = runTest {
         val fixture = requestFixture()
         val written = "echo-value".encodeToByteArray()
@@ -423,35 +440,45 @@ class PeripheralEchoControllerTest {
         runCurrent()
 
         assertEquals(GattResponseStatus.Success, readResponse.singleStatus)
-        assertContentEquals("value".encodeToByteArray(), readResponse.singleValue)
+        assertContentEquals(
+            "value Blue Falcon".encodeToByteArray(),
+            readResponse.singleValue,
+        )
         val returnedValue = assertNotNull(readResponse.singleValue)
         returnedValue[0] = 0
-        assertContentEquals("value".encodeToByteArray(), readResponse.singleValue)
+        assertContentEquals(
+            "value Blue Falcon".encodeToByteArray(),
+            readResponse.singleValue,
+        )
     }
 
     @Test
     fun requestWritesOverlayAtValidOffsetsAndAppendAtCurrentSize() = runTest {
         val fixture = requestFixture()
 
-        fixture.sendWrite(offset = 0, value = "abcdef")
         fixture.sendWrite(offset = 2, value = "XY")
-        fixture.sendWrite(offset = 6, value = "!!")
+        fixture.sendWrite(offset = DEFAULT_TEST_ECHO_VALUE.size, value = "!!")
         val response = fixture.sendRead(offset = 0)
         runCurrent()
 
         assertEquals(GattResponseStatus.Success, response.singleStatus)
-        assertContentEquals("abXYef!!".encodeToByteArray(), response.singleValue)
+        assertContentEquals(
+            "HeXYo from Blue Falcon!!".encodeToByteArray(),
+            response.singleValue,
+        )
     }
 
     @Test
     fun requestRejectsInvalidReadAndWriteOffsets() = runTest {
         val fixture = requestFixture()
-        fixture.sendWrite(offset = 0, value = "abc")
 
         val negativeWrite = fixture.sendWrite(offset = -1, value = "x")
-        val largeWrite = fixture.sendWrite(offset = 4, value = "x")
+        val largeWrite = fixture.sendWrite(
+            offset = DEFAULT_TEST_ECHO_VALUE.size + 1,
+            value = "x",
+        )
         val negativeRead = fixture.sendRead(offset = -1)
-        val largeRead = fixture.sendRead(offset = 4)
+        val largeRead = fixture.sendRead(offset = DEFAULT_TEST_ECHO_VALUE.size + 1)
         runCurrent()
 
         listOf(negativeWrite, largeWrite, negativeRead, largeRead).forEach { response ->
@@ -460,7 +487,7 @@ class PeripheralEchoControllerTest {
         val storedResponse = fixture.sendRead(offset = 0)
         runCurrent()
         assertContentEquals(
-            "abc".encodeToByteArray(),
+            DEFAULT_TEST_ECHO_VALUE,
             storedResponse.singleValue,
         )
     }
@@ -599,7 +626,7 @@ class PeripheralEchoControllerTest {
                 session = fixture.session,
                 serviceId = EchoGatt.serviceId,
                 characteristicId = EchoGatt.characteristicId,
-                offset = 0,
+                offset = DEFAULT_TEST_ECHO_VALUE.size,
                 value = "without-response".encodeToByteArray(),
                 preparedWrite = false,
                 response = null,
@@ -610,7 +637,7 @@ class PeripheralEchoControllerTest {
         val readResponse = fixture.sendRead(offset = 0)
         runCurrent()
         assertContentEquals(
-            "without-response".encodeToByteArray(),
+            "Hello from Blue Falconwithout-response".encodeToByteArray(),
             readResponse.singleValue,
         )
     }
@@ -685,11 +712,9 @@ class PeripheralEchoControllerTest {
             listOf(GattResponseStatus.Success, GattResponseStatus.UnlikelyError),
             response.statuses,
         )
-        assertEquals(2, fixture.controller.state.value.log.size)
-        assertTrue(
-            fixture.controller.state.value.log.last()
-                .contains("fallback response failed"),
-        )
+        val log = fixture.controller.state.value.log.single()
+        assertTrue(log.contains("primary response failed"))
+        assertTrue(log.contains("fallback response failed"))
         val laterResponse = fixture.sendRead(offset = 0)
         runCurrent()
         assertEquals(
@@ -1042,6 +1067,8 @@ private data class NotifyCall(
     val value: ByteArray,
     val mode: NotificationMode,
 )
+
+private val DEFAULT_TEST_ECHO_VALUE = "Hello from Blue Falcon".encodeToByteArray()
 
 private object UnsupportedPluginRegistry : PeripheralPluginRegistry {
     override fun <C : PeripheralPluginConfig, T> install(
