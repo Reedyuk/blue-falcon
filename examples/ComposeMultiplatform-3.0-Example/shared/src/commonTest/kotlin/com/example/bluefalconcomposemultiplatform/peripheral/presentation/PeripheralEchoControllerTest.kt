@@ -389,6 +389,213 @@ class PeripheralEchoControllerTest {
     }
 
     @Test
+    fun sendTargetsOnlySessionsSubscribedToEchoCharacteristic() = runTest {
+        val subscribed = FakeSession(
+            id = PeripheralSessionId("subscribed"),
+            initialSubscriptions = setOf(EchoGatt.characteristicId),
+        )
+        val unrelated = FakeSession(
+            id = PeripheralSessionId("unrelated"),
+            initialSubscriptions = setOf(
+                GattCharacteristicId(
+                    "84f7e122-63fd-4f79-8b08-5b9780a36a94".toUuid(),
+                ),
+            ),
+        )
+        val unsubscribed = FakeSession(id = PeripheralSessionId("unsubscribed"))
+        val manager = FakePeripheral().apply {
+            mutableState.value = PeripheralManagerState.Running
+            mutableSessions.value = setOf(subscribed, unrelated, unsubscribed)
+        }
+        val queue = FakeQueue()
+        val controller = PeripheralEchoController(
+            runtime = PeripheralExampleRuntime(manager, queue),
+            scope = backgroundScope,
+        )
+
+        controller.setPayloadText("hello")
+        controller.sendNotification()
+
+        val call = queue.sendCalls.single()
+        assertSame(subscribed, call.session)
+        assertEquals(EchoGatt.characteristicId, call.characteristic)
+        assertContentEquals("hello".encodeToByteArray(), call.value)
+        assertEquals(NotificationMode.Notification, call.mode)
+    }
+
+    @Test
+    fun everyTypedQueueResultIsVisibleInLog() = runTest {
+        val results = listOf(
+            QueueSendResult.Sent to "Sent",
+            QueueSendResult.QueueFull to "QueueFull",
+            QueueSendResult.PayloadTooLarge to "PayloadTooLarge",
+            QueueSendResult.Disconnected to "Disconnected",
+            QueueSendResult.Unsupported to "Unsupported",
+            QueueSendResult.Failed(IllegalStateException("boom")) to "Failed: boom",
+        )
+
+        results.forEachIndexed { index, (result, expectedLabel) ->
+            val session = FakeSession(
+                id = PeripheralSessionId("session-$index"),
+                initialSubscriptions = setOf(EchoGatt.characteristicId),
+            )
+            val manager = FakePeripheral().apply {
+                mutableState.value = PeripheralManagerState.Running
+                mutableSessions.value = setOf(session)
+            }
+            val controller = PeripheralEchoController(
+                runtime = PeripheralExampleRuntime(manager, FakeQueue(result)),
+                scope = backgroundScope,
+            )
+
+            controller.sendNotification()
+
+            assertTrue(
+                controller.state.value.log.last().contains(expectedLabel),
+                "Expected queue result label $expectedLabel",
+            )
+        }
+    }
+
+    @Test
+    fun setPayloadTextUpdatesStateAndEmptyPayloadPreventsSending() = runTest {
+        val session = FakeSession(
+            initialSubscriptions = setOf(EchoGatt.characteristicId),
+        )
+        val manager = FakePeripheral().apply {
+            mutableState.value = PeripheralManagerState.Running
+            mutableSessions.value = setOf(session)
+        }
+        val queue = FakeQueue()
+        val controller = PeripheralEchoController(
+            runtime = PeripheralExampleRuntime(manager, queue),
+            scope = backgroundScope,
+        )
+        runCurrent()
+        assertTrue(controller.state.value.canSend)
+
+        controller.setPayloadText("")
+
+        assertEquals("", controller.state.value.payloadText)
+        assertFalse(controller.state.value.canSend)
+        controller.sendNotification()
+        assertTrue(queue.sendCalls.isEmpty())
+
+        controller.setPayloadText("next")
+
+        assertEquals("next", controller.state.value.payloadText)
+        assertTrue(controller.state.value.canSend)
+    }
+
+    @Test
+    fun multipleSubscribedSessionsReceiveIndependentPayloadCopies() = runTest {
+        val first = FakeSession(
+            id = PeripheralSessionId("first"),
+            initialSubscriptions = setOf(EchoGatt.characteristicId),
+        )
+        val second = FakeSession(
+            id = PeripheralSessionId("second"),
+            initialSubscriptions = setOf(EchoGatt.characteristicId),
+        )
+        val manager = FakePeripheral().apply {
+            mutableState.value = PeripheralManagerState.Running
+            mutableSessions.value = linkedSetOf(first, second)
+        }
+        val queue = FakeQueue(mutateReceivedValue = true)
+        val controller = PeripheralEchoController(
+            runtime = PeripheralExampleRuntime(manager, queue),
+            scope = backgroundScope,
+        )
+
+        controller.setPayloadText("hello")
+        controller.sendNotification()
+
+        assertEquals(listOf(first, second), queue.sendCalls.map { it.session })
+        queue.sendCalls.forEach { call ->
+            assertContentEquals("hello".encodeToByteArray(), call.value)
+        }
+        assertEquals(2, controller.state.value.log.size)
+        assertTrue(controller.state.value.log[0].contains("first: Sent"))
+        assertTrue(controller.state.value.log[1].contains("second: Sent"))
+    }
+
+    @Test
+    fun unsupportedRuntimeAndNoSubscribedTargetsDoNotSubmitToQueue() = runTest {
+        val unsupported = PeripheralEchoController(
+            runtime = null,
+            scope = backgroundScope,
+        )
+        unsupported.setPayloadText("hello")
+        unsupported.sendNotification()
+        assertEquals("hello", unsupported.state.value.payloadText)
+
+        val manager = FakePeripheral().apply {
+            mutableState.value = PeripheralManagerState.Running
+            mutableSessions.value = setOf(FakeSession())
+        }
+        val queue = FakeQueue()
+        val controller = PeripheralEchoController(
+            runtime = PeripheralExampleRuntime(manager, queue),
+            scope = backgroundScope,
+        )
+
+        controller.sendNotification()
+
+        assertTrue(queue.sendCalls.isEmpty())
+    }
+
+    @Test
+    fun failedQueueResultWithoutMessageUsesCauseTypeInLog() = runTest {
+        val session = FakeSession(
+            initialSubscriptions = setOf(EchoGatt.characteristicId),
+        )
+        val manager = FakePeripheral().apply {
+            mutableState.value = PeripheralManagerState.Running
+            mutableSessions.value = setOf(session)
+        }
+        val controller = PeripheralEchoController(
+            runtime = PeripheralExampleRuntime(
+                manager,
+                FakeQueue(QueueSendResult.Failed(IllegalStateException())),
+            ),
+            scope = backgroundScope,
+        )
+
+        controller.sendNotification()
+
+        assertTrue(
+            controller.state.value.log.single()
+                .contains("Failed: IllegalStateException"),
+        )
+    }
+
+    @Test
+    fun queueCancellationPropagatesWithoutLogging() = runTest {
+        val cancellation = CancellationException("cancel send")
+        val fixture = sendFixture(queueFailure = cancellation)
+
+        val thrown = assertFailsWith<CancellationException> {
+            fixture.controller.sendNotification()
+        }
+
+        assertSame(cancellation, thrown)
+        assertTrue(fixture.controller.state.value.log.isEmpty())
+    }
+
+    @Test
+    fun queueErrorPropagatesWithoutLogging() = runTest {
+        val error = AssertionError("fatal send")
+        val fixture = sendFixture(queueFailure = error)
+
+        val thrown = assertFailsWith<AssertionError> {
+            fixture.controller.sendNotification()
+        }
+
+        assertSame(error, thrown)
+        assertTrue(fixture.controller.state.value.log.isEmpty())
+    }
+
+    @Test
     fun initialRequestReadReturnsDefensiveCopyOfConfiguredDefault() = runTest {
         val fixture = requestFixture()
         val firstResponse = fixture.sendRead(offset = 0)
@@ -955,6 +1162,27 @@ class PeripheralEchoControllerTest {
         )
     }
 
+    private fun TestScope.sendFixture(
+        queueFailure: Throwable,
+    ): SendFixture {
+        val session = FakeSession(
+            initialSubscriptions = setOf(EchoGatt.characteristicId),
+        )
+        val manager = FakePeripheral().apply {
+            mutableState.value = PeripheralManagerState.Running
+            mutableSessions.value = setOf(session)
+        }
+        return SendFixture(
+            controller = PeripheralEchoController(
+                runtime = PeripheralExampleRuntime(
+                    manager,
+                    FakeQueue(failure = queueFailure),
+                ),
+                scope = backgroundScope,
+            ),
+        )
+    }
+
     private fun TestScope.requestFixtureWithIsolatedScope(
         uncaught: MutableList<Throwable> = mutableListOf(),
         session: FakeSession = FakeSession(),
@@ -1026,6 +1254,10 @@ private data class RequestFixture(
 private data class IsolatedRequestFixture(
     val fixture: RequestFixture,
     val scopeJob: Job,
+)
+
+private data class SendFixture(
+    val controller: PeripheralEchoController,
 )
 
 private class RecordingResponseHandle(
@@ -1121,6 +1353,8 @@ private class FakePeripheral : BlueFalconPeripheral {
 
 private class FakeQueue(
     var result: QueueSendResult = QueueSendResult.Sent,
+    private val failure: Throwable? = null,
+    private val mutateReceivedValue: Boolean = false,
 ) : PeripheralQueue {
     val sendCalls = mutableListOf<SendCall>()
 
@@ -1130,12 +1364,14 @@ private class FakeQueue(
         value: ByteArray,
         mode: NotificationMode,
     ): QueueSendResult {
+        failure?.let { throw it }
         sendCalls += SendCall(
             session = session,
             characteristic = characteristic,
             value = value.copyOf(),
             mode = mode,
         )
+        if (mutateReceivedValue) value.fill(0)
         return result
     }
 }

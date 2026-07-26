@@ -17,6 +17,7 @@ import dev.bluefalcon.peripheral.GattResponseStatus
 import dev.bluefalcon.peripheral.GattServerRequest
 import dev.bluefalcon.peripheral.GattServiceConfig
 import dev.bluefalcon.peripheral.PeripheralConfig
+import dev.bluefalcon.plugins.queue.QueueSendResult
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -130,6 +131,30 @@ class PeripheralEchoController(
             throw cause
         } catch (cause: Exception) {
             appendLog("Stop failed: ${cause.message ?: "unknown error"}")
+        }
+    }
+
+    fun setPayloadText(value: String) {
+        mutableState.update { current ->
+            current.copy(payloadText = value)
+        }
+    }
+
+    suspend fun sendNotification() {
+        val currentRuntime = runtime ?: return
+        val payload = state.value.payloadText.encodeToByteArray()
+        if (payload.isEmpty()) return
+
+        val targets = currentRuntime.manager.sessions.value.filter { session ->
+            EchoGatt.characteristicId in session.subscriptions.value
+        }
+        targets.forEach { session ->
+            val result = currentRuntime.queue.send(
+                session = session,
+                characteristic = EchoGatt.characteristicId,
+                value = payload.copyOf(),
+            )
+            appendLog("${session.id.value}: ${result.toLogLabel()}")
         }
     }
 
@@ -312,6 +337,16 @@ class PeripheralEchoController(
             )
         }
     }
+}
+
+private fun QueueSendResult.toLogLabel(): String = when (this) {
+    QueueSendResult.Sent -> "Sent"
+    QueueSendResult.QueueFull -> "QueueFull"
+    QueueSendResult.PayloadTooLarge -> "PayloadTooLarge"
+    QueueSendResult.Disconnected -> "Disconnected"
+    QueueSendResult.Unsupported -> "Unsupported"
+    is QueueSendResult.Failed ->
+        "Failed: ${cause.message ?: cause::class.simpleName ?: "unknown error"}"
 }
 
 private class RequestDecision(
