@@ -146,3 +146,14 @@ The stored echo attribute is limited to 512 bytes, and larger writes receive
 `InvalidAttributeValueLength` without changing the stored value. This attribute limit is separate
 from notifications: payloads passed to `notifySubscribers` must also fit each individual session's
 `maximumUpdateValueLength`; larger notification payloads produce `PayloadTooLarge`.
+
+## Verification
+
+The Compose Multiplatform example permanently includes this tutorial's `src` and `test` directories
+in its `commonTest` source set. This keeps the tutorial out of every production source set while
+making its tests part of the normal shared-module test lifecycle:
+
+```bash
+cd ../ComposeMultiplatform-3.0-Example
+./gradlew :shared:jvmTest --tests '*PeripheralEchoServerTest'
+```

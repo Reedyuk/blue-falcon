@@ -65,6 +65,12 @@ kotlin {
             }
         }
         val commonTest by getting {
+            // Verification-only wiring: compile the standalone tutorial and its tests without
+            // adding either directory to the example's production commonMain artifact.
+            kotlin.srcDirs(
+                "../../Peripheral-Example/src",
+                "../../Peripheral-Example/test",
+            )
             dependencies {
                 implementation(kotlin("test"))
                 implementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:$coroutinesVersion")
