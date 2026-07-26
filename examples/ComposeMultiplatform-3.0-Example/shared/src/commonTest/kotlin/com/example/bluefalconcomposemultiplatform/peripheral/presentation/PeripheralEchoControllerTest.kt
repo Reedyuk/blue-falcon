@@ -23,6 +23,7 @@ import dev.bluefalcon.peripheral.PeripheralSessionId
 import dev.bluefalcon.peripheral.SessionState
 import dev.bluefalcon.plugins.queue.PeripheralQueue
 import dev.bluefalcon.plugins.queue.QueueSendResult
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
@@ -141,6 +142,10 @@ class PeripheralEchoControllerTest {
             runtime = PeripheralExampleRuntime(manager, FakeQueue()),
             scope = backgroundScope,
         )
+        manager.mutableSessions.value = setOf(
+            FakeSession(initialSubscriptions = setOf(EchoGatt.characteristicId)),
+        )
+        runCurrent()
         val failure = IllegalStateException("start unavailable")
 
         manager.startFailure = failure
@@ -157,6 +162,8 @@ class PeripheralEchoControllerTest {
         )
         assertTrue(controller.state.value.canStop)
         assertFalse(controller.state.value.canStart)
+        assertEquals(1, controller.state.value.subscribedSessionCount)
+        assertFalse(controller.state.value.canSend)
 
         manager.startFailure = null
         controller.stop()
@@ -174,8 +181,12 @@ class PeripheralEchoControllerTest {
             runtime = PeripheralExampleRuntime(manager, FakeQueue()),
             scope = backgroundScope,
         )
+        manager.mutableSessions.value = setOf(
+            FakeSession(initialSubscriptions = setOf(EchoGatt.characteristicId)),
+        )
         controller.start()
         runCurrent()
+        assertTrue(controller.state.value.canSend)
         val failure = IllegalStateException("stop unavailable")
 
         manager.stopFailure = failure
@@ -192,6 +203,8 @@ class PeripheralEchoControllerTest {
         )
         assertTrue(controller.state.value.canStop)
         assertFalse(controller.state.value.canStart)
+        assertEquals(1, controller.state.value.subscribedSessionCount)
+        assertFalse(controller.state.value.canSend)
 
         manager.stopFailure = null
         controller.stop()
@@ -203,7 +216,7 @@ class PeripheralEchoControllerTest {
     }
 
     @Test
-    fun lifecycleErrorsPropagateWithoutLogging() = runTest {
+    fun startErrorPropagatesWithoutLogging() = runTest {
         val manager = FakePeripheral()
         val controller = PeripheralEchoController(
             runtime = PeripheralExampleRuntime(manager, FakeQueue()),
@@ -218,8 +231,15 @@ class PeripheralEchoControllerTest {
 
         assertSame(startError, thrownStartError)
         assertTrue(controller.state.value.log.isEmpty())
+    }
 
-        manager.startFailure = null
+    @Test
+    fun stopErrorPropagatesWithoutLogging() = runTest {
+        val manager = FakePeripheral()
+        val controller = PeripheralEchoController(
+            runtime = PeripheralExampleRuntime(manager, FakeQueue()),
+            scope = backgroundScope,
+        )
         controller.start()
         val stopError = AssertionError("fatal stop")
         manager.stopFailure = stopError
@@ -229,6 +249,43 @@ class PeripheralEchoControllerTest {
         }
 
         assertSame(stopError, thrownStopError)
+        assertTrue(controller.state.value.log.isEmpty())
+    }
+
+    @Test
+    fun startCancellationPropagatesWithoutLogging() = runTest {
+        val manager = FakePeripheral()
+        val controller = PeripheralEchoController(
+            runtime = PeripheralExampleRuntime(manager, FakeQueue()),
+            scope = backgroundScope,
+        )
+        val cancellation = CancellationException("cancel start")
+        manager.startFailure = cancellation
+
+        val thrownCancellation = assertFailsWith<CancellationException> {
+            controller.start()
+        }
+
+        assertSame(cancellation, thrownCancellation)
+        assertTrue(controller.state.value.log.isEmpty())
+    }
+
+    @Test
+    fun stopCancellationPropagatesWithoutLogging() = runTest {
+        val manager = FakePeripheral()
+        val controller = PeripheralEchoController(
+            runtime = PeripheralExampleRuntime(manager, FakeQueue()),
+            scope = backgroundScope,
+        )
+        controller.start()
+        val cancellation = CancellationException("cancel stop")
+        manager.stopFailure = cancellation
+
+        val thrownCancellation = assertFailsWith<CancellationException> {
+            controller.stop()
+        }
+
+        assertSame(cancellation, thrownCancellation)
         assertTrue(controller.state.value.log.isEmpty())
     }
 

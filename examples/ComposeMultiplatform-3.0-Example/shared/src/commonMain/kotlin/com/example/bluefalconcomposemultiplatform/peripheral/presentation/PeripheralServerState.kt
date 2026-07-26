@@ -16,5 +16,9 @@ data class PeripheralServerState(
             managerState == PeripheralManagerState.Running ||
                 managerState is PeripheralManagerState.Failed
         )
-    val canSend get() = canStop && subscribedSessionCount > 0 && payloadText.isNotEmpty()
+    val canSend
+        get() = supported &&
+            managerState == PeripheralManagerState.Running &&
+            subscribedSessionCount > 0 &&
+            payloadText.isNotEmpty()
 }
