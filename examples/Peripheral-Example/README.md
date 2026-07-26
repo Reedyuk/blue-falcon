@@ -33,10 +33,11 @@ applicationScope.launch {
 
 ```kotlin
 // iOS/macOS application startup
+val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 val peripheral = createBlueFalconPeripheral()
 val server = PeripheralEchoServer(peripheral, applicationScope)
 
-applicationScope.launch {
+applicationScope.launch(start = CoroutineStart.UNDISPATCHED) {
     server.start()
 }
 ```
@@ -72,6 +73,10 @@ immediately with the same stable restoration identifier:
 ```kotlin
 const val restorationIdentifier = "dev.bluefalcon.example.echo-peripheral"
 ```
+
+`CoroutineStart.UNDISPATCHED` begins `server.start()` inline on the application-owned main scope,
+reaching CoreBluetooth initialization before the first suspension and before the startup callback
+returns. The scope must remain alive for the server's lifetime.
 
 Do not wait for lazy UI or view-model initialization when restoration is required. Keep the
 application-owned manager, scope, and `PeripheralEchoServer` alive for the application's BLE

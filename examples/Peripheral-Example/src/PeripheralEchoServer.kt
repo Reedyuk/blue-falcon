@@ -24,6 +24,7 @@ import dev.bluefalcon.plugins.queue.QueuePlugin
 import dev.bluefalcon.plugins.queue.QueueSendResult
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.cancelAndJoin
@@ -33,6 +34,7 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import kotlin.uuid.ExperimentalUuidApi
 
 class PeripheralEchoServer(
@@ -47,6 +49,8 @@ class PeripheralEchoServer(
 
     private val lifecycleMutex = Mutex()
     private var closed = false
+    private var closeCompleted = false
+    private var closeFailure: Throwable? = null
     private val queue = peripheral.plugins.install(QueuePlugin) {
         maxPendingItemsPerSession = 64
         maxPendingBytes = 64 * 1024
@@ -101,12 +105,35 @@ class PeripheralEchoServer(
     }
 
     suspend fun close() {
-        lifecycleMutex.withLock {
-            if (closed) return
-            closed = true
-            requestJob.cancelAndJoin()
-            peripheral.close()
+        val failure = withContext(NonCancellable) {
+            lifecycleMutex.withLock {
+                if (closeCompleted) {
+                    return@withLock closeFailure
+                }
+                closed = true
+
+                var failure: Throwable? = null
+                try {
+                    requestJob.cancelAndJoin()
+                } catch (cause: Throwable) {
+                    failure = cause
+                }
+                try {
+                    peripheral.close()
+                } catch (cause: Throwable) {
+                    if (failure == null) {
+                        failure = cause
+                    } else if (failure !== cause) {
+                        failure.addSuppressed(cause)
+                    }
+                }
+
+                closeFailure = failure
+                closeCompleted = true
+                failure
+            }
         }
+        failure?.let { throw it }
     }
 
     private suspend fun handleRequest(request: GattServerRequest) {
