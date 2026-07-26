@@ -17,11 +17,15 @@ import dev.bluefalcon.peripheral.GattResponseStatus
 import dev.bluefalcon.peripheral.GattServerRequest
 import dev.bluefalcon.peripheral.GattServiceConfig
 import dev.bluefalcon.peripheral.PeripheralConfig
+import dev.bluefalcon.peripheral.PeripheralManagerState
 import dev.bluefalcon.plugins.queue.QueueSendResult
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -142,19 +146,31 @@ class PeripheralEchoController(
 
     suspend fun sendNotification() {
         val currentRuntime = runtime ?: return
+        if (currentRuntime.manager.state.value != PeripheralManagerState.Running) return
+
         val payload = state.value.payloadText.encodeToByteArray()
         if (payload.isEmpty()) return
 
         val targets = currentRuntime.manager.sessions.value.filter { session ->
             EchoGatt.characteristicId in session.subscriptions.value
         }
-        targets.forEach { session ->
-            val result = currentRuntime.queue.send(
-                session = session,
-                characteristic = EchoGatt.characteristicId,
-                value = payload.copyOf(),
-            )
-            appendLog("${session.id.value}: ${result.toLogLabel()}")
+        coroutineScope {
+            targets.map { session ->
+                async {
+                    val result = try {
+                        currentRuntime.queue.send(
+                            session = session,
+                            characteristic = EchoGatt.characteristicId,
+                            value = payload.copyOf(),
+                        )
+                    } catch (cause: CancellationException) {
+                        throw cause
+                    } catch (cause: Exception) {
+                        QueueSendResult.Failed(cause)
+                    }
+                    appendLog("${session.id.value}: ${result.toLogLabel()}")
+                }
+            }.awaitAll()
         }
     }
 
