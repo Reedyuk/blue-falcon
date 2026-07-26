@@ -38,8 +38,11 @@ class PeripheralEchoController(
     private val runtime: PeripheralExampleRuntime?,
     scope: CoroutineScope,
 ) {
+    private val supported = runtime?.manager?.capabilities?.let { capabilities ->
+        capabilities.localGattServer && capabilities.connectableAdvertising
+    } == true
     private val mutableState = MutableStateFlow(
-        PeripheralServerState(supported = runtime != null),
+        PeripheralServerState(supported = supported),
     )
     val state: StateFlow<PeripheralServerState> = mutableState.asStateFlow()
 
@@ -48,16 +51,17 @@ class PeripheralEchoController(
     private var echoValue = DEFAULT_ECHO_VALUE.copyOf()
 
     init {
-        if (runtime != null) {
+        if (supported) {
+            val currentRuntime = checkNotNull(runtime)
             scope.launch {
-                runtime.manager.state.collect { managerState ->
+                currentRuntime.manager.state.collect { managerState ->
                     mutableState.update { current ->
                         current.copy(managerState = managerState)
                     }
                 }
             }
             scope.launch {
-                runtime.manager.sessions.collect { sessions ->
+                currentRuntime.manager.sessions.collect { sessions ->
                     subscriptionObserverJob?.cancelAndJoin()
 
                     val subscribedSessionCount = sessions.count { session ->
@@ -89,7 +93,7 @@ class PeripheralEchoController(
                 }
             }
             scope.launch {
-                runtime.manager.requests.collect { request ->
+                currentRuntime.manager.requests.collect { request ->
                     val terminal = TerminalResponse(request.response)
                     var decision: RequestDecision? = null
                     try {
@@ -121,7 +125,7 @@ class PeripheralEchoController(
     }
 
     suspend fun start() {
-        val manager = runtime?.manager ?: return
+        val manager = runtime?.manager?.takeIf { supported } ?: return
         try {
             manager.start(config)
         } catch (cause: CancellationException) {
@@ -132,7 +136,7 @@ class PeripheralEchoController(
     }
 
     suspend fun stop() {
-        val manager = runtime?.manager ?: return
+        val manager = runtime?.manager?.takeIf { supported } ?: return
         try {
             manager.stop()
         } catch (cause: CancellationException) {
@@ -149,7 +153,7 @@ class PeripheralEchoController(
     }
 
     suspend fun sendNotification() {
-        val currentRuntime = runtime ?: return
+        val currentRuntime = runtime?.takeIf { supported } ?: return
         if (currentRuntime.manager.state.value != PeripheralManagerState.Running) return
 
         val payload = state.value.payloadText.encodeToByteArray()

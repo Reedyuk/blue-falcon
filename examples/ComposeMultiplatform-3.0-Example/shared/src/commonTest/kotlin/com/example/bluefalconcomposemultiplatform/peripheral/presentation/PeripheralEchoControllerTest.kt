@@ -83,6 +83,66 @@ class PeripheralEchoControllerTest {
     }
 
     @Test
+    fun missingRequiredCapabilityDisablesActionsAndGuardsDirectCalls() = runTest {
+        val capabilityVariants = listOf(
+            SUPPORTED_TEST_CAPABILITIES.copy(localGattServer = false),
+            SUPPORTED_TEST_CAPABILITIES.copy(connectableAdvertising = false),
+        )
+
+        capabilityVariants.forEach { capabilities ->
+            val manager = FakePeripheral(capabilities)
+            val queue = FakeQueue()
+            val controller = PeripheralEchoController(
+                runtime = PeripheralExampleRuntime(manager, queue),
+                scope = backgroundScope,
+            )
+
+            assertFalse(controller.state.value.supported)
+            assertFalse(controller.state.value.canStart)
+            assertFalse(controller.state.value.canStop)
+            assertFalse(controller.state.value.canSend)
+
+            manager.mutableState.value = PeripheralManagerState.Running
+            manager.mutableSessions.value = setOf(
+                FakeSession(
+                    initialSubscriptions = setOf(EchoGatt.characteristicId),
+                ),
+            )
+            runCurrent()
+
+            assertFalse(controller.state.value.canStart)
+            assertFalse(controller.state.value.canStop)
+            assertFalse(controller.state.value.canSend)
+
+            controller.start()
+            controller.sendNotification()
+            controller.stop()
+
+            assertTrue(manager.startConfigs.isEmpty())
+            assertEquals(0, manager.stopCalls)
+            assertTrue(queue.sendCalls.isEmpty())
+        }
+    }
+
+    @Test
+    fun supportedCapabilitiesEnableLifecycleActions() = runTest {
+        val manager = FakePeripheral(SUPPORTED_TEST_CAPABILITIES)
+        val controller = PeripheralEchoController(
+            runtime = PeripheralExampleRuntime(manager, FakeQueue()),
+            scope = backgroundScope,
+        )
+
+        assertTrue(controller.state.value.supported)
+        assertTrue(controller.state.value.canStart)
+
+        controller.start()
+        runCurrent()
+
+        assertFalse(controller.state.value.canStart)
+        assertTrue(controller.state.value.canStop)
+    }
+
+    @Test
     fun startUsesEchoConfigAndStopCallsManager() = runTest {
         val manager = FakePeripheral()
         val controller = PeripheralEchoController(
@@ -1567,13 +1627,14 @@ private data class RecordedResponse(
         get() = copiedValue?.copyOf()
 }
 
-private class FakePeripheral : BlueFalconPeripheral {
+private class FakePeripheral(
+    override val capabilities: PeripheralCapabilities = SUPPORTED_TEST_CAPABILITIES,
+) : BlueFalconPeripheral {
     val mutableState = MutableStateFlow<PeripheralManagerState>(
         PeripheralManagerState.Stopped,
     )
     override val state: StateFlow<PeripheralManagerState> = mutableState.asStateFlow()
 
-    override val capabilities: PeripheralCapabilities = PeripheralCapabilities.Unsupported
     override val plugins: PeripheralPluginRegistry = UnsupportedPluginRegistry
 
     val mutableSessions = MutableStateFlow<Set<PeripheralSession>>(emptySet())
@@ -1711,6 +1772,19 @@ private fun assertPropagatedThrowable(
 
 private val DEFAULT_TEST_ECHO_VALUE = "Hello from Blue Falcon".encodeToByteArray()
 private const val MAX_TEST_ECHO_VALUE_SIZE = 512
+
+private val SUPPORTED_TEST_CAPABILITIES = PeripheralCapabilities(
+    localGattServer = true,
+    connectableAdvertising = true,
+    multiCentral = true,
+    targetedNotifications = true,
+    notificationReadiness = true,
+    maximumUpdateValueLength = true,
+    forcedDisconnect = false,
+    connectionLifecycleVisibility = false,
+    preparedWrites = false,
+    stateRestoration = true,
+)
 
 private object UnsupportedPluginRegistry : PeripheralPluginRegistry {
     override fun <C : PeripheralPluginConfig, T> install(
