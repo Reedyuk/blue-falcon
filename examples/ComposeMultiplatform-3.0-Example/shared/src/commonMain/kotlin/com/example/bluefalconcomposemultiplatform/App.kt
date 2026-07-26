@@ -78,6 +78,17 @@ fun App(
         )
 
         var selectedMode by remember { mutableStateOf(ExampleMode.Central) }
+        var peripheralViewModelInitialized by remember { mutableStateOf(false) }
+        val peripheralViewModel = if (peripheralViewModelInitialized) {
+            getViewModel(
+                key = "peripheral-server-screen",
+                factory = viewModelFactory {
+                    PeripheralServerViewModel(appModule.peripheralRuntime)
+                },
+            )
+        } else {
+            null
+        }
 
         Column(modifier = Modifier.fillMaxSize()) {
             SingleChoiceSegmentedButtonRow(
@@ -88,7 +99,12 @@ fun App(
                 ExampleMode.entries.forEachIndexed { index, mode ->
                     SegmentedButton(
                         selected = selectedMode == mode,
-                        onClick = { selectedMode = mode },
+                        onClick = {
+                            if (mode == ExampleMode.Peripheral) {
+                                peripheralViewModelInitialized = true
+                            }
+                            selectedMode = mode
+                        },
                         shape = SegmentedButtonDefaults.itemShape(
                             index = index,
                             count = ExampleMode.entries.size,
@@ -114,14 +130,10 @@ fun App(
                     }
 
                     ExampleMode.Peripheral -> {
-                        val peripheralViewModel = getViewModel(
-                            key = "peripheral-server-screen",
-                            factory = viewModelFactory {
-                                PeripheralServerViewModel(appModule.peripheralRuntime)
-                            },
-                        )
                         PeripheralServerView(
-                            viewModel = peripheralViewModel,
+                            viewModel = checkNotNull(peripheralViewModel) {
+                                "Peripheral mode must initialize its ViewModel"
+                            },
                             modifier = Modifier.fillMaxSize(),
                         )
                     }

@@ -2,6 +2,7 @@ package com.example.bluefalconcomposemultiplatform.peripheral.presentation
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -48,89 +49,93 @@ fun PeripheralServerView(
     onSend: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    if (!state.supported) {
-        UnsupportedPeripheralCard(modifier)
-        return
-    }
-
-    Column(
-        modifier = modifier
-            .fillMaxSize()
-            .padding(16.dp),
+    LazyColumn(
+        modifier = modifier.fillMaxSize(),
+        contentPadding = PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.surfaceVariant,
-            ),
-        ) {
-            Column(
-                modifier = Modifier.padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
+        if (!state.supported) {
+            item {
+                UnsupportedPeripheralCard()
+            }
+        } else {
+            item {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                    ),
+                ) {
+                    Column(
+                        modifier = Modifier.padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        Text(
+                            text = "Echo GATT server",
+                            style = MaterialTheme.typography.titleMedium,
+                        )
+                        Text(
+                            text = "State: ${state.managerState.displayLabel()}",
+                            style = MaterialTheme.typography.bodyMedium,
+                        )
+                        Text(
+                            text = "Sessions: ${state.sessionCount} · " +
+                                "Subscribed: ${state.subscribedSessionCount}",
+                            style = MaterialTheme.typography.bodyMedium,
+                        )
+                    }
+                }
+            }
+
+            item {
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    Button(
+                        onClick = onStart,
+                        enabled = state.canStart,
+                    ) {
+                        Text("Start")
+                    }
+                    OutlinedButton(
+                        onClick = onStop,
+                        enabled = state.canStop,
+                    ) {
+                        Text("Stop")
+                    }
+                }
+            }
+
+            item {
+                OutlinedTextField(
+                    value = state.payloadText,
+                    onValueChange = onPayloadChange,
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text("Notification payload") },
+                    supportingText = {
+                        Text("Sent to sessions subscribed to the echo characteristic")
+                    },
+                    singleLine = true,
+                )
+            }
+
+            item {
+                Button(
+                    onClick = onSend,
+                    enabled = state.canSend,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text("Send notification")
+                }
+            }
+
+            item {
                 Text(
-                    text = "Echo GATT server",
+                    text = "Activity log",
                     style = MaterialTheme.typography.titleMedium,
                 )
-                Text(
-                    text = "State: ${state.managerState.displayLabel()}",
-                    style = MaterialTheme.typography.bodyMedium,
-                )
-                Text(
-                    text = "Sessions: ${state.sessionCount} · " +
-                        "Subscribed: ${state.subscribedSessionCount}",
-                    style = MaterialTheme.typography.bodyMedium,
-                )
             }
-        }
 
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            Button(
-                onClick = onStart,
-                enabled = state.canStart,
-            ) {
-                Text("Start")
-            }
-            OutlinedButton(
-                onClick = onStop,
-                enabled = state.canStop,
-            ) {
-                Text("Stop")
-            }
-        }
-
-        OutlinedTextField(
-            value = state.payloadText,
-            onValueChange = onPayloadChange,
-            modifier = Modifier.fillMaxWidth(),
-            label = { Text("Notification payload") },
-            supportingText = {
-                Text("Sent to sessions subscribed to the echo characteristic")
-            },
-        )
-
-        Button(
-            onClick = onSend,
-            enabled = state.canSend,
-            modifier = Modifier.fillMaxWidth(),
-        ) {
-            Text("Send notification")
-        }
-
-        Text(
-            text = "Activity log",
-            style = MaterialTheme.typography.titleMedium,
-        )
-
-        LazyColumn(
-            modifier = Modifier
-                .fillMaxWidth()
-                .weight(1f),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
             if (state.log.isEmpty()) {
                 item {
                     Text(
@@ -160,31 +165,25 @@ fun PeripheralServerView(
 private fun UnsupportedPeripheralCard(
     modifier: Modifier = Modifier,
 ) {
-    Column(
-        modifier = modifier
-            .fillMaxSize()
-            .padding(16.dp),
+    Card(
+        modifier = modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant,
+        ),
     ) {
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.surfaceVariant,
-            ),
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            Column(
-                modifier = Modifier.padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                Text(
-                    text = "Peripheral mode is unavailable",
-                    style = MaterialTheme.typography.titleMedium,
-                )
-                Text(
-                    text = "The JVM desktop target does not expose a GATT server backend. " +
-                        "Run this example on Android, iOS, or native macOS.",
-                    style = MaterialTheme.typography.bodyMedium,
-                )
-            }
+            Text(
+                text = "Peripheral mode is unavailable",
+                style = MaterialTheme.typography.titleMedium,
+            )
+            Text(
+                text = "The JVM desktop target does not expose a GATT server backend. " +
+                    "Run this example on Android, iOS, or native macOS.",
+                style = MaterialTheme.typography.bodyMedium,
+            )
         }
     }
 }
