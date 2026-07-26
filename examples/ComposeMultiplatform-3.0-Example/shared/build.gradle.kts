@@ -57,6 +57,7 @@ kotlin {
                 implementation("dev.bluefalcon:blue-falcon-core:$falconVersion")
                 implementation("dev.bluefalcon:blue-falcon-peripheral:$falconVersion")
                 implementation("dev.bluefalcon:blue-falcon-plugin-logging:$falconVersion")
+                implementation("dev.bluefalcon:blue-falcon-plugin-queue:$falconVersion")
                 implementation("dev.bluefalcon:blue-falcon-plugin-retry:$falconVersion")
                 implementation("dev.bluefalcon:blue-falcon-plugin-nordic-fota:$falconVersion")
                 implementation("dev.bluefalcon:blue-falcon-plugin-clone:$falconVersion")
@@ -66,6 +67,7 @@ kotlin {
         val commonTest by getting {
             dependencies {
                 implementation(kotlin("test"))
+                implementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:$coroutinesVersion")
             }
         }
         val androidMain by getting {

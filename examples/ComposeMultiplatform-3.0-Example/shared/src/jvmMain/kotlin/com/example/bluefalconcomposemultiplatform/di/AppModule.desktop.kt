@@ -1,5 +1,6 @@
 package com.example.bluefalconcomposemultiplatform.di
 
+import com.example.bluefalconcomposemultiplatform.peripheral.PeripheralExampleRuntime
 import dev.bluefalcon.core.BlueFalcon
 import dev.bluefalcon.core.BlueFalconEngine
 import dev.bluefalcon.engine.macos.jvm.MacosJvmEngine
@@ -21,6 +22,7 @@ actual class AppModule {
 
     // Desktop JVM engines do not support the peripheral/advertising role
     actual val advertiser: BluetoothAdvertiser = NoOpBluetoothAdvertiser()
+    actual val peripheralRuntime: PeripheralExampleRuntime? = null
 
     actual val blueFalcon: BlueFalcon = BlueFalcon(
         engine = createDesktopEngine()

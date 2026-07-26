@@ -1,12 +1,15 @@
 package com.example.bluefalconcomposemultiplatform.di
 
 import android.content.Context
+import com.example.bluefalconcomposemultiplatform.peripheral.PeripheralExampleRuntime
 import dev.bluefalcon.core.BlueFalcon
 import dev.bluefalcon.engine.android.AndroidEngine
 import dev.bluefalcon.peripheral.BluetoothAdvertiser
 import dev.bluefalcon.peripheral.android.createBluetoothAdvertiser
+import dev.bluefalcon.peripheral.android.createBlueFalconPeripheral
 import dev.bluefalcon.plugins.logging.LoggingPlugin
 import dev.bluefalcon.plugins.logging.LogLevel
+import dev.bluefalcon.plugins.queue.QueuePlugin
 import dev.bluefalcon.plugins.retry.RetryPlugin
 import dev.bluefalcon.plugins.nordicfota.NordicFotaPlugin
 
@@ -21,6 +24,14 @@ actual class AppModule(
 
     private val engine = AndroidEngine(context)
     actual val advertiser: BluetoothAdvertiser = createBluetoothAdvertiser(context)
+    private val peripheralManager = createBlueFalconPeripheral(context)
+    actual val peripheralRuntime: PeripheralExampleRuntime? = PeripheralExampleRuntime(
+        manager = peripheralManager,
+        queue = peripheralManager.plugins.install(QueuePlugin) {
+            maxPendingItemsPerSession = 64
+            maxPendingBytes = 64 * 1024
+        },
+    )
 
     actual val blueFalcon: BlueFalcon = BlueFalcon(
         engine = engine
