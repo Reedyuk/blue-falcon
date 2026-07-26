@@ -11,6 +11,8 @@ import dev.bluefalcon.peripheral.GattCharacteristicWriteRequest
 import dev.bluefalcon.peripheral.GattDescriptorReadRequest
 import dev.bluefalcon.peripheral.GattDescriptorWriteRequest
 import dev.bluefalcon.peripheral.GattExecuteWriteRequest
+import dev.bluefalcon.peripheral.GattResponseHandle
+import dev.bluefalcon.peripheral.GattResponseResult
 import dev.bluefalcon.peripheral.GattResponseStatus
 import dev.bluefalcon.peripheral.GattServerRequest
 import dev.bluefalcon.peripheral.GattServiceConfig
@@ -83,12 +85,26 @@ class PeripheralEchoController(
             }
             scope.launch {
                 runtime.manager.requests.collect { request ->
+                    val terminal = TerminalResponse(request.response)
+                    var decision: RequestDecision? = null
                     try {
-                        handleRequest(request)
+                        decision = decideRequest(request)
+                        val result = terminal.respond(
+                            status = decision.status,
+                            value = decision.value,
+                        )
+                        appendLog(decision.log.withResponseResult(result))
                     } catch (cause: CancellationException) {
                         throw cause
                     } catch (cause: Exception) {
-                        handleRequestFailure(request, cause)
+                        if (terminal.attempted) {
+                            appendLog(
+                                "${decision?.log ?: "Request"}; terminal response " +
+                                    "failed: ${cause.message ?: "unknown error"}",
+                            )
+                        } else {
+                            handleProcessingFailure(request, cause)
+                        }
                     }
                 }
             }
@@ -117,71 +133,82 @@ class PeripheralEchoController(
         }
     }
 
-    private suspend fun handleRequest(request: GattServerRequest) {
-        when (request) {
-            is GattCharacteristicReadRequest -> handleRead(request)
-            is GattCharacteristicWriteRequest -> handleWrite(request)
+    private fun decideRequest(request: GattServerRequest): RequestDecision {
+        val session = request.sessionId
+        val logPrefix = "Session $session"
+        return when (request) {
+            is GattCharacteristicReadRequest -> decideRead(request, logPrefix)
+            is GattCharacteristicWriteRequest -> decideWrite(request, logPrefix)
             is GattCharacteristicWriteBatchRequest -> {
                 if (request.writes.any { write ->
                         write.serviceId != EchoGatt.serviceId ||
                             write.characteristicId != EchoGatt.characteristicId
                     }
                 ) {
-                    rejectInvalidHandle(request)
+                    invalidHandleDecision(logPrefix)
                 } else {
-                    rejectUnsupported(request, "write batch")
+                    unsupportedDecision(logPrefix, "write batch")
                 }
             }
 
             is GattDescriptorReadRequest -> {
                 if (!request.hasEchoHandle()) {
-                    rejectInvalidHandle(request)
+                    invalidHandleDecision(logPrefix)
                 } else {
-                    rejectUnsupported(request, "descriptor read")
+                    unsupportedDecision(logPrefix, "descriptor read")
                 }
             }
 
             is GattDescriptorWriteRequest -> {
                 if (!request.hasEchoHandle()) {
-                    rejectInvalidHandle(request)
+                    invalidHandleDecision(logPrefix)
                 } else {
-                    rejectUnsupported(request, "descriptor write")
+                    unsupportedDecision(logPrefix, "descriptor write")
                 }
             }
 
-            is GattExecuteWriteRequest -> rejectUnsupported(request, "execute write")
+            is GattExecuteWriteRequest ->
+                unsupportedDecision(logPrefix, "execute write")
         }
     }
 
-    private suspend fun handleRead(request: GattCharacteristicReadRequest) {
+    private fun decideRead(
+        request: GattCharacteristicReadRequest,
+        logPrefix: String,
+    ): RequestDecision {
         if (!request.hasEchoHandle()) {
-            rejectInvalidHandle(request)
-            return
+            return invalidHandleDecision(logPrefix)
         }
         if (request.offset !in 0..echoValue.size) {
-            request.response.respond(GattResponseStatus.InvalidOffset)
-            appendLog("Read rejected: invalid offset ${request.offset}")
-            return
+            return RequestDecision(
+                status = GattResponseStatus.InvalidOffset,
+                log = "$logPrefix read rejected: invalid offset ${request.offset}",
+            )
         }
 
         val value = echoValue.copyOfRange(request.offset, echoValue.size)
-        request.response.respond(GattResponseStatus.Success, value.copyOf())
-        appendLog("Read ${value.size} byte(s) at offset ${request.offset}")
+        return RequestDecision(
+            status = GattResponseStatus.Success,
+            value = value.copyOf(),
+            log = "$logPrefix read ${value.size} byte(s) at offset ${request.offset}",
+        )
     }
 
-    private suspend fun handleWrite(request: GattCharacteristicWriteRequest) {
+    private fun decideWrite(
+        request: GattCharacteristicWriteRequest,
+        logPrefix: String,
+    ): RequestDecision {
         if (!request.hasEchoHandle()) {
-            rejectInvalidHandle(request)
-            return
+            return invalidHandleDecision(logPrefix)
         }
         if (request.preparedWrite) {
-            rejectUnsupported(request, "prepared write")
-            return
+            return unsupportedDecision(logPrefix, "prepared write")
         }
         if (request.offset !in 0..echoValue.size) {
-            request.response?.respond(GattResponseStatus.InvalidOffset)
-            appendLog("Write rejected: invalid offset ${request.offset}")
-            return
+            return RequestDecision(
+                status = GattResponseStatus.InvalidOffset,
+                log = "$logPrefix write rejected: invalid offset ${request.offset}",
+            )
         }
 
         val written = request.value.copyOf()
@@ -191,24 +218,26 @@ class PeripheralEchoController(
         written.copyInto(updated, destinationOffset = request.offset)
         echoValue = updated.copyOf()
 
-        request.response?.respond(GattResponseStatus.Success)
-        appendLog("Wrote ${written.size} byte(s) at offset ${request.offset}")
+        return RequestDecision(
+            status = GattResponseStatus.Success,
+            log = "$logPrefix wrote ${written.size} byte(s) at offset ${request.offset}",
+        )
     }
 
-    private suspend fun rejectInvalidHandle(request: GattServerRequest) {
-        request.response?.respond(GattResponseStatus.InvalidHandle)
-        appendLog("Rejected unknown GATT handle")
-    }
+    private fun invalidHandleDecision(logPrefix: String) = RequestDecision(
+        status = GattResponseStatus.InvalidHandle,
+        log = "$logPrefix rejected unknown GATT handle",
+    )
 
-    private suspend fun rejectUnsupported(
-        request: GattServerRequest,
+    private fun unsupportedDecision(
+        logPrefix: String,
         operation: String,
-    ) {
-        request.response?.respond(GattResponseStatus.RequestNotSupported)
-        appendLog("Unsupported request: $operation")
-    }
+    ) = RequestDecision(
+        status = GattResponseStatus.RequestNotSupported,
+        log = "$logPrefix unsupported request: $operation",
+    )
 
-    private suspend fun handleRequestFailure(
+    private suspend fun handleProcessingFailure(
         request: GattServerRequest,
         requestFailure: Exception,
     ) {
@@ -238,6 +267,19 @@ class PeripheralEchoController(
         appendLog(requestMessage)
     }
 
+    private fun String.withResponseResult(result: GattResponseResult?): String =
+        when (result) {
+            null,
+            GattResponseResult.Responded,
+            -> this
+
+            GattResponseResult.AlreadyResponded ->
+                "$this; response was already completed"
+
+            GattResponseResult.Expired ->
+                "$this; response expired"
+        }
+
     private fun GattCharacteristicReadRequest.hasEchoHandle(): Boolean =
         serviceId == EchoGatt.serviceId &&
             characteristicId == EchoGatt.characteristicId
@@ -260,6 +302,34 @@ class PeripheralEchoController(
                 log = (current.log + message).takeLast(MAX_LOG_ENTRIES),
             )
         }
+    }
+}
+
+private class RequestDecision(
+    val status: GattResponseStatus,
+    value: ByteArray? = null,
+    val log: String,
+) {
+    private val responseValue = value?.copyOf()
+
+    val value: ByteArray?
+        get() = responseValue?.copyOf()
+}
+
+private class TerminalResponse(
+    private val handle: GattResponseHandle?,
+) {
+    var attempted: Boolean = false
+        private set
+
+    suspend fun respond(
+        status: GattResponseStatus,
+        value: ByteArray?,
+    ): GattResponseResult? {
+        val response = handle ?: return null
+        check(!attempted) { "A GATT response was already attempted" }
+        attempted = true
+        return response.respond(status, value?.copyOf())
     }
 }
 

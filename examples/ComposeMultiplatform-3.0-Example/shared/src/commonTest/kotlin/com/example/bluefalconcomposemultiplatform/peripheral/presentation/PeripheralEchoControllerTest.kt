@@ -667,7 +667,7 @@ class PeripheralEchoControllerTest {
     }
 
     @Test
-    fun requestFailureFallsBackToUnlikelyErrorAndCollectorContinues() = runTest {
+    fun requestTerminalFailureIsLoggedWithoutASecondResponseAttempt() = runTest {
         val fixture = requestFixture()
         val failingResponse = RecordingResponseHandle(
             failures = listOf(IllegalStateException("primary response failed")),
@@ -679,9 +679,10 @@ class PeripheralEchoControllerTest {
         runCurrent()
 
         assertEquals(
-            listOf(GattResponseStatus.Success, GattResponseStatus.UnlikelyError),
+            listOf(GattResponseStatus.Success),
             failingResponse.statuses,
         )
+        assertEquals(1, failingResponse.respondInvocations)
         assertEquals(1, fixture.controller.state.value.log.size)
         assertTrue(
             fixture.controller.state.value.log.single()
@@ -696,41 +697,62 @@ class PeripheralEchoControllerTest {
     }
 
     @Test
+    fun requestProcessingFailureFallsBackOnceAndCollectorContinues() = runTest {
+        val session = FakeSession(
+            idFailure = IllegalStateException("session unavailable"),
+        )
+        val fixture = requestFixture(session)
+        val response = RecordingResponseHandle()
+
+        fixture.manager.requestsChannel.send(
+            fixture.readRequest(response = response),
+        )
+        runCurrent()
+
+        assertEquals(listOf(GattResponseStatus.UnlikelyError), response.statuses)
+        assertEquals(1, response.respondInvocations)
+        assertEquals(1, fixture.controller.state.value.log.size)
+        assertTrue(
+            fixture.controller.state.value.log.single()
+                .contains("session unavailable"),
+        )
+        session.idFailure = null
+        val laterResponse = fixture.sendRead(offset = 0)
+        runCurrent()
+        assertEquals(GattResponseStatus.Success, laterResponse.singleStatus)
+    }
+
+    @Test
     fun requestFallbackFailureIsLoggedOnceWithoutRecursiveResponse() = runTest {
-        val fixture = requestFixture()
+        val fixture = requestFixture(
+            FakeSession(idFailure = IllegalStateException("processing failed")),
+        )
         val response = RecordingResponseHandle(
-            failures = listOf(
-                IllegalStateException("primary response failed"),
-                IllegalArgumentException("fallback response failed"),
-            ),
+            failures = listOf(IllegalArgumentException("fallback response failed")),
         )
 
         fixture.manager.requestsChannel.send(fixture.readRequest(response = response))
         runCurrent()
 
         assertEquals(
-            listOf(GattResponseStatus.Success, GattResponseStatus.UnlikelyError),
+            listOf(GattResponseStatus.UnlikelyError),
             response.statuses,
         )
+        assertEquals(1, response.respondInvocations)
         val log = fixture.controller.state.value.log.single()
-        assertTrue(log.contains("primary response failed"))
+        assertTrue(log.contains("processing failed"))
         assertTrue(log.contains("fallback response failed"))
-        val laterResponse = fixture.sendRead(offset = 0)
-        runCurrent()
-        assertEquals(
-            GattResponseStatus.Success,
-            laterResponse.singleStatus,
-        )
     }
 
     @Test
     fun requestFallbackCancellationPropagatesWithoutRecursiveResponse() = runTest {
-        val fixture = requestFixtureWithIsolatedScope()
-        val response = RecordingResponseHandle(
-            failures = listOf(
-                IllegalStateException("primary response failed"),
-                CancellationException("cancel fallback"),
+        val fixture = requestFixtureWithIsolatedScope(
+            session = FakeSession(
+                idFailure = IllegalStateException("processing failed"),
             ),
+        )
+        val response = RecordingResponseHandle(
+            failures = listOf(CancellationException("cancel fallback")),
         )
 
         fixture.fixture.manager.requestsChannel.send(
@@ -739,9 +761,10 @@ class PeripheralEchoControllerTest {
         runCurrent()
 
         assertEquals(
-            listOf(GattResponseStatus.Success, GattResponseStatus.UnlikelyError),
+            listOf(GattResponseStatus.UnlikelyError),
             response.statuses,
         )
+        assertEquals(1, response.respondInvocations)
         assertEquals(1, fixture.fixture.controller.state.value.log.size)
         val laterResponse = RecordingResponseHandle()
         fixture.fixture.manager.requestsChannel.send(
@@ -755,13 +778,15 @@ class PeripheralEchoControllerTest {
     @Test
     fun requestFallbackErrorPropagatesWithoutRecursiveResponse() = runTest {
         val uncaught = mutableListOf<Throwable>()
-        val fixture = requestFixtureWithIsolatedScope(uncaught)
+        val fixture = requestFixtureWithIsolatedScope(
+            uncaught = uncaught,
+            session = FakeSession(
+                idFailure = IllegalStateException("processing failed"),
+            ),
+        )
         val error = AssertionError("fatal fallback")
         val response = RecordingResponseHandle(
-            failures = listOf(
-                IllegalStateException("primary response failed"),
-                error,
-            ),
+            failures = listOf(error),
         )
 
         fixture.fixture.manager.requestsChannel.send(
@@ -770,9 +795,10 @@ class PeripheralEchoControllerTest {
         runCurrent()
 
         assertEquals(
-            listOf(GattResponseStatus.Success, GattResponseStatus.UnlikelyError),
+            listOf(GattResponseStatus.UnlikelyError),
             response.statuses,
         )
+        assertEquals(1, response.respondInvocations)
         assertEquals(listOf<Throwable>(error), uncaught)
         assertEquals(1, fixture.fixture.controller.state.value.log.size)
         val laterResponse = RecordingResponseHandle()
@@ -781,6 +807,46 @@ class PeripheralEchoControllerTest {
         )
         runCurrent()
         assertTrue(laterResponse.statuses.isEmpty())
+        fixture.scopeJob.cancel()
+    }
+
+    @Test
+    fun requestProcessingCancellationPropagatesWithoutResponseOrLogging() = runTest {
+        val fixture = requestFixtureWithIsolatedScope(
+            session = FakeSession(
+                idFailure = CancellationException("cancel processing"),
+            ),
+        )
+        val response = RecordingResponseHandle()
+
+        fixture.fixture.manager.requestsChannel.send(
+            fixture.fixture.readRequest(response = response),
+        )
+        runCurrent()
+
+        assertEquals(0, response.respondInvocations)
+        assertTrue(fixture.fixture.controller.state.value.log.isEmpty())
+        fixture.scopeJob.cancel()
+    }
+
+    @Test
+    fun requestProcessingErrorPropagatesWithoutResponseOrLogging() = runTest {
+        val uncaught = mutableListOf<Throwable>()
+        val error = AssertionError("fatal processing")
+        val fixture = requestFixtureWithIsolatedScope(
+            uncaught = uncaught,
+            session = FakeSession(idFailure = error),
+        )
+        val response = RecordingResponseHandle()
+
+        fixture.fixture.manager.requestsChannel.send(
+            fixture.fixture.readRequest(response = response),
+        )
+        runCurrent()
+
+        assertEquals(0, response.respondInvocations)
+        assertEquals(listOf<Throwable>(error), uncaught)
+        assertTrue(fixture.fixture.controller.state.value.log.isEmpty())
         fixture.scopeJob.cancel()
     }
 
@@ -797,6 +863,7 @@ class PeripheralEchoControllerTest {
         runCurrent()
 
         assertEquals(listOf(GattResponseStatus.Success), response.statuses)
+        assertEquals(1, response.respondInvocations)
         assertTrue(fixture.fixture.controller.state.value.log.isEmpty())
         val laterResponse = RecordingResponseHandle()
         fixture.fixture.manager.requestsChannel.send(
@@ -820,6 +887,7 @@ class PeripheralEchoControllerTest {
         runCurrent()
 
         assertEquals(listOf(GattResponseStatus.Success), response.statuses)
+        assertEquals(1, response.respondInvocations)
         assertEquals(listOf<Throwable>(error), uncaught)
         assertTrue(fixture.fixture.controller.state.value.log.isEmpty())
         val laterResponse = RecordingResponseHandle()
@@ -831,9 +899,10 @@ class PeripheralEchoControllerTest {
         fixture.scopeJob.cancel()
     }
 
-    private fun TestScope.requestFixture(): RequestFixture {
+    private fun TestScope.requestFixture(
+        session: FakeSession = FakeSession(),
+    ): RequestFixture {
         val manager = FakePeripheral()
-        val session = FakeSession()
         return RequestFixture(
             manager = manager,
             session = session,
@@ -846,6 +915,7 @@ class PeripheralEchoControllerTest {
 
     private fun TestScope.requestFixtureWithIsolatedScope(
         uncaught: MutableList<Throwable> = mutableListOf(),
+        session: FakeSession = FakeSession(),
     ): IsolatedRequestFixture {
         val scopeJob = SupervisorJob()
         val handler = CoroutineExceptionHandler { _, cause -> uncaught += cause }
@@ -853,7 +923,6 @@ class PeripheralEchoControllerTest {
             scopeJob + StandardTestDispatcher(testScheduler) + handler,
         )
         val manager = FakePeripheral()
-        val session = FakeSession()
         return IsolatedRequestFixture(
             fixture = RequestFixture(
                 manager = manager,
@@ -919,9 +988,14 @@ private data class IsolatedRequestFixture(
 
 private class RecordingResponseHandle(
     failures: List<Throwable> = emptyList(),
+    private val result: GattResponseResult = GattResponseResult.Responded,
 ) : GattResponseHandle {
     private val scriptedFailures = failures.toMutableList()
     private val recordedResponses = mutableListOf<RecordedResponse>()
+    private var consumed = false
+
+    var respondInvocations: Int = 0
+        private set
 
     val statuses: List<GattResponseStatus>
         get() = recordedResponses.map { response -> response.status }
@@ -934,11 +1008,16 @@ private class RecordingResponseHandle(
         status: GattResponseStatus,
         value: ByteArray?,
     ): GattResponseResult {
+        respondInvocations += 1
+        if (consumed) {
+            return GattResponseResult.AlreadyResponded
+        }
+        consumed = true
         recordedResponses += RecordedResponse(status, value?.copyOf())
         if (scriptedFailures.isNotEmpty()) {
             throw scriptedFailures.removeAt(0)
         }
-        return GattResponseResult.Responded
+        return result
     }
 }
 
@@ -1027,9 +1106,18 @@ private data class SendCall(
 )
 
 private class FakeSession(
-    override val id: PeripheralSessionId = PeripheralSessionId("session-1"),
+    id: PeripheralSessionId = PeripheralSessionId("session-1"),
     initialSubscriptions: Set<GattCharacteristicId> = emptySet(),
+    var idFailure: Throwable? = null,
 ) : PeripheralSession {
+    private val sessionId = id
+
+    override val id: PeripheralSessionId
+        get() {
+            idFailure?.let { cause -> throw cause }
+            return sessionId
+        }
+
     private val mutableState = MutableStateFlow<SessionState>(SessionState.Active)
     override val state: StateFlow<SessionState> = mutableState.asStateFlow()
 
