@@ -75,8 +75,8 @@ This directory contains example projects demonstrating Blue Falcon usage across 
 
 ### 5. Peripheral-Example
 
-**Platform**: Kotlin Multiplatform (Android + iOS + macOS)
-**Language**: Kotlin
+**Platform**: Kotlin Multiplatform (Android + iOS + macOS)<br>
+**Language**: Kotlin<br>
 **Description**: Production peripheral-role GATT echo server with queued notifications
 
 **Features**:
@@ -85,7 +85,7 @@ This directory contains example projects demonstrating Blue Falcon usage across 
 - Subscription-aware notification fan-out
 - Bounded QueuePlugin backpressure
 
-**Location**: `Peripheral-Example/`
+**Location**: `Peripheral-Example/`<br>
 **See**: [Peripheral-Example/README.md](Peripheral-Example/README.md) for details
 
 ---

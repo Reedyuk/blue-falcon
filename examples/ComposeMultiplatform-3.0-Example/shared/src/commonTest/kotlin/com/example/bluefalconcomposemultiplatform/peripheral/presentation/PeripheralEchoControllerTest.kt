@@ -787,6 +787,133 @@ class PeripheralEchoControllerTest {
     }
 
     @Test
+    fun responseRequiredWriteCommitsOnlyWhenResponseIsResponded() = runTest {
+        val fixture = requestFixture()
+
+        fixture.sendWrite(
+            offset = 0,
+            value = "accepted",
+            response = RecordingResponseHandle(
+                result = GattResponseResult.Responded,
+            ),
+        )
+        runCurrent()
+
+        val storedResponse = fixture.sendRead(offset = 0)
+        runCurrent()
+        assertContentEquals(
+            "acceptedom Blue Falcon".encodeToByteArray(),
+            storedResponse.singleValue,
+        )
+    }
+
+    @Test
+    fun expiredResponseRequiredWriteDoesNotMutateStoredValue() = runTest {
+        val fixture = requestFixture()
+
+        fixture.sendWrite(
+            offset = 0,
+            value = "expired",
+            response = RecordingResponseHandle(
+                result = GattResponseResult.Expired,
+            ),
+        )
+        runCurrent()
+
+        val storedResponse = fixture.sendRead(offset = 0)
+        runCurrent()
+        assertContentEquals(DEFAULT_TEST_ECHO_VALUE, storedResponse.singleValue)
+        assertTrue(fixture.controller.state.value.log.first().contains("staged"))
+        assertFalse(fixture.controller.state.value.log.first().contains("wrote"))
+    }
+
+    @Test
+    fun alreadyRespondedWriteDoesNotMutateStoredValue() = runTest {
+        val fixture = requestFixture()
+
+        fixture.sendWrite(
+            offset = 0,
+            value = "duplicate",
+            response = RecordingResponseHandle(
+                result = GattResponseResult.AlreadyResponded,
+            ),
+        )
+        runCurrent()
+
+        val storedResponse = fixture.sendRead(offset = 0)
+        runCurrent()
+        assertContentEquals(DEFAULT_TEST_ECHO_VALUE, storedResponse.singleValue)
+        assertTrue(fixture.controller.state.value.log.first().contains("staged"))
+        assertFalse(fixture.controller.state.value.log.first().contains("wrote"))
+    }
+
+    @Test
+    fun thrownResponseRequiredWriteDoesNotMutateStoredValue() = runTest {
+        val fixture = requestFixture()
+
+        fixture.sendWrite(
+            offset = 0,
+            value = "failed",
+            response = RecordingResponseHandle(
+                failures = listOf(IllegalStateException("response failed")),
+            ),
+        )
+        runCurrent()
+
+        val storedResponse = fixture.sendRead(offset = 0)
+        runCurrent()
+        assertContentEquals(DEFAULT_TEST_ECHO_VALUE, storedResponse.singleValue)
+    }
+
+    @Test
+    fun echoWriteAtMaximumAttributeBoundaryCommitsWhenResponded() = runTest {
+        val fixture = requestFixture()
+        val appended = ByteArray(
+            MAX_TEST_ECHO_VALUE_SIZE - DEFAULT_TEST_ECHO_VALUE.size,
+        ) { 0x2a }
+
+        val response = fixture.sendWrite(
+            offset = DEFAULT_TEST_ECHO_VALUE.size,
+            value = appended,
+        )
+        runCurrent()
+
+        assertEquals(GattResponseStatus.Success, response.singleStatus)
+        val storedResponse = fixture.sendRead(offset = 0)
+        runCurrent()
+        assertEquals(MAX_TEST_ECHO_VALUE_SIZE, storedResponse.singleValue?.size)
+    }
+
+    @Test
+    fun oversizedAppendAndOverlayWritesAreRejectedWithoutMutation() = runTest {
+        val fixture = requestFixture()
+
+        val appendResponse = fixture.sendWrite(
+            offset = DEFAULT_TEST_ECHO_VALUE.size,
+            value = ByteArray(
+                MAX_TEST_ECHO_VALUE_SIZE - DEFAULT_TEST_ECHO_VALUE.size + 1,
+            ),
+        )
+        val overlayResponse = fixture.sendWrite(
+            offset = 1,
+            value = ByteArray(MAX_TEST_ECHO_VALUE_SIZE),
+        )
+        runCurrent()
+
+        assertEquals(
+            GattResponseStatus.InvalidAttributeValueLength,
+            appendResponse.singleStatus,
+        )
+        assertEquals(
+            GattResponseStatus.InvalidAttributeValueLength,
+            overlayResponse.singleStatus,
+        )
+        val storedResponse = fixture.sendRead(offset = 0)
+        runCurrent()
+        assertContentEquals(DEFAULT_TEST_ECHO_VALUE, storedResponse.singleValue)
+    }
+
+    @Test
     fun requestWritesOverlayAtValidOffsetsAndAppendAtCurrentSize() = runTest {
         val fixture = requestFixture()
 
@@ -1343,6 +1470,16 @@ private data class RequestFixture(
         offset: Int,
         value: String,
         response: RecordingResponseHandle = RecordingResponseHandle(),
+    ): RecordingResponseHandle = sendWrite(
+        offset = offset,
+        value = value.encodeToByteArray(),
+        response = response,
+    )
+
+    suspend fun sendWrite(
+        offset: Int,
+        value: ByteArray,
+        response: RecordingResponseHandle = RecordingResponseHandle(),
     ): RecordingResponseHandle {
         manager.requestsChannel.send(
             GattCharacteristicWriteRequest(
@@ -1350,7 +1487,7 @@ private data class RequestFixture(
                 serviceId = EchoGatt.serviceId,
                 characteristicId = EchoGatt.characteristicId,
                 offset = offset,
-                value = value.encodeToByteArray(),
+                value = value,
                 preparedWrite = false,
                 response = response,
             ),
@@ -1573,6 +1710,7 @@ private fun assertPropagatedThrowable(
 }
 
 private val DEFAULT_TEST_ECHO_VALUE = "Hello from Blue Falcon".encodeToByteArray()
+private const val MAX_TEST_ECHO_VALUE_SIZE = 512
 
 private object UnsupportedPluginRegistry : PeripheralPluginRegistry {
     override fun <C : PeripheralPluginConfig, T> install(

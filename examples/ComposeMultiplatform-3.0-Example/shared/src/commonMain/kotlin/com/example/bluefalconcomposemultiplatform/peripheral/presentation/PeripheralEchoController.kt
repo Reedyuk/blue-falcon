@@ -98,7 +98,11 @@ class PeripheralEchoController(
                             status = decision.status,
                             value = decision.value,
                         )
-                        appendLog(decision.log.withResponseResult(result))
+                        val committed = commitStagedEchoValue(decision, result)
+                        appendLog(
+                            decision.logAfterCommit(committed)
+                                .withResponseResult(result),
+                        )
                     } catch (cause: CancellationException) {
                         throw cause
                     } catch (cause: Exception) {
@@ -253,16 +257,38 @@ class PeripheralEchoController(
         }
 
         val written = request.value.copyOf()
+        if (written.size > MAX_ECHO_VALUE_SIZE - request.offset) {
+            return RequestDecision(
+                status = GattResponseStatus.InvalidAttributeValueLength,
+                log = "$logPrefix write rejected: ${written.size} byte(s) at " +
+                    "offset ${request.offset} exceed $MAX_ECHO_VALUE_SIZE byte(s)",
+            )
+        }
         val requiredSize = maxOf(echoValue.size, request.offset + written.size)
         val updated = ByteArray(requiredSize)
         echoValue.copyInto(updated)
         written.copyInto(updated, destinationOffset = request.offset)
-        echoValue = updated.copyOf()
 
         return RequestDecision(
             status = GattResponseStatus.Success,
-            log = "$logPrefix wrote ${written.size} byte(s) at offset ${request.offset}",
+            stagedEchoValue = updated,
+            committedLog =
+                "$logPrefix wrote ${written.size} byte(s) at offset ${request.offset}",
+            log =
+                "$logPrefix staged ${written.size} byte(s) at offset ${request.offset}",
         )
+    }
+
+    private fun commitStagedEchoValue(
+        decision: RequestDecision,
+        result: GattResponseResult?,
+    ): Boolean {
+        val stagedValue = decision.stagedEchoValue ?: return false
+        if (result == null || result == GattResponseResult.Responded) {
+            echoValue = stagedValue
+            return true
+        }
+        return false
     }
 
     private fun invalidHandleDecision(logPrefix: String) = RequestDecision(
@@ -368,12 +394,20 @@ private fun QueueSendResult.toLogLabel(): String = when (this) {
 private class RequestDecision(
     val status: GattResponseStatus,
     value: ByteArray? = null,
+    stagedEchoValue: ByteArray? = null,
+    private val committedLog: String? = null,
     val log: String,
 ) {
     private val responseValue = value?.copyOf()
+    private val copiedStagedEchoValue = stagedEchoValue?.copyOf()
 
     val value: ByteArray?
         get() = responseValue?.copyOf()
+    val stagedEchoValue: ByteArray?
+        get() = copiedStagedEchoValue?.copyOf()
+
+    fun logAfterCommit(committed: Boolean): String =
+        if (committed) committedLog ?: log else log
 }
 
 private class TerminalResponse(
@@ -420,4 +454,5 @@ private fun echoConfig() = PeripheralConfig(
 )
 
 private val DEFAULT_ECHO_VALUE = "Hello from Blue Falcon".encodeToByteArray()
+private const val MAX_ECHO_VALUE_SIZE = 512
 private const val MAX_LOG_ENTRIES = 100

@@ -24,12 +24,21 @@ create exactly one server for each application-owned peripheral manager:
 ```kotlin
 // Android application startup
 val peripheral = createBlueFalconPeripheral(applicationContext)
+val server = PeripheralEchoServer(peripheral, applicationScope)
 
+applicationScope.launch {
+    server.start()
+}
+```
+
+```kotlin
 // iOS/macOS application startup
 val peripheral = createBlueFalconPeripheral()
-
 val server = PeripheralEchoServer(peripheral, applicationScope)
-server.start()
+
+applicationScope.launch {
+    server.start()
+}
 ```
 
 The platform factory imports are:
@@ -54,16 +63,19 @@ view model.
 
 ### Apple
 
-Create the peripheral manager during `application(_:didFinishLaunchingWithOptions:)` or equivalent
-early application startup. CoreBluetooth restoration requires the delegate to be recreated
+Create the peripheral manager and launch `server.start()` during
+`application(_:didFinishLaunchingWithOptions:)` or equivalent early application startup.
+Constructing the factory alone is insufficient: the CoreBluetooth peripheral manager and its
+restoration options are opened by `start()`. CoreBluetooth restoration requires this to happen
 immediately with the same stable restoration identifier:
 
 ```kotlin
 const val restorationIdentifier = "dev.bluefalcon.example.echo-peripheral"
 ```
 
-Do not lazily create the manager in a view model. Keep the application-owned manager and
-`PeripheralEchoServer` alive for the application's BLE lifetime on both iOS and macOS.
+Do not wait for lazy UI or view-model initialization when restoration is required. Keep the
+application-owned manager, scope, and `PeripheralEchoServer` alive for the application's BLE
+lifetime on both iOS and macOS.
 
 ## Exercise the server
 
@@ -97,10 +109,20 @@ slow peer does not prevent the other peers from being offered the payload.
 ## Lifecycle and transport boundary
 
 `start()` can follow `stop()`; stopping advertising and the GATT server is restartable. `close()` is
-terminal: it cancels the request collector and closes the peripheral manager. Create a new manager
-and server after closing.
+terminal and idempotent: it cancels the request collector and closes the peripheral manager. Calls
+to `start()` or `stop()` after `close()` are rejected; create a new manager and server instead.
+
+The caller-provided scope must be active at construction and must outlive the server. Call
+`server.close()` before cancelling `applicationScope`. Cancelling the scope stops request routing,
+and a later `start()` is rejected rather than advertising without a request handler.
+
+Lifecycle operations are serialized. `notifySubscribers` does not hold the lifecycle lock; sends
+racing with `close()` complete with the queue's typed result, including `Disconnected` or
+`Failed(cause)`.
 
 QueuePlugin provides bounded per-session queuing and platform-readiness handling. It intentionally
 does not implement application-layer fragmentation, acknowledgements, retries, or persistence.
-Payloads passed to `notifySubscribers` must fit each session's
-`maximumUpdateValueLength`; larger values produce `PayloadTooLarge`.
+The stored echo attribute is limited to 512 bytes, and larger writes receive
+`InvalidAttributeValueLength` without changing the stored value. This attribute limit is separate
+from notifications: payloads passed to `notifySubscribers` must also fit each individual session's
+`maximumUpdateValueLength`; larger notification payloads produce `PayloadTooLarge`.

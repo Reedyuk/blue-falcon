@@ -29,13 +29,24 @@ import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlin.uuid.ExperimentalUuidApi
 
 class PeripheralEchoServer(
     private val peripheral: BlueFalconPeripheral,
     scope: CoroutineScope,
 ) {
+    init {
+        require(scope.isActive) {
+            "The caller scope must be active when PeripheralEchoServer is created"
+        }
+    }
+
+    private val lifecycleMutex = Mutex()
+    private var closed = false
     private val queue = peripheral.plugins.install(QueuePlugin) {
         maxPendingItemsPerSession = 64
         maxPendingBytes = 64 * 1024
@@ -46,11 +57,20 @@ class PeripheralEchoServer(
     }
 
     suspend fun start() {
-        peripheral.start(echoPeripheralConfig())
+        lifecycleMutex.withLock {
+            check(!closed) { "PeripheralEchoServer is closed" }
+            check(requestJob.isActive) {
+                "The request router is inactive; create a new server with an active scope"
+            }
+            peripheral.start(echoPeripheralConfig())
+        }
     }
 
     suspend fun stop() {
-        peripheral.stop()
+        lifecycleMutex.withLock {
+            check(!closed) { "PeripheralEchoServer is closed" }
+            peripheral.stop()
+        }
     }
 
     suspend fun notifySubscribers(
@@ -81,15 +101,20 @@ class PeripheralEchoServer(
     }
 
     suspend fun close() {
-        requestJob.cancelAndJoin()
-        peripheral.close()
+        lifecycleMutex.withLock {
+            if (closed) return
+            closed = true
+            requestJob.cancelAndJoin()
+            peripheral.close()
+        }
     }
 
     private suspend fun handleRequest(request: GattServerRequest) {
         val terminal = TerminalResponse(request.response)
         try {
             val decision = decideRequest(request)
-            terminal.respond(decision.status, decision.value)
+            val result = terminal.respond(decision.status, decision.value)
+            commitStagedValue(decision, result)
         } catch (cause: CancellationException) {
             throw cause
         } catch (cause: Error) {
@@ -179,11 +204,28 @@ class PeripheralEchoServer(
         }
 
         val written = request.value.copyOf()
+        if (written.size > MAX_ECHO_VALUE_SIZE - request.offset) {
+            return RequestDecision(
+                GattResponseStatus.InvalidAttributeValueLength,
+            )
+        }
         val updated = ByteArray(maxOf(value.size, request.offset + written.size))
         value.copyInto(updated)
         written.copyInto(updated, destinationOffset = request.offset)
-        value = updated.copyOf()
-        return RequestDecision(GattResponseStatus.Success)
+        return RequestDecision(
+            status = GattResponseStatus.Success,
+            stagedValue = updated,
+        )
+    }
+
+    private fun commitStagedValue(
+        decision: RequestDecision,
+        result: GattResponseResult?,
+    ) {
+        val stagedValue = decision.stagedValue ?: return
+        if (result == null || result == GattResponseResult.Responded) {
+            value = stagedValue
+        }
     }
 }
 
@@ -243,11 +285,15 @@ private fun echoPeripheralConfig() = PeripheralConfig(
 private class RequestDecision(
     val status: GattResponseStatus,
     value: ByteArray? = null,
+    stagedValue: ByteArray? = null,
 ) {
     private val copiedValue = value?.copyOf()
+    private val copiedStagedValue = stagedValue?.copyOf()
 
     val value: ByteArray?
         get() = copiedValue?.copyOf()
+    val stagedValue: ByteArray?
+        get() = copiedStagedValue?.copyOf()
 }
 
 private class TerminalResponse(
@@ -268,3 +314,4 @@ private class TerminalResponse(
 }
 
 private val DEFAULT_ECHO_VALUE = "Hello from Blue Falcon".encodeToByteArray()
+private const val MAX_ECHO_VALUE_SIZE = 512
