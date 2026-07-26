@@ -20,6 +20,7 @@
         tools:targetApi="s" />
 
     <application
+        android:name=".BlueFalconApplication"
         android:allowBackup="false"
         android:supportsRtl="true"
         android:theme="@style/AppTheme">
@@ -32,4 +33,4 @@
             </intent-filter>
         </activity>
     </application>
-</manifest> 
+</manifest>
