@@ -8,10 +8,12 @@ import dev.bluefalcon.peripheral.PeripheralPluginRegistry
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import kotlin.coroutines.CoroutineContext
 
 internal class DefaultPeripheralPluginRegistry(
@@ -63,7 +65,7 @@ internal class DefaultPeripheralPluginRegistry(
         }
     }
 
-    suspend fun close() {
+    suspend fun close() = withContext(NonCancellable) {
         val plugins = lifecycleMutex.withLock {
             if (closeStarted) return@withLock null
             closeStarted = true
@@ -74,11 +76,12 @@ internal class DefaultPeripheralPluginRegistry(
         }
         if (plugins == null) {
             closeCompletion.await()?.let { throw it }
-            return
+            return@withContext
         }
 
         var failure: Throwable? = null
         plugins.forEach { installed ->
+            installed.job.cancel()
             try {
                 installed.plugin.close()
             } catch (cause: Throwable) {
@@ -93,6 +96,7 @@ internal class DefaultPeripheralPluginRegistry(
         pluginJob.cancelAndJoin()
         closeCompletion.complete(failure)
         failure?.let { throw it }
+        Unit
     }
 
     private data class InstalledPeripheralPlugin(

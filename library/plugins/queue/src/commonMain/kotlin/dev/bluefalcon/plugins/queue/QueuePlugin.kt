@@ -24,10 +24,6 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 
-enum class QueueOverflowPolicy {
-    RejectNewest,
-}
-
 sealed interface QueueSendResult {
     data object Sent : QueueSendResult
     data object QueueFull : QueueSendResult
@@ -51,7 +47,6 @@ object QueuePlugin : PeripheralPluginFactory<QueuePlugin.Config, PeripheralQueue
     class Config : PeripheralPluginConfig() {
         var maxPendingItemsPerSession: Int = 64
         var maxPendingBytes: Int = 64 * 1024
-        var overflowPolicy: QueueOverflowPolicy = QueueOverflowPolicy.RejectNewest
     }
 
     override fun createConfig() = Config()
@@ -67,7 +62,6 @@ object QueuePlugin : PeripheralPluginFactory<QueuePlugin.Config, PeripheralQueue
         return QueueConfig(
             maxPendingItemsPerSession = maxPendingItemsPerSession,
             maxPendingBytes = maxPendingBytes,
-            overflowPolicy = overflowPolicy,
         )
     }
 }
@@ -125,7 +119,7 @@ private class InstalledQueuePlugin(
         val queued = QueuedNotification(
             session = session,
             characteristic = characteristic,
-            value = value.copyOf(),
+            value = value,
             mode = mode,
         )
         val accepted = mutex.withLock {
@@ -392,7 +386,6 @@ private class InstalledQueuePlugin(
 private data class QueueConfig(
     val maxPendingItemsPerSession: Int,
     val maxPendingBytes: Int,
-    val overflowPolicy: QueueOverflowPolicy,
 )
 
 private class QueuedNotification(

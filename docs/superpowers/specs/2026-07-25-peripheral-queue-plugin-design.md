@@ -27,7 +27,6 @@ plugin instance and closes all installed plugins during `BlueFalconPeripheral.cl
 val queue = peripheral.plugins.install(QueuePlugin) {
     maxPendingItemsPerSession = 64
     maxPendingBytes = 64 * 1024
-    overflowPolicy = QueueOverflowPolicy.RejectNewest
 }
 
 when (queue.send(session, characteristic, payload)) {
@@ -82,9 +81,10 @@ and a completion deferred. A single mutex protects:
 - total queued item count and each session's queued byte count;
 - blocked session readiness epochs.
 
-The default policy is `RejectNewest`. Enqueue returns `QueueFull` when either the per-session item
-limit or the total byte limit would be exceeded; it does not evict an older item. All limits must be
-positive. A known `session.maximumUpdateValueLength` smaller than the supplied value returns
+Enqueue rejects the newest item with `QueueFull` when either the per-session item limit or the total
+byte limit would be exceeded; it does not evict an older item. No configurable overflow policy is
+exposed until another policy is implemented. All limits must be positive. A known
+`session.maximumUpdateValueLength` smaller than the supplied value returns
 `PayloadTooLarge` before the value is queued. If the platform has not exposed a limit yet (`null`),
 the plugin submits the complete value and preserves the result reported by `session.notify`.
 An empty payload consumes one accounting unit from the total byte budget so queued object metadata

@@ -6,6 +6,7 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runCurrent
@@ -29,6 +30,37 @@ class PeripheralPluginRegistryTest {
 
         assertEquals(listOf("installed"), factory.installedNames)
         assertEquals(1, factory.closeCalls)
+    }
+
+    @Test
+    fun closeCancelsPluginScopeBeforeCallingPluginClose() = runTest {
+        val peripheral = DefaultBlueFalconPeripheral(FakePeripheralBackend(), coroutineContext)
+        val scopeCancelledAtClose = CompletableDeferred<Boolean>()
+        var installedScope: CoroutineScope? = null
+        val factory = object : PeripheralPluginFactory<PeripheralPluginConfig, Unit> {
+            override fun createConfig() = PeripheralPluginConfig()
+
+            override fun create(config: PeripheralPluginConfig) =
+                object : PeripheralPlugin<Unit> {
+                    override fun install(
+                        peripheral: BlueFalconPeripheral,
+                        scope: CoroutineScope,
+                    ) {
+                        installedScope = scope
+                    }
+
+                    override suspend fun close() {
+                        scopeCancelledAtClose.complete(
+                            installedScope?.coroutineContext?.get(Job)?.isCancelled == true,
+                        )
+                    }
+                }
+        }
+
+        peripheral.plugins.install(factory)
+        peripheral.close()
+
+        assertTrue(scopeCancelledAtClose.await())
     }
 
     @Test

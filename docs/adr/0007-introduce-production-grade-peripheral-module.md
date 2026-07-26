@@ -331,7 +331,8 @@ The plugin will implement:
   session, preventing a continuously writable session from starving others;
 - cancellation of an item that has not yet been submitted when its caller is cancelled;
 - cancellation of all session items when the session closes;
-- `RejectNewest` as the default overflow policy.
+- reject the newest item when a configured bound is reached; no policy selector is exposed until
+  another overflow policy is implemented.
 
 If at least one item is accepted during a scheduling pass, the plugin immediately begins the next
 round-robin pass without waiting for a state update. It waits for `notificationReadinessState` to
