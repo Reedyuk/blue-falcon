@@ -1,10 +1,12 @@
 package dev.bluefalcon.peripheral
 
 import dev.bluefalcon.core.toUuid
+import dev.bluefalcon.peripheral.internal.DefaultPeripheralPluginRegistry
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.emptyFlow
+import kotlin.coroutines.EmptyCoroutineContext
 import kotlin.test.Test
 import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
@@ -24,6 +26,7 @@ class PeripheralApiShapeTest {
         manager.requests
         manager.events
         manager.notificationReadiness
+        manager.notificationReadinessState
 
         assertEquals(PeripheralSessionId("central-1"), session.id)
         assertEquals(SessionState.Active, session.state.value)
@@ -149,10 +152,14 @@ class PeripheralApiShapeTest {
         override val state: StateFlow<PeripheralManagerState> =
             MutableStateFlow(PeripheralManagerState.Stopped)
         override val capabilities: PeripheralCapabilities = PeripheralCapabilities.Unsupported
+        override val plugins: PeripheralPluginRegistry =
+            DefaultPeripheralPluginRegistry(this, EmptyCoroutineContext)
         override val sessions: StateFlow<Set<PeripheralSession>> = MutableStateFlow(emptySet())
         override val requests: Flow<GattServerRequest> = emptyFlow()
         override val events: Flow<PeripheralEvent> = emptyFlow()
         override val notificationReadiness: Flow<NotificationReadiness> = emptyFlow()
+        override val notificationReadinessState: StateFlow<NotificationReadinessState> =
+            MutableStateFlow(NotificationReadinessState())
 
         override suspend fun start(config: PeripheralConfig) = Unit
         override suspend fun stop() = Unit

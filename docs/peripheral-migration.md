@@ -89,6 +89,11 @@ while Core Bluetooth controls the actual ATT delivery mode from the central's su
 `NotificationReadiness.Manager` is manager-wide because Core Bluetooth does not identify which
 central released transmit capacity.
 
+`notificationReadiness` is a bounded hint stream intended for lightweight application observation;
+slow collectors do not backpressure platform callbacks. Plugins that require a loss-free handoff
+use `notificationReadinessState`, whose manager and active-session epochs remain durable even when
+the hint stream coalesces under load.
+
 The old `createBluetoothAdvertiser(logger)` and `AppleBluetoothAdvertiser` APIs remain as deprecated
 compatibility façades over the production manager. New code should use
 `createBlueFalconPeripheral(logger)` directly.
@@ -96,7 +101,43 @@ compatibility façades over the production manager. New code should use
 The broadcast plugin now exposes `blue-falcon-peripheral` transitively, but applications that use
 the peripheral API directly should declare the dependency explicitly.
 
+Applications that need bounded notification serialization can add the optional queue plugin:
+
+```kotlin
+commonMain.dependencies {
+    implementation("dev.bluefalcon:blue-falcon-plugin-queue:<version>")
+}
+```
+
+Install it once on the peripheral manager and use the returned queue for complete ATT values:
+
+```kotlin
+import dev.bluefalcon.plugins.queue.QueuePlugin
+
+val queue = peripheral.plugins.install(QueuePlugin) {
+    maxPendingItemsPerSession = 64
+    maxPendingBytes = 64 * 1024
+}
+
+val result = queue.send(
+    session = session,
+    characteristic = characteristicId,
+    value = encodedAttValue,
+)
+```
+
+The queue preserves FIFO order per session, schedules active sessions round-robin, and resumes
+blocked sends from the durable `notificationReadinessState`. It rejects the newest value with
+`QueueFull` when either configured bound is reached. A value larger than a session's known
+`maximumUpdateValueLength` returns `PayloadTooLarge` without reaching the platform backend.
+Empty values reserve one unit of the total byte budget so metadata-only queue entries remain
+globally bounded.
+
+`QueuePlugin` deliberately does not fragment messages, add transport acknowledgements, persist
+pending data, reconnect sessions, or retry terminal failures. Protocol framing, fragmentation,
+ACK/retry policy, and durable delivery remain application transport responsibilities.
+
 The peripheral module now provides the production manager/session contract, application-controlled
 ATT responses, targeted multi-central updates, per-session maximum update lengths,
-readiness/backpressure signals, and opt-in Apple restoration. Queue policy remains an application or
-plugin concern rather than a hidden platform retry queue.
+readiness/backpressure signals, and opt-in Apple restoration. Queue policy remains an explicit
+application or plugin concern rather than a hidden platform retry queue.
