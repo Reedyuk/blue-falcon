@@ -28,21 +28,44 @@ kotlin {
                 implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:$kotlinx_coroutines_version")
             }
         }
-        
+
         val iosMain by creating {
             dependsOn(nativeMain)
+        }
+
+        val iosTest by creating {
+            dependsOn(commonTest.get())
+            kotlin.srcDir("../apple-shared/src/appleTest/kotlin")
+            dependencies {
+                implementation(kotlin("test"))
+                implementation(
+                    "org.jetbrains.kotlinx:kotlinx-coroutines-test:$kotlinx_coroutines_version"
+                )
+            }
         }
         
         val iosArm64Main by getting {
             dependsOn(iosMain)
         }
+
+        val iosArm64Test by getting {
+            dependsOn(iosTest)
+        }
         
         val iosSimulatorArm64Main by getting {
             dependsOn(iosMain)
         }
+
+        val iosSimulatorArm64Test by getting {
+            dependsOn(iosTest)
+        }
         
         val iosX64Main by getting {
             dependsOn(iosMain)
+        }
+
+        val iosX64Test by getting {
+            dependsOn(iosTest)
         }
     }
 }
