@@ -1,6 +1,7 @@
 package dev.bluefalcon.core
 
 import dev.bluefalcon.core.plugin.*
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -38,6 +39,14 @@ class BlueFalcon(
     val managerState: StateFlow<BluetoothManagerState> get() = engine.managerState
     val isScanning: Boolean get() = engine.isScanning
     val rssiUpdates: SharedFlow<Pair<String, Float>> get() = engine.rssiUpdates
+    val centralCapabilities: CentralCapabilities get() = engine.centralCapabilities
+    val characteristicWriteCapabilities:
+        StateFlow<Map<CharacteristicWriteKey, CharacteristicWriteCapability>>
+        get() = engine.characteristicWriteCapabilities
+    val characteristicWriteReady: SharedFlow<CharacteristicWriteReady>
+        get() = engine.characteristicWriteReady
+    val notificationSubscriptionUpdates: SharedFlow<NotificationSubscriptionUpdate>
+        get() = engine.notificationSubscriptionUpdates
 
     /**
      * Reactive stream of peripheral connection state changes.
@@ -209,6 +218,47 @@ class BlueFalcon(
             }
         }
     }
+
+    suspend fun writeCharacteristic(
+        peripheral: BluetoothPeripheral,
+        characteristic: BluetoothCharacteristic,
+        value: ByteArray,
+        writeType: CharacteristicWriteType,
+    ): CharacteristicWriteResult =
+        plugins.interceptCentralWrite(
+            CentralWriteCall(peripheral, characteristic, value, writeType)
+        ) { call ->
+            try {
+                engine.writeCharacteristic(
+                    call.peripheral,
+                    call.characteristic,
+                    call.value,
+                    call.writeType,
+                )
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (failure: Throwable) {
+                CharacteristicWriteResult.Failed(failure)
+            }
+        }
+
+    suspend fun setNotificationSubscription(
+        peripheral: BluetoothPeripheral,
+        characteristic: BluetoothCharacteristic,
+        enabled: Boolean,
+    ): NotificationSubscriptionResult =
+        try {
+            engine.setNotificationSubscription(peripheral, characteristic, enabled)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (failure: Throwable) {
+            NotificationSubscriptionResult.Failed(failure)
+        }
+
+    fun maximumWriteValueLength(
+        peripheral: BluetoothPeripheral,
+        writeType: CharacteristicWriteType,
+    ): Int? = engine.maximumWriteValueLength(peripheral, writeType)
     
     /**
      * Enable/disable notifications

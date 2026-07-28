@@ -1,10 +1,13 @@
 package dev.bluefalcon.core
 
 import dev.bluefalcon.core.mocks.FakeBlueFalconEngine
+import dev.bluefalcon.core.mocks.FakeCharacteristic
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 import kotlin.test.assertFalse
+import kotlin.test.assertIs
+import kotlin.test.assertSame
 import kotlinx.coroutines.test.runTest
 
 /**
@@ -135,5 +138,86 @@ class BlueFalconTest {
         
         // Then
         assertEquals(BluetoothManagerState.NotReady, blueFalcon.managerState.value)
+    }
+
+    @Test
+    fun `typed write returns the exact engine outcome`() = runTest {
+        val engine = FakeBlueFalconEngine().apply {
+            typedWriteResult = CharacteristicWriteResult.PayloadTooLarge(20)
+        }
+        val blueFalcon = BlueFalcon(engine)
+        val peripheral = engine.createFakePeripheral("Device")
+        val characteristic = FakeCharacteristic(
+            uuid = "00002a37-0000-1000-8000-00805f9b34fb".toUuid(),
+        )
+
+        val result = blueFalcon.writeCharacteristic(
+            peripheral,
+            characteristic,
+            byteArrayOf(1, 2, 3),
+            CharacteristicWriteType.WithoutResponse,
+        )
+
+        assertEquals(CharacteristicWriteResult.PayloadTooLarge(20), result)
+    }
+
+    @Test
+    fun `typed write converts unexpected engine failure without swallowing it`() = runTest {
+        val failure = IllegalStateException("platform rejected write")
+        val engine = FakeBlueFalconEngine().apply {
+            typedWriteFailure = failure
+        }
+        val blueFalcon = BlueFalcon(engine)
+        val peripheral = engine.createFakePeripheral("Device")
+        val characteristic = FakeCharacteristic(
+            uuid = "00002a37-0000-1000-8000-00805f9b34fb".toUuid(),
+        )
+
+        val result = blueFalcon.writeCharacteristic(
+            peripheral,
+            characteristic,
+            byteArrayOf(1),
+            CharacteristicWriteType.WithResponse,
+        )
+
+        assertSame(failure, assertIs<CharacteristicWriteResult.Failed>(result).cause)
+    }
+
+    @Test
+    fun `typed central state is exposed from the engine`() {
+        val engine = FakeBlueFalconEngine()
+        val blueFalcon = BlueFalcon(engine)
+
+        assertEquals(engine.centralCapabilities, blueFalcon.centralCapabilities)
+        assertSame(
+            engine.characteristicWriteCapabilities,
+            blueFalcon.characteristicWriteCapabilities,
+        )
+        assertSame(engine.characteristicWriteReady, blueFalcon.characteristicWriteReady)
+        assertSame(
+            engine.notificationSubscriptionUpdates,
+            blueFalcon.notificationSubscriptionUpdates,
+        )
+    }
+
+    @Test
+    fun `typed notification subscription returns engine outcome`() = runTest {
+        val engine = FakeBlueFalconEngine().apply {
+            subscriptionResult = NotificationSubscriptionResult.Updated(enabled = true)
+        }
+        val blueFalcon = BlueFalcon(engine)
+        val peripheral = engine.createFakePeripheral("Device")
+        val characteristic = FakeCharacteristic(
+            uuid = "00002a37-0000-1000-8000-00805f9b34fb".toUuid(),
+        )
+
+        assertEquals(
+            NotificationSubscriptionResult.Updated(enabled = true),
+            blueFalcon.setNotificationSubscription(
+                peripheral,
+                characteristic,
+                enabled = true,
+            ),
+        )
     }
 }

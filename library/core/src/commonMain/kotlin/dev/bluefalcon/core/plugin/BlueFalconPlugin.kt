@@ -51,6 +51,13 @@ interface BlueFalconPlugin {
      */
     suspend fun onAfterWrite(call: WriteCall, result: Result<Unit>) {}
 
+    suspend fun onBeforeCentralWrite(call: CentralWriteCall): CentralWriteCall = call
+
+    suspend fun onAfterCentralWrite(
+        call: CentralWriteCall,
+        result: CharacteristicWriteResult,
+    ) {}
+
     /**
      * Called before a disconnect operation
      */
@@ -114,6 +121,13 @@ data class WriteCall(
     val characteristic: BluetoothCharacteristic,
     val value: ByteArray,
     val writeType: Int?
+)
+
+data class CentralWriteCall(
+    val peripheral: BluetoothPeripheral,
+    val characteristic: BluetoothCharacteristic,
+    val value: ByteArray,
+    val writeType: CharacteristicWriteType,
 )
 
 data class NotificationCall(

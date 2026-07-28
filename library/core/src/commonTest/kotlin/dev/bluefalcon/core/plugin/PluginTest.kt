@@ -121,6 +121,48 @@ class PluginTest {
 
         assertTrue(notificationCalled)
     }
+
+    @Test
+    fun `typed write plugins transform the call and observe the exact outcome`() = runTest {
+        val observedResults = mutableListOf<CharacteristicWriteResult>()
+        val engine = FakeBlueFalconEngine().apply {
+            typedWriteResult = CharacteristicWriteResult.Disconnected
+        }
+        val peripheral = engine.createFakePeripheral("Device")
+        val characteristic = FakeCharacteristic(
+            uuid = "00002a37-0000-1000-8000-00805f9b34fb".toUuid(),
+        )
+        val plugin = object : BlueFalconPlugin {
+            override fun install(client: BlueFalconClient, config: PluginConfig) = Unit
+
+            override suspend fun onBeforeCentralWrite(
+                call: CentralWriteCall,
+            ): CentralWriteCall = call.copy(value = byteArrayOf(9, 8, 7))
+
+            override suspend fun onAfterCentralWrite(
+                call: CentralWriteCall,
+                result: CharacteristicWriteResult,
+            ) {
+                observedResults += result
+            }
+        }
+        val blueFalcon = BlueFalcon(engine)
+        blueFalcon.plugins.install(plugin)
+
+        val result = blueFalcon.writeCharacteristic(
+            peripheral,
+            characteristic,
+            byteArrayOf(1),
+            CharacteristicWriteType.WithoutResponse,
+        )
+
+        assertEquals(CharacteristicWriteResult.Disconnected, result)
+        assertTrue(engine.lastTypedWriteValue!!.contentEquals(byteArrayOf(9, 8, 7)))
+        assertEquals(
+            listOf<CharacteristicWriteResult>(CharacteristicWriteResult.Disconnected),
+            observedResults,
+        )
+    }
     
     private fun createTestPlugin(name: String, order: MutableList<String>) = 
         object : BlueFalconPlugin {
