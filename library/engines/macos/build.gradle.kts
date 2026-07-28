@@ -21,6 +21,7 @@ kotlin {
     
     sourceSets {
         val macosMain by creating {
+            kotlin.srcDir("../apple-shared/src/appleMain/kotlin")
             dependencies {
                 implementation(project(":core"))
                 implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:$kotlinx_coroutines_version")
