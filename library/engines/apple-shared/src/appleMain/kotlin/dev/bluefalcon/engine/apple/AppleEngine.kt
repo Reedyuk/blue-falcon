@@ -5,6 +5,7 @@ import kotlinx.cinterop.BetaInteropApi
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -39,6 +40,17 @@ class AppleEngine : BlueFalconEngine, CBCentralManagerCallback, CBPeripheralCall
 
     private val _serviceDiscoveryUpdates = MutableSharedFlow<ServiceDiscoveryUpdate>(extraBufferCapacity = 64)
     override val serviceDiscoveryUpdates: SharedFlow<ServiceDiscoveryUpdate> = _serviceDiscoveryUpdates
+
+    private val centralWriteController = AppleCentralWriteController(scope)
+    override val centralCapabilities = CentralCapabilities(
+        reliableWriteResults = true,
+        writeWithoutResponseReadiness = true,
+        perConnectionMaximumWriteLength = true,
+        notificationSubscriptionResults = false,
+        restoration = false,
+    )
+    override val characteristicWriteCapabilities = centralWriteController.capabilities
+    override val characteristicWriteReady = centralWriteController.ready
     
     override var isScanning: Boolean = false
         private set
@@ -123,7 +135,6 @@ class AppleEngine : BlueFalconEngine, CBCentralManagerCallback, CBPeripheralCall
             ?: throw IllegalArgumentException("Peripheral must be an AppleBluetoothPeripheral")
         
         centralManager.cancelPeripheralConnection(applePeripheral.cbPeripheral)
-        connectedPeripherals.remove(peripheral.uuid)
     }
     
     override fun connectionState(peripheral: BluetoothPeripheral): BluetoothPeripheralState {
@@ -226,6 +237,33 @@ class AppleEngine : BlueFalconEngine, CBCentralManagerCallback, CBPeripheralCall
             ?: throw IllegalArgumentException("Failed to encode string to data")
         
         writeCharacteristicData(peripheral, characteristic, data, writeType)
+    }
+
+    override suspend fun writeCharacteristic(
+        peripheral: BluetoothPeripheral,
+        characteristic: BluetoothCharacteristic,
+        value: ByteArray,
+        writeType: CharacteristicWriteType,
+    ): CharacteristicWriteResult {
+        val applePeripheral = peripheral as? AppleBluetoothPeripheral
+            ?: return CharacteristicWriteResult.Failed(
+                IllegalArgumentException("Peripheral must be an AppleBluetoothPeripheral")
+            )
+        val appleCharacteristic = characteristic as? AppleBluetoothCharacteristic
+            ?: return CharacteristicWriteResult.Failed(
+                IllegalArgumentException(
+                    "Characteristic must be an AppleBluetoothCharacteristic"
+                )
+            )
+        applePeripheral.cbPeripheral.delegate = peripheralDelegate
+        return centralWriteController.write(
+            CoreBluetoothWriteTarget(
+                peripheral = applePeripheral.cbPeripheral,
+                characteristic = appleCharacteristic.cbCharacteristic,
+            ),
+            value,
+            writeType,
+        )
     }
     
     override suspend fun writeCharacteristic(
@@ -416,7 +454,12 @@ class AppleEngine : BlueFalconEngine, CBCentralManagerCallback, CBPeripheralCall
         peripheral.delegate = peripheralDelegate
         val device = AppleBluetoothPeripheral(peripheral, null)
         connectedPeripherals[device.uuid] = device
-        _connectionStateUpdates.tryEmit(ConnectionStateUpdate(device, BluetoothPeripheralState.Connected))
+        scope.launch {
+            centralWriteController.connected(CoreBluetoothWritePeer(peripheral))
+            _connectionStateUpdates.tryEmit(
+                ConnectionStateUpdate(device, BluetoothPeripheralState.Connected)
+            )
+        }
     }
     
     override fun onPeripheralDisconnected(peripheral: CBPeripheral, error: NSError?) {
@@ -424,14 +467,24 @@ class AppleEngine : BlueFalconEngine, CBCentralManagerCallback, CBPeripheralCall
         val device = connectedPeripherals[uuid] ?: AppleBluetoothPeripheral(peripheral, null)
         connectedPeripherals.remove(uuid)
         peripheral.delegate = null
-        _connectionStateUpdates.tryEmit(ConnectionStateUpdate(device, BluetoothPeripheralState.Disconnected))
+        scope.launch {
+            centralWriteController.disconnected(uuid)
+            _connectionStateUpdates.tryEmit(
+                ConnectionStateUpdate(device, BluetoothPeripheralState.Disconnected)
+            )
+        }
     }
     
     override fun onPeripheralConnectionFailed(peripheral: CBPeripheral, error: NSError?) {
         // The peripheral was never successfully connected, so it is not in connectedPeripherals.
         // Still emit Disconnected to notify any code waiting on the connection outcome.
         val device = AppleBluetoothPeripheral(peripheral, null)
-        _connectionStateUpdates.tryEmit(ConnectionStateUpdate(device, BluetoothPeripheralState.Disconnected))
+        scope.launch {
+            centralWriteController.disconnected(device.uuid)
+            _connectionStateUpdates.tryEmit(
+                ConnectionStateUpdate(device, BluetoothPeripheralState.Disconnected)
+            )
+        }
     }
     
     // CBPeripheralCallback implementation
@@ -484,7 +537,15 @@ class AppleEngine : BlueFalconEngine, CBCentralManagerCallback, CBPeripheralCall
         characteristic: CBCharacteristic,
         error: NSError?
     ) {
-        // Characteristic written - could expose this through a callback if needed
+        scope.launch {
+            centralWriteController.onCharacteristicWritten(
+                peripheralUuid = peripheral.identifier.UUIDString,
+                characteristicUuid = characteristic.UUID.UUIDString,
+                failure = error?.let {
+                    IllegalStateException(it.localizedDescription)
+                },
+            )
+        }
     }
     
     override fun onDescriptorsDiscovered(
@@ -501,6 +562,14 @@ class AppleEngine : BlueFalconEngine, CBCentralManagerCallback, CBPeripheralCall
         error: NSError?
     ) {
         // Notification state updated - automatically handled through characteristic.isNotifying property
+    }
+
+    override fun onReadyToSendWriteWithoutResponse(peripheral: CBPeripheral) {
+        scope.launch {
+            centralWriteController.onReadyToSendWithoutResponse(
+                CoreBluetoothWritePeer(peripheral)
+            )
+        }
     }
     
     override fun onL2CAPChannelOpened(peripheral: CBPeripheral, channel: CBL2CAPChannel?, error: NSError?) {
@@ -519,4 +588,42 @@ class AppleEngine : BlueFalconEngine, CBCentralManagerCallback, CBPeripheralCall
     override fun onDescriptorWritten(peripheral: CBPeripheral, descriptor: CBDescriptor, error: NSError?) {
         // Descriptor written - could expose this through a callback if needed
     }
+}
+
+private open class CoreBluetoothWritePeer(
+    protected val peripheral: CBPeripheral,
+) : AppleCentralWritePeer {
+    override val peripheralUuid: String
+        get() = peripheral.identifier.UUIDString
+    override val connected: Boolean
+        get() = peripheral.state == CBPeripheralStateConnected
+    override val canSendWithoutResponse: Boolean
+        get() = peripheral.canSendWriteWithoutResponse
+
+    override fun maximumWriteValueLength(writeType: CharacteristicWriteType): Int =
+        peripheral.maximumWriteValueLengthForType(writeType.toNativeWriteType()).toInt()
+}
+
+private class CoreBluetoothWriteTarget(
+    peripheral: CBPeripheral,
+    private val characteristic: CBCharacteristic,
+) : CoreBluetoothWritePeer(peripheral), AppleCentralWriteTarget {
+    override val characteristicUuid: String
+        get() = characteristic.UUID.UUIDString
+
+    override fun writeValue(
+        payload: ByteArray,
+        writeType: CharacteristicWriteType,
+    ) {
+        peripheral.writeValue(
+            payload.toData(),
+            characteristic,
+            writeType.toNativeWriteType(),
+        )
+    }
+}
+
+private fun CharacteristicWriteType.toNativeWriteType() = when (this) {
+    CharacteristicWriteType.WithResponse -> CBCharacteristicWriteWithResponse
+    CharacteristicWriteType.WithoutResponse -> CBCharacteristicWriteWithoutResponse
 }
