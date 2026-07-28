@@ -48,6 +48,7 @@ internal fun interface CentralGattTimeoutScheduler {
 internal class CentralGattOperationGate(
     private val timeoutMillis: Long,
     private val timeoutScheduler: CentralGattTimeoutScheduler,
+    private val onBusy: () -> Unit = {},
     private val onReady: () -> Unit = {},
 ) {
     private val lock = Any()
@@ -65,13 +66,14 @@ internal class CentralGattOperationGate(
         action: () -> Boolean,
     ) {
         val postActions = synchronized(lock) {
+            val wasIdle = current == null && legacyPending.isEmpty()
             legacyPending += Operation(
                 key = key,
                 label = label,
                 action = action,
                 onComplete = null,
             )
-            dispatchNextLocked()
+            dispatchNextLocked().withBusy(wasIdle)
         }
         postActions.run()
     }
@@ -94,7 +96,7 @@ internal class CentralGattOperationGate(
                 onComplete = onComplete,
             )
             current = operation
-            dispatchCurrentLocked(operation)
+            dispatchCurrentLocked(operation).withBusy()
         }
         postActions.run()
         return true
@@ -221,11 +223,20 @@ internal class CentralGattOperationGate(
         }
     }
 
+    private fun PostActions.withBusy(enabled: Boolean = true): PostActions =
+        PostActions(
+            completion = completion,
+            notifyBusy = enabled,
+            notifyReady = notifyReady,
+        )
+
     private inner class PostActions(
         val completion: (() -> Unit)? = null,
+        val notifyBusy: Boolean = false,
         val notifyReady: Boolean = false,
     ) {
         fun run() {
+            if (notifyBusy) onBusy()
             completion?.invoke()
             if (notifyReady) onReady()
         }

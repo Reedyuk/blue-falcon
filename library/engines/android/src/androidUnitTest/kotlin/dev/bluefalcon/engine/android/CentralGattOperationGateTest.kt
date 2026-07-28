@@ -71,6 +71,29 @@ class CentralGattOperationGateTest {
     }
 
     @Test
+    fun `gate reports busy only when idle begins physical work`() {
+        var busyCount = 0
+        val first = key(generation = 1, identity = "first")
+        val second = key(generation = 1, identity = "second")
+        val gate = CentralGattOperationGate(
+            timeoutMillis = 10_000,
+            timeoutScheduler = FakeTimeoutScheduler(),
+            onBusy = { busyCount += 1 },
+        )
+
+        gate.enqueueLegacy(first, "first") { true }
+        gate.enqueueLegacy(second, "second") { true }
+        assertEquals(1, busyCount)
+
+        gate.complete(first, status = 0, successful = true)
+        assertEquals(1, busyCount)
+
+        gate.complete(second, status = 0, successful = true)
+        assertTrue(gate.trySubmitTyped(first, "typed", { true }) {})
+        assertEquals(2, busyCount)
+    }
+
+    @Test
     fun `legacy fifo and typed submissions share one serialization authority`() {
         val calls = mutableListOf<String>()
         val ready = mutableListOf<Unit>()
