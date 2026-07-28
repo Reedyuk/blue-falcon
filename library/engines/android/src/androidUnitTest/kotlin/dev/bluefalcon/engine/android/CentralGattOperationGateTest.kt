@@ -186,14 +186,19 @@ class CentralGattOperationGateTest {
     }
 
     @Test
-    fun `timeout completes typed operation and releases slot`() {
+    fun `timeout completes typed operation and poisons physical ownership`() {
         val scheduler = FakeTimeoutScheduler()
         val outcomes = mutableListOf<CentralGattOperationOutcome>()
+        var poisonedCount = 0
+        var readyCount = 0
         val gate = CentralGattOperationGate(
             timeoutMillis = 10_000,
             timeoutScheduler = scheduler,
+            onPoisoned = { poisonedCount += 1 },
+            onReady = { readyCount += 1 },
         )
-        gate.trySubmitTyped(key(generation = 5), "write", { true }, outcomes::add)
+        val timedOut = key(generation = 5)
+        gate.trySubmitTyped(timedOut, "write", { true }, outcomes::add)
 
         scheduler.fireNext()
 
@@ -201,7 +206,43 @@ class CentralGattOperationGateTest {
             listOf<CentralGattOperationOutcome>(CentralGattOperationOutcome.TimedOut),
             outcomes,
         )
-        assertTrue(gate.isIdle)
+        assertEquals(1, poisonedCount)
+        assertEquals(0, readyCount)
+        assertTrue(gate.isPoisoned)
+        assertFalse(gate.isIdle)
+        assertFalse(gate.complete(timedOut, status = 0, successful = true))
+        assertFalse(
+            gate.trySubmitTyped(
+                timedOut.copy(identity = "retry"),
+                "retry",
+                { true },
+            ) {},
+        )
+    }
+
+    @Test
+    fun `timeout drops queued legacy work instead of dispatching it`() {
+        val scheduler = FakeTimeoutScheduler()
+        val calls = mutableListOf<String>()
+        val first = key(generation = 5, identity = "first")
+        val second = key(generation = 5, identity = "second")
+        val gate = CentralGattOperationGate(
+            timeoutMillis = 10_000,
+            timeoutScheduler = scheduler,
+        )
+        gate.enqueueLegacy(first, "first") {
+            calls += "first"
+            true
+        }
+        gate.enqueueLegacy(second, "second") {
+            calls += "second"
+            true
+        }
+
+        scheduler.fireNext()
+
+        assertEquals(listOf("first"), calls)
+        assertFalse(gate.complete(first, status = 0, successful = true))
     }
 
     @Test

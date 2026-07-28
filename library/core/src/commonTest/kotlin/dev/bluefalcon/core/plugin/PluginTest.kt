@@ -6,6 +6,8 @@ import dev.bluefalcon.core.mocks.FakeCharacteristic
 import kotlin.test.Test
 import kotlin.test.assertTrue
 import kotlin.test.assertEquals
+import kotlin.test.assertIs
+import kotlin.test.assertSame
 import kotlinx.coroutines.test.runTest
 
 /**
@@ -161,6 +163,71 @@ class PluginTest {
         assertEquals(
             listOf<CharacteristicWriteResult>(CharacteristicWriteResult.Disconnected),
             observedResults,
+        )
+    }
+
+    @Test
+    fun `typed write converts before hook failure to a typed failure`() = runTest {
+        val failure = IllegalStateException("before hook failed")
+        val engine = FakeBlueFalconEngine()
+        val peripheral = engine.createFakePeripheral("Device")
+        val characteristic = FakeCharacteristic(
+            uuid = "00002a37-0000-1000-8000-00805f9b34fb".toUuid(),
+        )
+        val blueFalcon = BlueFalcon(engine)
+        blueFalcon.plugins.install(
+            object : BlueFalconPlugin {
+                override fun install(client: BlueFalconClient, config: PluginConfig) = Unit
+
+                override suspend fun onBeforeCentralWrite(
+                    call: CentralWriteCall,
+                ): CentralWriteCall = throw failure
+            }
+        )
+
+        val result = blueFalcon.writeCharacteristic(
+            peripheral,
+            characteristic,
+            byteArrayOf(1),
+            CharacteristicWriteType.WithResponse,
+        )
+
+        assertSame(failure, assertIs<CharacteristicWriteResult.Failed>(result).cause)
+    }
+
+    @Test
+    fun `typed write preserves engine outcome when after hook fails`() = runTest {
+        val failure = IllegalStateException("after hook failed")
+        val expected = CharacteristicWriteResult.PayloadTooLarge(maximumLength = 20)
+        val engine = FakeBlueFalconEngine().apply {
+            typedWriteResult = expected
+        }
+        val peripheral = engine.createFakePeripheral("Device")
+        val characteristic = FakeCharacteristic(
+            uuid = "00002a37-0000-1000-8000-00805f9b34fb".toUuid(),
+        )
+        val blueFalcon = BlueFalcon(engine)
+        blueFalcon.plugins.install(
+            object : BlueFalconPlugin {
+                override fun install(client: BlueFalconClient, config: PluginConfig) = Unit
+
+                override suspend fun onAfterCentralWrite(
+                    call: CentralWriteCall,
+                    result: CharacteristicWriteResult,
+                ) {
+                    throw failure
+                }
+            }
+        )
+
+        assertEquals(
+            expected,
+            blueFalcon.writeCharacteristic(
+                peripheral,
+                characteristic,
+                byteArrayOf(1),
+                CharacteristicWriteType.WithResponse,
+            ),
         )
     }
     

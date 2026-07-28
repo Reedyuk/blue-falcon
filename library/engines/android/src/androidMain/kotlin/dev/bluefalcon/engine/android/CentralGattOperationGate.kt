@@ -50,15 +50,20 @@ internal class CentralGattOperationGate(
     private val timeoutScheduler: CentralGattTimeoutScheduler,
     private val onBusy: () -> Unit = {},
     private val onReady: () -> Unit = {},
+    private val onPoisoned: () -> Unit = {},
 ) {
     private val lock = Any()
     private val legacyPending = ArrayDeque<Operation>()
     private var current: Operation? = null
+    private var poisoned = false
 
     val isIdle: Boolean
         get() = synchronized(lock) {
-            current == null && legacyPending.isEmpty()
+            !poisoned && current == null && legacyPending.isEmpty()
         }
+
+    val isPoisoned: Boolean
+        get() = synchronized(lock) { poisoned }
 
     fun enqueueLegacy(
         key: CentralGattOperationKey,
@@ -66,6 +71,7 @@ internal class CentralGattOperationGate(
         action: () -> Boolean,
     ) {
         val postActions = synchronized(lock) {
+            if (poisoned) return
             val wasIdle = current == null && legacyPending.isEmpty()
             legacyPending += Operation(
                 key = key,
@@ -85,7 +91,7 @@ internal class CentralGattOperationGate(
         onComplete: (CentralGattOperationOutcome) -> Unit,
     ): Boolean {
         val postActions = synchronized(lock) {
-            if (current != null || legacyPending.isNotEmpty()) {
+            if (poisoned || current != null || legacyPending.isNotEmpty()) {
                 return false
             }
 
@@ -108,6 +114,7 @@ internal class CentralGattOperationGate(
         successful: Boolean,
     ): Boolean {
         val postActions = synchronized(lock) {
+            if (poisoned) return false
             val operation = current ?: return false
             if (operation.key != key) return false
             finishCurrentLocked(
@@ -150,7 +157,15 @@ internal class CentralGattOperationGate(
         val postActions = synchronized(lock) {
             val operation = current ?: return
             if (operation.key != key) return
-            finishCurrentLocked(operation, CentralGattOperationOutcome.TimedOut)
+            current = null
+            legacyPending.clear()
+            poisoned = true
+            PostActions(
+                completion = operation.onComplete?.let { callback ->
+                    { callback(CentralGattOperationOutcome.TimedOut) }
+                },
+                notifyPoisoned = true,
+            )
         }
         postActions.run()
     }
@@ -228,17 +243,20 @@ internal class CentralGattOperationGate(
             completion = completion,
             notifyBusy = enabled,
             notifyReady = notifyReady,
+            notifyPoisoned = notifyPoisoned,
         )
 
     private inner class PostActions(
         val completion: (() -> Unit)? = null,
         val notifyBusy: Boolean = false,
         val notifyReady: Boolean = false,
+        val notifyPoisoned: Boolean = false,
     ) {
         fun run() {
             if (notifyBusy) onBusy()
             completion?.invoke()
             if (notifyReady) onReady()
+            if (notifyPoisoned) onPoisoned()
         }
     }
 

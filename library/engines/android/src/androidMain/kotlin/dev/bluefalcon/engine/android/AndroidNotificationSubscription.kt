@@ -2,6 +2,22 @@ package dev.bluefalcon.engine.android
 
 import dev.bluefalcon.core.NotificationSubscriptionResult
 
+internal fun characteristicOperationIdentity(
+    serviceUuid: String?,
+    characteristicUuid: String?,
+): String = "${serviceUuid ?: "<unknown>"}/${characteristicUuid ?: "<unknown>"}"
+
+internal fun descriptorOperationIdentity(
+    serviceUuid: String?,
+    characteristicUuid: String?,
+    descriptorUuid: String?,
+): String =
+    "${characteristicOperationIdentity(serviceUuid, characteristicUuid)}/" +
+        (descriptorUuid ?: "<unknown>")
+
+internal fun <T : Any> exactNativeAttribute(requested: T, resolved: T?): T? =
+    resolved?.takeIf { it === requested }
+
 internal class AndroidNotificationSubscriptionAction(
     private val enabled: Boolean,
     private val setLocalNotification: (Boolean) -> Boolean,

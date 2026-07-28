@@ -20,6 +20,25 @@ import kotlin.test.assertTrue
 class AppleCentralWriteTest {
 
     @Test
+    fun `characteristic identity includes owning service`() {
+        val characteristicUuid = "2A37"
+
+        assertFalse(
+            appleCharacteristicIdentity("180D", characteristicUuid) ==
+                appleCharacteristicIdentity("1810", characteristicUuid)
+        )
+    }
+
+    @Test
+    fun `typed target requires the exact native peripheral owner`() {
+        val owner = Any()
+
+        assertTrue(nativeAttributeBelongsTo(owner, owner))
+        assertFalse(nativeAttributeBelongsTo(owner, Any()))
+        assertFalse(nativeAttributeBelongsTo(owner, null))
+    }
+
+    @Test
     fun `maximum lengths are queried independently for each write type`() = runTest {
         val peer = FakeWriteTarget()
         val controller = AppleCentralWriteController(backgroundScope)
@@ -175,6 +194,40 @@ class AppleCentralWriteTest {
     }
 
     @Test
+    fun `callback captured for old generation cannot complete reconnected write`() = runTest {
+        val peer = FakeWriteTarget()
+        val controller = AppleCentralWriteController(backgroundScope)
+        val oldConnection = controller.connected(peer)
+        controller.disconnected(peer.peripheralUuid)
+        val newConnection = controller.connected(peer)
+        val result = async {
+            controller.write(
+                peer,
+                byteArrayOf(1),
+                CharacteristicWriteType.WithResponse,
+            )
+        }
+        runCurrent()
+
+        assertFalse(
+            controller.onCharacteristicWritten(
+                connection = oldConnection,
+                characteristicUuid = peer.characteristicUuid,
+                failure = null,
+            )
+        )
+        assertFalse(result.isCompleted)
+        assertTrue(
+            controller.onCharacteristicWritten(
+                connection = newConnection,
+                characteristicUuid = peer.characteristicUuid,
+                failure = null,
+            )
+        )
+        assertEquals(CharacteristicWriteResult.Sent, result.await())
+    }
+
+    @Test
     fun `readiness callback updates durable state and emits edge hint`() = runTest {
         val peer = FakeWriteTarget(canSendWithoutResponse = false)
         val controller = AppleCentralWriteController(backgroundScope)
@@ -220,7 +273,8 @@ class AppleCentralWriteTest {
 
     private class FakeWriteTarget(
         override val peripheralUuid: String = "peripheral-a",
-        override val characteristicUuid: String = "characteristic-a",
+        override val characteristicUuid: String =
+            appleCharacteristicIdentity("service-a", "characteristic-a"),
         override var connected: Boolean = true,
         override var canSendWithoutResponse: Boolean = true,
         private val maximumWithResponse: Int = 128,

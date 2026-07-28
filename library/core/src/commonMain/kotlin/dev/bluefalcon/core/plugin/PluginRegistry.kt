@@ -1,6 +1,7 @@
 package dev.bluefalcon.core.plugin
 
 import dev.bluefalcon.core.CharacteristicWriteResult
+import kotlinx.coroutines.CancellationException
 
 /**
  * Registry for managing installed plugins
@@ -98,7 +99,13 @@ class PluginRegistry {
         }
         val result = proceed(currentCall)
         for (plugin in plugins.reversed()) {
-            plugin.onAfterCentralWrite(currentCall, result)
+            try {
+                plugin.onAfterCentralWrite(currentCall, result)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Throwable) {
+                // Observer failures must not replace the already completed platform write outcome.
+            }
         }
         return result
     }

@@ -4,6 +4,7 @@ import dev.bluefalcon.core.CharacteristicWriteType
 import dev.bluefalcon.core.NotificationSubscriptionResult
 import dev.bluefalcon.core.toUuid
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.async
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.flow.first
@@ -15,6 +16,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
+import kotlin.test.assertFailsWith
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class AppleSubscriptionTest {
@@ -150,6 +152,20 @@ class AppleSubscriptionTest {
 
         assertEquals(NotificationSubscriptionResult.Disconnected, result)
         assertTrue(target.requestedStates.isEmpty())
+    }
+
+    @Test
+    fun `cancellation during native subscription submission is rethrown`() = runTest {
+        val controller = AppleCentralWriteController(backgroundScope)
+        val target = FakeNotificationTarget()
+        controller.connected(target)
+        target.onSetNotify = {
+            throw CancellationException("cancel submission")
+        }
+
+        assertFailsWith<CancellationException> {
+            controller.setNotificationSubscription(target, enabled = true)
+        }
     }
 
     private class FakeNotificationTarget(

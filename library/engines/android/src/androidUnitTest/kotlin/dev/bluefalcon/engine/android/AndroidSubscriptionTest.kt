@@ -9,6 +9,39 @@ import kotlin.test.assertTrue
 class AndroidSubscriptionTest {
 
     @Test
+    fun `characteristic operation identity includes owning service`() {
+        val characteristicUuid = "00002a37-0000-1000-8000-00805f9b34fb"
+
+        assertFalse(
+            characteristicOperationIdentity("service-a", characteristicUuid) ==
+                characteristicOperationIdentity("service-b", characteristicUuid)
+        )
+    }
+
+    @Test
+    fun `CCCD operation identity includes owning service and characteristic`() {
+        val descriptorUuid = "00002902-0000-1000-8000-00805f9b34fb"
+
+        assertFalse(
+            descriptorOperationIdentity("service-a", "characteristic", descriptorUuid) ==
+                descriptorOperationIdentity("service-b", "characteristic", descriptorUuid)
+        )
+        assertFalse(
+            descriptorOperationIdentity("service", "characteristic-a", descriptorUuid) ==
+                descriptorOperationIdentity("service", "characteristic-b", descriptorUuid)
+        )
+    }
+
+    @Test
+    fun `typed target accepts only the exact native characteristic instance`() {
+        val requested = Any()
+
+        assertEquals(requested, exactNativeAttribute(requested, requested))
+        assertEquals(null, exactNativeAttribute(requested, Any()))
+        assertEquals(null, exactNativeAttribute(requested, null))
+    }
+
+    @Test
     fun `enable action writes notification CCCD only after local delivery succeeds`() {
         val localValues = mutableListOf<Boolean>()
         val descriptorValues = mutableListOf<ByteArray>()

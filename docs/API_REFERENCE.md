@@ -50,6 +50,10 @@ val blueFalcon = BlueFalcon {
 | `peripherals` | `StateFlow<Set<BluetoothPeripheral>>` | Discovered devices |
 | `managerState` | `StateFlow<BluetoothManagerState>` | Bluetooth adapter state |
 | `isScanning` | `Boolean` | Whether currently scanning |
+| `centralCapabilities` | `CentralCapabilities` | Typed central/client features implemented by the selected engine |
+| `characteristicWriteCapabilities` | `StateFlow<Map<CharacteristicWriteKey, CharacteristicWriteCapability>>` | Per-connection write limits and durable readiness |
+| `characteristicWriteReady` | `SharedFlow<CharacteristicWriteReady>` | Edge-triggered hint to retry a backpressured write |
+| `notificationSubscriptionUpdates` | `SharedFlow<NotificationSubscriptionUpdate>` | Completed typed notification-subscription outcomes |
 
 #### Methods
 
@@ -238,27 +242,77 @@ suspend fun writeCharacteristic(
     value: ByteArray,
     writeType: Int? = null
 )
+
+suspend fun writeCharacteristic(
+    peripheral: BluetoothPeripheral,
+    characteristic: BluetoothCharacteristic,
+    value: ByteArray,
+    writeType: CharacteristicWriteType,
+): CharacteristicWriteResult
 ```
 
-Write to a characteristic.
+The `Int?` overloads are compatibility APIs and do not expose a delivery outcome. The typed overload
+requires an explicit `CharacteristicWriteType` so existing source code cannot silently change
+semantics during the compatibility window.
 
-**Parameters**:
-- `value`: String or ByteArray to write
-- `writeType`: Optional write type (platform-specific)
+`CharacteristicWriteResult` has these outcomes:
+
+| Result | Meaning |
+|--------|---------|
+| `Sent` | Android received a successful matching GATT callback; Apple `WithResponse` received a successful CoreBluetooth callback; Apple `WithoutResponse` was accepted by CoreBluetooth without remote acknowledgement |
+| `Backpressured` | The engine did not retain the payload. Retry the same payload only after readiness changes |
+| `PayloadTooLarge(maximumLength)` | The payload exceeded the current per-connection limit |
+| `Disconnected` | No active connection generation owns the operation |
+| `Unsupported` | The selected engine does not implement typed central writes |
+| `Failed(cause)` | The platform rejected or failed the operation |
+
+Readiness is a hint, not a reservation: another operation may consume capacity before the caller
+retries. `maximumLength == null` means the limit is unknown, not unlimited. Android publishes a
+20-byte default and replaces it with `negotiatedMtu - 3` after a successful MTU callback. Apple
+queries CoreBluetooth separately for each write type.
 
 **Example**:
 
 ```kotlin
-// Write string
-blueFalcon.writeCharacteristic(peripheral, characteristic, "Hello BLE")
-
-// Write bytes
-blueFalcon.writeCharacteristic(peripheral, characteristic, byteArrayOf(0x01, 0x02))
+while (offset < payload.size) {
+    when (
+        val result = blueFalcon.writeCharacteristic(
+            peripheral,
+            characteristic,
+            nextFragment(),
+            CharacteristicWriteType.WithoutResponse,
+        )
+    ) {
+        CharacteristicWriteResult.Sent -> advance()
+        CharacteristicWriteResult.Backpressured -> {
+            val key = CharacteristicWriteKey(
+                peripheral.uuid,
+                CharacteristicWriteType.WithoutResponse,
+            )
+            blueFalcon.characteristicWriteCapabilities.first { capabilities ->
+                capabilities[key]?.ready == true
+            }
+        }
+        else -> handleFailure(result)
+    }
+}
 ```
+
+Continue submitting while the result is `Sent`; suspend only after `Backpressured`. Blue Falcon does
+not own framing, fragmentation, retries, or a durable application queue. Use the durable
+`characteristicWriteCapabilities` snapshot for correctness. `characteristicWriteReady` is an
+edge-triggered latency optimization for collectors installed before the edge; it is not a replaying
+source of truth.
 
 ---
 
 ```kotlin
+suspend fun setNotificationSubscription(
+    peripheral: BluetoothPeripheral,
+    characteristic: BluetoothCharacteristic,
+    enabled: Boolean,
+): NotificationSubscriptionResult
+
 suspend fun notifyCharacteristic(
     peripheral: BluetoothPeripheral,
     characteristic: BluetoothCharacteristic,
@@ -266,17 +320,30 @@ suspend fun notifyCharacteristic(
 )
 ```
 
-Enable/disable notifications for a characteristic.
+`setNotificationSubscription` is the typed notification API. The subscription is ready only after
+`Updated(enabled)`; Android waits for the matching CCCD write callback and Apple waits for
+`didUpdateNotificationStateForCharacteristic` with matching `isNotifying` state. `Disconnected`,
+`Unsupported`, and `Failed` are terminal outcomes. The compatibility `notifyCharacteristic` method
+does not return this confirmation.
 
 **Example**:
 
 ```kotlin
-// Enable notifications
-blueFalcon.notifyCharacteristic(peripheral, characteristic, notify = true)
-
-// Disable notifications
-blueFalcon.notifyCharacteristic(peripheral, characteristic, notify = false)
+when (
+    val result = blueFalcon.setNotificationSubscription(
+        peripheral,
+        characteristic,
+        enabled = true,
+    )
+) {
+    is NotificationSubscriptionResult.Updated -> receiveNotifications()
+    else -> handleSubscriptionFailure(result)
+}
 ```
+
+Typed central writes and subscriptions are currently implemented by Android, iOS, and native macOS.
+Other engines use the default `Unsupported` contract. Apple central restoration is intentionally
+deferred to a subsequent change.
 
 ---
 

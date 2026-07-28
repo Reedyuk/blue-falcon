@@ -23,6 +23,16 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
+internal fun appleCharacteristicIdentity(
+    serviceUuid: String?,
+    characteristicUuid: String,
+): String = "${serviceUuid ?: "<unknown>"}/$characteristicUuid"
+
+internal fun <T : Any> nativeAttributeBelongsTo(
+    expectedOwner: T,
+    actualOwner: T?,
+): Boolean = expectedOwner === actualOwner
+
 internal interface AppleCentralWritePeer {
     val peripheralUuid: String
     val connected: Boolean
@@ -122,13 +132,21 @@ internal class AppleCentralWriteController(
     }
 
     suspend fun disconnected(peripheralUuid: String): Boolean {
-        val connection = mutex.withLock {
-            val removed = connections.remove(peripheralUuid) ?: return false
+        val connection = currentConnection(peripheralUuid) ?: return false
+        return disconnected(connection)
+    }
+
+    suspend fun disconnected(connection: AppleCentralConnectionKey): Boolean {
+        val removedConnection = mutex.withLock {
+            if (connections[connection.peripheralUuid] != connection) return false
+            val removed = connections.remove(connection.peripheralUuid) ?: return false
             _capabilities.value =
-                _capabilities.value.filterKeys { it.peripheralUuid != peripheralUuid }
+                _capabilities.value.filterKeys {
+                    it.peripheralUuid != connection.peripheralUuid
+                }
             removed
         }
-        return registry.disconnect(connection)
+        return registry.disconnect(removedConnection)
     }
 
     suspend fun write(
@@ -160,6 +178,18 @@ internal class AppleCentralWriteController(
 
     suspend fun onReadyToSendWithoutResponse(peer: AppleCentralWritePeer): Boolean {
         val connection = currentConnection(peer.peripheralUuid) ?: return false
+        return onReadyToSendWithoutResponse(connection, peer)
+    }
+
+    suspend fun onReadyToSendWithoutResponse(
+        connection: AppleCentralConnectionKey,
+        peer: AppleCentralWritePeer,
+    ): Boolean {
+        if (connection.peripheralUuid != peer.peripheralUuid ||
+            currentConnection(peer.peripheralUuid) != connection
+        ) {
+            return false
+        }
         updateCapabilityReady(
             peer.peripheralUuid,
             CharacteristicWriteType.WithoutResponse,
@@ -174,8 +204,16 @@ internal class AppleCentralWriteController(
         failure: Throwable?,
     ): Boolean {
         val connection = currentConnection(peripheralUuid) ?: return false
+        return onCharacteristicWritten(connection, characteristicUuid, failure)
+    }
+
+    suspend fun onCharacteristicWritten(
+        connection: AppleCentralConnectionKey,
+        characteristicUuid: String,
+        failure: Throwable?,
+    ): Boolean {
         val key = AppleCentralOperationKey(
-            peripheralUuid = peripheralUuid,
+            peripheralUuid = connection.peripheralUuid,
             generation = connection.generation,
             characteristicUuid = characteristicUuid,
         )
@@ -186,7 +224,7 @@ internal class AppleCentralWriteController(
         )
         if (completed) {
             updateCapabilityReady(
-                peripheralUuid,
+                connection.peripheralUuid,
                 CharacteristicWriteType.WithResponse,
                 ready = true,
             )
@@ -231,6 +269,9 @@ internal class AppleCentralWriteController(
         }
         try {
             target.setNotifyValue(enabled)
+        } catch (cancellation: CancellationException) {
+            registry.abandonSubscription(key)
+            throw cancellation
         } catch (failure: Throwable) {
             registry.completeSubscription(
                 key,
@@ -253,8 +294,22 @@ internal class AppleCentralWriteController(
         failure: Throwable?,
     ): Boolean {
         val connection = currentConnection(peripheralUuid) ?: return false
+        return onNotificationStateUpdated(
+            connection,
+            characteristicIdentity,
+            isNotifying,
+            failure,
+        )
+    }
+
+    suspend fun onNotificationStateUpdated(
+        connection: AppleCentralConnectionKey,
+        characteristicIdentity: String,
+        isNotifying: Boolean,
+        failure: Throwable?,
+    ): Boolean {
         val key = AppleCentralOperationKey(
-            peripheralUuid = peripheralUuid,
+            peripheralUuid = connection.peripheralUuid,
             generation = connection.generation,
             characteristicUuid = characteristicIdentity,
         )

@@ -225,21 +225,21 @@ class BlueFalcon(
         value: ByteArray,
         writeType: CharacteristicWriteType,
     ): CharacteristicWriteResult =
-        plugins.interceptCentralWrite(
-            CentralWriteCall(peripheral, characteristic, value, writeType)
-        ) { call ->
-            try {
+        try {
+            plugins.interceptCentralWrite(
+                CentralWriteCall(peripheral, characteristic, value, writeType)
+            ) { call ->
                 engine.writeCharacteristic(
                     call.peripheral,
                     call.characteristic,
                     call.value,
                     call.writeType,
                 )
-            } catch (cancelled: CancellationException) {
-                throw cancelled
-            } catch (failure: Throwable) {
-                CharacteristicWriteResult.Failed(failure)
             }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (failure: Throwable) {
+            CharacteristicWriteResult.Failed(failure)
         }
 
     suspend fun setNotificationSubscription(

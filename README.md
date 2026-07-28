@@ -335,10 +335,28 @@ blueFalcon.discoverCharacteristics(
 // Read a characteristic value
 blueFalcon.readCharacteristic(bluetoothPeripheral, bluetoothCharacteristic)
 
-// Write a string value
+// Compatibility overload: no typed delivery outcome
 blueFalcon.writeCharacteristic(
     bluetoothPeripheral,
+    bluetoothCharacteristic,
+    "Hello BLE",
+)
+
+// Typed central write
+val result = blueFalcon.writeCharacteristic(
+    bluetoothPeripheral,
+    bluetoothCharacteristic,
+    payload,
+    CharacteristicWriteType.WithoutResponse,
+)
 ```
+
+The typed overload is implemented by Android, iOS, and native macOS. A `Backpressured` result means
+the payload was not retained; wait until the matching entry in
+`characteristicWriteCapabilities` is ready and submit it again. `characteristicWriteReady` is only
+an edge-triggered optimization and may be missed by a late collector. Other engines currently return
+`Unsupported`. Blue Falcon exposes transport outcomes and limits, while framing, fragmentation,
+retries, and durable application queues remain application-owned.
 
 For the complete API including descriptors, MTU, L2CAP, and bonding, see the [API Reference](docs/API_REFERENCE.md).
 

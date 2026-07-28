@@ -251,7 +251,10 @@ class AndroidEngine(
                     gatt,
                     CentralGattOperationType.ReadCharacteristic,
                     "readCharacteristic ${char.uuid}",
-                    identity = char.uuid.toString()
+                    identity = characteristicOperationIdentity(
+                        char.service?.uuid?.toString(),
+                        char.uuid.toString(),
+                    )
                 ) {
                     it.readCharacteristic(char)
                 }
@@ -288,7 +291,10 @@ class AndroidEngine(
                     gatt,
                     CentralGattOperationType.WriteCharacteristic,
                     "writeCharacteristic ${char.uuid}",
-                    identity = char.uuid.toString()
+                    identity = characteristicOperationIdentity(
+                        char.service?.uuid?.toString(),
+                        char.uuid.toString(),
+                    )
                 ) {
                     // Apply the value/writeType at dispatch time so a queued write never mutates the
                     // characteristic while a previously queued operation on it is still in flight.
@@ -332,7 +338,9 @@ class AndroidEngine(
             writeType = writeType,
             payloadSize = value.size,
         )?.let { return it }
-        val targetCharacteristic = fetchCharacteristic(requestedCharacteristic, gatt).firstOrNull()
+        val targetCharacteristic =
+            fetchCharacteristic(requestedCharacteristic, gatt, exactNativeIdentity = true)
+                .firstOrNull()
             ?: return CharacteristicWriteResult.Failed(
                 IllegalArgumentException(
                     "Characteristic ${characteristic.uuid} is not part of the active GATT"
@@ -341,7 +349,10 @@ class AndroidEngine(
         val operationKey = CentralGattOperationKey(
             generation = generation,
             type = CentralGattOperationType.WriteCharacteristic,
-            identity = targetCharacteristic.uuid.toString(),
+            identity = characteristicOperationIdentity(
+                targetCharacteristic.service?.uuid?.toString(),
+                targetCharacteristic.uuid.toString(),
+            ),
         )
         val payload = value.copyOf()
         val nativeWriteType = when (writeType) {
@@ -380,7 +391,13 @@ class AndroidEngine(
                 },
             )
             if (!accepted) {
-                continuation.resume(CharacteristicWriteResult.Backpressured)
+                continuation.resume(
+                    if (gate.isPoisoned) {
+                        CharacteristicWriteResult.Disconnected
+                    } else {
+                        CharacteristicWriteResult.Backpressured
+                    }
+                )
             } else {
                 continuation.invokeOnCancellation {
                     gate.abandon(operationKey)
@@ -424,7 +441,9 @@ class AndroidEngine(
             ?: return report(NotificationSubscriptionResult.Disconnected)
         val generation = gattCallback.generationFor(gatt)
             ?: return report(NotificationSubscriptionResult.Disconnected)
-        val targetCharacteristic = fetchCharacteristic(requestedCharacteristic, gatt).firstOrNull()
+        val targetCharacteristic =
+            fetchCharacteristic(requestedCharacteristic, gatt, exactNativeIdentity = true)
+                .firstOrNull()
             ?: return report(
                 NotificationSubscriptionResult.Failed(
                     IllegalArgumentException(
@@ -442,7 +461,11 @@ class AndroidEngine(
         val operationKey = CentralGattOperationKey(
             generation = generation,
             type = CentralGattOperationType.WriteDescriptor,
-            identity = cccd.uuid.toString(),
+            identity = descriptorOperationIdentity(
+                targetCharacteristic.service?.uuid?.toString(),
+                targetCharacteristic.uuid.toString(),
+                cccd.uuid.toString(),
+            ),
         )
         val gate = gattCallback.operationGateFor(gatt, generation)
             ?: return report(NotificationSubscriptionResult.Disconnected)
@@ -478,11 +501,15 @@ class AndroidEngine(
             if (!accepted) {
                 continuation.resume(
                     report(
-                        NotificationSubscriptionResult.Failed(
-                            IllegalStateException(
-                                "Another Android GATT operation is already in progress"
+                        if (gate.isPoisoned) {
+                            NotificationSubscriptionResult.Disconnected
+                        } else {
+                            NotificationSubscriptionResult.Failed(
+                                IllegalStateException(
+                                    "Another Android GATT operation is already in progress"
+                                )
                             )
-                        )
+                        }
                     )
                 )
             } else {
@@ -533,7 +560,11 @@ class AndroidEngine(
                 gatt,
                 CentralGattOperationType.ReadDescriptor,
                 "readDescriptor ${androidDesc.uuid}",
-                identity = androidDesc.uuid.toString()
+                identity = descriptorOperationIdentity(
+                    androidDesc.characteristic.service?.uuid?.toString(),
+                    androidDesc.characteristic.uuid.toString(),
+                    androidDesc.uuid.toString(),
+                )
             ) {
                 it.readDescriptor(androidDesc)
             }
@@ -558,7 +589,11 @@ class AndroidEngine(
                 gatt,
                 CentralGattOperationType.WriteDescriptor,
                 "writeDescriptor ${androidDesc.uuid}",
-                identity = androidDesc.uuid.toString()
+                identity = descriptorOperationIdentity(
+                    androidDesc.characteristic.service?.uuid?.toString(),
+                    androidDesc.characteristic.uuid.toString(),
+                    androidDesc.uuid.toString(),
+                )
             ) {
                 androidDesc.value = payload
                 it.writeDescriptor(androidDesc)
@@ -673,7 +708,11 @@ class AndroidEngine(
                             gatt,
                             CentralGattOperationType.WriteDescriptor,
                             "writeDescriptor(CCC) ${descriptor.uuid} enable=$enable",
-                            identity = descriptor.uuid.toString()
+                            identity = descriptorOperationIdentity(
+                                char.service?.uuid?.toString(),
+                                char.uuid.toString(),
+                                descriptor.uuid.toString(),
+                            )
                         ) {
                             descriptor.value = payload
                             it.writeDescriptor(descriptor)
@@ -686,12 +725,19 @@ class AndroidEngine(
     
     private fun fetchCharacteristic(
         characteristic: BluetoothGattCharacteristic,
-        gatt: BluetoothGatt
-    ): List<BluetoothGattCharacteristic> =
-        gatt.services
-            .flatMap { service ->
-                service.characteristics.filter { it.uuid == characteristic.uuid }
-            }
+        gatt: BluetoothGatt,
+        exactNativeIdentity: Boolean = false,
+    ): List<BluetoothGattCharacteristic> {
+        val serviceUuid = characteristic.service?.uuid ?: return emptyList()
+        val resolved = gatt.getService(serviceUuid)?.getCharacteristic(characteristic.uuid)
+            ?: return emptyList()
+        val target = if (exactNativeIdentity) {
+            exactNativeAttribute(characteristic, resolved)
+        } else {
+            resolved
+        }
+        return listOfNotNull(target)
+    }
     
     fun destroy() {
         if (isBondReceiverRegistered) {
@@ -882,13 +928,33 @@ class AndroidEngine(
                 onReady = {
                     centralWriteState.onReady(gatt.device.address, generation)
                 },
+                onPoisoned = {
+                    logger?.warn(
+                        "GATT operation timeout for ${gatt.device.address}; " +
+                            "disconnecting the poisoned connection"
+                    )
+                    centralWriteState.onDisconnected(gatt.device.address, generation)
+                    try {
+                        gatt.disconnect()
+                    } catch (failure: Throwable) {
+                        logger?.error(
+                            "Failed to disconnect poisoned GATT for " +
+                                "${gatt.device.address}: ${failure.message}",
+                            failure,
+                        )
+                    } finally {
+                        scheduleDisconnectTimeout(gatt)
+                    }
+                },
             )
 
         /**
          * Append a GATT operation to this gatt's serialized FIFO queue. Android allows only one GATT
          * operation in flight per connection; a second issued before the first's callback returns is
          * silently dropped. The queue dispatches one at a time and advances from the matching callback
-         * (or a timeout), so descriptor writes can no longer race service discovery / MTU / each other.
+         * so descriptor writes cannot race service discovery / MTU / each other. A timeout poisons and
+         * disconnects the connection because Android provides no operation token that could distinguish
+         * its late callback from a retry.
          */
         fun enqueueOperation(
             gatt: BluetoothGatt,
@@ -1074,7 +1140,10 @@ class AndroidEngine(
                 completeOperation(
                     it,
                     CentralGattOperationType.ReadCharacteristic,
-                    characteristic?.uuid?.toString(),
+                    characteristicOperationIdentity(
+                        characteristic?.service?.uuid?.toString(),
+                        characteristic?.uuid?.toString(),
+                    ),
                     status,
                 )
             }
@@ -1110,7 +1179,10 @@ class AndroidEngine(
                 completeOperation(
                     it,
                     CentralGattOperationType.WriteCharacteristic,
-                    characteristic?.uuid?.toString(),
+                    characteristicOperationIdentity(
+                        characteristic?.service?.uuid?.toString(),
+                        characteristic?.uuid?.toString(),
+                    ),
                     status,
                 )
             }
@@ -1126,7 +1198,11 @@ class AndroidEngine(
                 completeOperation(
                     it,
                     CentralGattOperationType.ReadDescriptor,
-                    descriptor?.uuid?.toString(),
+                    descriptorOperationIdentity(
+                        descriptor?.characteristic?.service?.uuid?.toString(),
+                        descriptor?.characteristic?.uuid?.toString(),
+                        descriptor?.uuid?.toString(),
+                    ),
                     status,
                 )
             }
@@ -1142,7 +1218,11 @@ class AndroidEngine(
                 completeOperation(
                     it,
                     CentralGattOperationType.WriteDescriptor,
-                    descriptor?.uuid?.toString(),
+                    descriptorOperationIdentity(
+                        descriptor?.characteristic?.service?.uuid?.toString(),
+                        descriptor?.characteristic?.uuid?.toString(),
+                        descriptor?.uuid?.toString(),
+                    ),
                     status,
                 )
             }
@@ -1157,8 +1237,8 @@ class AndroidEngine(
 
         /**
          * Watchdog timeout for a single in-flight GATT operation. If its callback never arrives (the
-         * stack occasionally drops one), the queue advances after this delay rather than stalling
-         * forever. Comfortably longer than any normal read/write/discover/MTU exchange.
+         * stack occasionally drops one), the connection is quarantined and disconnected after this
+         * delay. Comfortably longer than any normal read/write/discover/MTU exchange.
          */
         private const val GATT_OPERATION_TIMEOUT_MS = 10_000L
     }

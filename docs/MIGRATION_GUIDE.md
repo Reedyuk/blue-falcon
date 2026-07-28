@@ -399,13 +399,59 @@ lifecycleScope.launch {
 // 2.x
 blueFalcon.writeCharacteristic(peripheral, characteristic, "Hello".encodeToByteArray())
 
-// 3.0 Modern (supports String or ByteArray)
+// 3.0 compatibility overload: preserves the Unit-returning behavior
 lifecycleScope.launch {
     blueFalcon.writeCharacteristic(peripheral, characteristic, "Hello")
-    // or
-    blueFalcon.writeCharacteristic(peripheral, characteristic, byteArrayOf(0x01, 0x02))
 }
 ```
+
+For new transport code, migrate to the typed overload and choose the write mode explicitly:
+
+```kotlin
+when (
+    val result = blueFalcon.writeCharacteristic(
+        peripheral,
+        characteristic,
+        fragment,
+        CharacteristicWriteType.WithoutResponse,
+    )
+) {
+    CharacteristicWriteResult.Sent -> markFragmentSubmitted()
+    CharacteristicWriteResult.Backpressured -> {
+        val key = CharacteristicWriteKey(
+            peripheral.uuid,
+            CharacteristicWriteType.WithoutResponse,
+        )
+        blueFalcon.characteristicWriteCapabilities.first { capabilities ->
+            capabilities[key]?.ready == true
+        }
+    }
+    else -> handleWriteFailure(result)
+}
+```
+
+`Backpressured` means Blue Falcon retained no payload; retry the same fragment. The durable
+capabilities snapshot is the source of truth. `characteristicWriteReady` is only an edge-triggered
+latency hint for a collector installed before the edge, and readiness is not reserved capacity.
+Treat a `null` maximum write length as unknown rather than unlimited. On Android the initial limit is
+20 bytes and becomes MTU minus the three-byte ATT header after negotiation.
+
+Notification migration follows the same rule: do not infer subscription success from the first
+payload. Wait for the typed result:
+
+```kotlin
+val result = blueFalcon.setNotificationSubscription(
+    peripheral,
+    characteristic,
+    enabled = true,
+)
+check(result == NotificationSubscriptionResult.Updated(true))
+```
+
+Android, iOS, and native macOS implement these typed operations. Other engines return
+`Unsupported` until they gain equivalent platform support. Framing, fragmentation, retry policy,
+and durable queues remain application responsibilities. Apple central restoration is not part of
+this migration step and will follow separately.
 
 ---
 
