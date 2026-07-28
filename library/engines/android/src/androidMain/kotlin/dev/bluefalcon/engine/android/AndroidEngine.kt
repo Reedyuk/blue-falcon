@@ -53,12 +53,17 @@ class AndroidEngine(
     private val _serviceDiscoveryUpdates = MutableSharedFlow<ServiceDiscoveryUpdate>(extraBufferCapacity = 64)
     override val serviceDiscoveryUpdates: SharedFlow<ServiceDiscoveryUpdate> = _serviceDiscoveryUpdates
 
+    private val _notificationSubscriptionUpdates =
+        MutableSharedFlow<NotificationSubscriptionUpdate>(extraBufferCapacity = 64)
+    override val notificationSubscriptionUpdates: SharedFlow<NotificationSubscriptionUpdate> =
+        _notificationSubscriptionUpdates
+
     private val centralWriteState = AndroidCentralWriteState()
     override val centralCapabilities = CentralCapabilities(
         reliableWriteResults = true,
         writeWithoutResponseReadiness = true,
         perConnectionMaximumWriteLength = true,
-        notificationSubscriptionResults = false,
+        notificationSubscriptionResults = true,
         restoration = false,
     )
     override val characteristicWriteCapabilities = centralWriteState.capabilities
@@ -376,6 +381,110 @@ class AndroidEngine(
             )
             if (!accepted) {
                 continuation.resume(CharacteristicWriteResult.Backpressured)
+            } else {
+                continuation.invokeOnCancellation {
+                    gate.abandon(operationKey)
+                }
+            }
+        }
+    }
+
+    override suspend fun setNotificationSubscription(
+        peripheral: BluetoothPeripheral,
+        characteristic: BluetoothCharacteristic,
+        enabled: Boolean,
+    ): NotificationSubscriptionResult {
+        fun report(result: NotificationSubscriptionResult): NotificationSubscriptionResult {
+            _notificationSubscriptionUpdates.tryEmit(
+                NotificationSubscriptionUpdate(
+                    peripheralUuid = peripheral.uuid,
+                    characteristicUuid = characteristic.uuid,
+                    result = result,
+                )
+            )
+            return result
+        }
+
+        val androidPeripheral = peripheral as? AndroidBluetoothPeripheral
+            ?: return report(
+                NotificationSubscriptionResult.Failed(
+                    IllegalArgumentException("Peripheral must be an AndroidBluetoothPeripheral")
+                )
+            )
+        val requestedCharacteristic =
+            (characteristic as? AndroidBluetoothCharacteristic)?.characteristic
+                ?: return report(
+                    NotificationSubscriptionResult.Failed(
+                        IllegalArgumentException(
+                            "Characteristic must be an AndroidBluetoothCharacteristic"
+                        )
+                    )
+                )
+        val gatt = gattCallback.activeGattForDevice(androidPeripheral.device)
+            ?: return report(NotificationSubscriptionResult.Disconnected)
+        val generation = gattCallback.generationFor(gatt)
+            ?: return report(NotificationSubscriptionResult.Disconnected)
+        val targetCharacteristic = fetchCharacteristic(requestedCharacteristic, gatt).firstOrNull()
+            ?: return report(
+                NotificationSubscriptionResult.Failed(
+                    IllegalArgumentException(
+                        "Characteristic ${characteristic.uuid} is not part of the active GATT"
+                    )
+                )
+            )
+        if (enabled &&
+            targetCharacteristic.properties and BluetoothGattCharacteristic.PROPERTY_NOTIFY == 0
+        ) {
+            return report(NotificationSubscriptionResult.Unsupported)
+        }
+        val cccd = targetCharacteristic.getDescriptor(CLIENT_CHARACTERISTIC_CONFIG_UUID)
+            ?: return report(NotificationSubscriptionResult.Unsupported)
+        val operationKey = CentralGattOperationKey(
+            generation = generation,
+            type = CentralGattOperationType.WriteDescriptor,
+            identity = cccd.uuid.toString(),
+        )
+        val gate = gattCallback.operationGateFor(gatt, generation)
+            ?: return report(NotificationSubscriptionResult.Disconnected)
+
+        return suspendCancellableCoroutine { continuation ->
+            val action = AndroidNotificationSubscriptionAction(
+                enabled = enabled,
+                setLocalNotification = {
+                    gatt.setCharacteristicNotification(targetCharacteristic, it)
+                },
+                writeCccd = { value ->
+                    val payload = value.copyOf()
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                        gatt.writeDescriptor(cccd, payload) == BluetoothStatusCodes.SUCCESS
+                    } else {
+                        @Suppress("DEPRECATION")
+                        cccd.value = payload
+                        @Suppress("DEPRECATION")
+                        gatt.writeDescriptor(cccd)
+                    }
+                },
+            )
+            val accepted = gate.trySubmitTyped(
+                key = operationKey,
+                label = "setNotificationSubscription ${targetCharacteristic.uuid} enabled=$enabled",
+                action = action::submit,
+                onComplete = { outcome ->
+                    if (continuation.isActive) {
+                        continuation.resume(report(outcome.toSubscriptionResult(enabled)))
+                    }
+                },
+            )
+            if (!accepted) {
+                continuation.resume(
+                    report(
+                        NotificationSubscriptionResult.Failed(
+                            IllegalStateException(
+                                "Another Android GATT operation is already in progress"
+                            )
+                        )
+                    )
+                )
             } else {
                 continuation.invokeOnCancellation {
                     gate.abandon(operationKey)
@@ -1043,6 +1152,8 @@ class AndroidEngine(
 
     companion object {
         private const val DISCONNECT_TIMEOUT_MS = 5_000L
+        private val CLIENT_CHARACTERISTIC_CONFIG_UUID =
+            java.util.UUID.fromString("00002902-0000-1000-8000-00805f9b34fb")
 
         /**
          * Watchdog timeout for a single in-flight GATT operation. If its callback never arrives (the
