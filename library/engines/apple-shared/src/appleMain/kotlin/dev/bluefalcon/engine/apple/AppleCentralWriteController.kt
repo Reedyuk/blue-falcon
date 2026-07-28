@@ -5,6 +5,9 @@ import dev.bluefalcon.core.CharacteristicWriteKey
 import dev.bluefalcon.core.CharacteristicWriteReady
 import dev.bluefalcon.core.CharacteristicWriteResult
 import dev.bluefalcon.core.CharacteristicWriteType
+import dev.bluefalcon.core.NotificationSubscriptionResult
+import dev.bluefalcon.core.NotificationSubscriptionUpdate
+import dev.bluefalcon.core.Uuid
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
@@ -37,6 +40,15 @@ internal interface AppleCentralWriteTarget : AppleCentralWritePeer {
     )
 }
 
+internal interface AppleNotificationTarget {
+    val peripheralUuid: String
+    val characteristicIdentity: String
+    val characteristicUuid: Uuid
+    val connected: Boolean
+
+    suspend fun setNotifyValue(enabled: Boolean)
+}
+
 internal class AppleCentralWriteController(
     scope: CoroutineScope,
     internal val registry: AppleCentralOperationRegistry = AppleCentralOperationRegistry(),
@@ -51,6 +63,11 @@ internal class AppleCentralWriteController(
 
     private val _ready = MutableSharedFlow<CharacteristicWriteReady>(extraBufferCapacity = 64)
     val ready: SharedFlow<CharacteristicWriteReady> = _ready.asSharedFlow()
+
+    private val _notificationUpdates =
+        MutableSharedFlow<NotificationSubscriptionUpdate>(extraBufferCapacity = 64)
+    val notificationUpdates: SharedFlow<NotificationSubscriptionUpdate> =
+        _notificationUpdates.asSharedFlow()
 
     init {
         scope.launch(start = CoroutineStart.UNDISPATCHED) {
@@ -175,6 +192,112 @@ internal class AppleCentralWriteController(
             )
         }
         return completed
+    }
+
+    suspend fun setNotificationSubscription(
+        target: AppleNotificationTarget,
+        enabled: Boolean,
+    ): NotificationSubscriptionResult {
+        fun report(result: NotificationSubscriptionResult): NotificationSubscriptionResult {
+            return reportNotificationUpdate(
+                peripheralUuid = target.peripheralUuid,
+                characteristicUuid = target.characteristicUuid,
+                result = result,
+            )
+        }
+
+        if (!target.connected) {
+            return report(NotificationSubscriptionResult.Disconnected)
+        }
+        val connection = currentConnection(target.peripheralUuid)
+            ?: return report(NotificationSubscriptionResult.Disconnected)
+        val key = AppleCentralOperationKey(
+            peripheralUuid = target.peripheralUuid,
+            generation = connection.generation,
+            characteristicUuid = target.characteristicIdentity,
+        )
+        val result = CompletableDeferred<NotificationSubscriptionResult>()
+        if (!registry.registerSubscription(key, enabled) { outcome ->
+                result.complete(report(outcome))
+            }
+        ) {
+            return report(
+                NotificationSubscriptionResult.Failed(
+                    IllegalStateException(
+                        "A notification subscription is already pending for this characteristic"
+                    )
+                )
+            )
+        }
+        try {
+            target.setNotifyValue(enabled)
+        } catch (failure: Throwable) {
+            registry.completeSubscription(
+                key,
+                NotificationSubscriptionResult.Failed(failure),
+            )
+        }
+
+        return try {
+            result.await()
+        } catch (cancellation: CancellationException) {
+            registry.abandonSubscription(key)
+            throw cancellation
+        }
+    }
+
+    suspend fun onNotificationStateUpdated(
+        peripheralUuid: String,
+        characteristicIdentity: String,
+        isNotifying: Boolean,
+        failure: Throwable?,
+    ): Boolean {
+        val connection = currentConnection(peripheralUuid) ?: return false
+        val key = AppleCentralOperationKey(
+            peripheralUuid = peripheralUuid,
+            generation = connection.generation,
+            characteristicUuid = characteristicIdentity,
+        )
+        val expectedState = registry.subscriptionTarget(key) ?: return false
+        val result = when {
+            failure != null -> NotificationSubscriptionResult.Failed(failure)
+            isNotifying != expectedState -> NotificationSubscriptionResult.Failed(
+                IllegalStateException(
+                    "CoreBluetooth reported isNotifying=$isNotifying, expected $expectedState"
+                )
+            )
+            else -> NotificationSubscriptionResult.Updated(expectedState)
+        }
+        return registry.completeSubscription(key, result)
+    }
+
+    internal suspend fun pendingSubscriptionTarget(
+        peripheralUuid: String,
+        characteristicIdentity: String,
+    ): Boolean? {
+        val connection = currentConnection(peripheralUuid) ?: return null
+        return registry.subscriptionTarget(
+            AppleCentralOperationKey(
+                peripheralUuid = peripheralUuid,
+                generation = connection.generation,
+                characteristicUuid = characteristicIdentity,
+            )
+        )
+    }
+
+    internal fun reportNotificationUpdate(
+        peripheralUuid: String,
+        characteristicUuid: Uuid,
+        result: NotificationSubscriptionResult,
+    ): NotificationSubscriptionResult {
+        _notificationUpdates.tryEmit(
+            NotificationSubscriptionUpdate(
+                peripheralUuid = peripheralUuid,
+                characteristicUuid = characteristicUuid,
+                result = result,
+            )
+        )
+        return result
     }
 
     internal suspend fun currentConnection(

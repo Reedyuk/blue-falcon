@@ -119,6 +119,40 @@ class AppleCentralOperationRegistryTest {
     }
 
     @Test
+    fun `late subscription callback cannot complete newer generation`() = runTest {
+        val registry = AppleCentralOperationRegistry()
+        val oldConnection = registry.connected("peripheral-a")
+        val oldKey = oldConnection.operation("characteristic")
+        registry.registerSubscription(oldKey, enabled = true) {}
+        registry.disconnect(oldConnection)
+
+        val newConnection = registry.connected("peripheral-a")
+        val newKey = newConnection.operation("characteristic")
+        val outcomes = mutableListOf<NotificationSubscriptionResult>()
+        registry.registerSubscription(newKey, enabled = false, outcomes::add)
+
+        assertFalse(
+            registry.completeSubscription(
+                oldKey,
+                NotificationSubscriptionResult.Updated(true),
+            )
+        )
+        assertTrue(outcomes.isEmpty())
+        assertTrue(
+            registry.completeSubscription(
+                newKey,
+                NotificationSubscriptionResult.Updated(false),
+            )
+        )
+        assertEquals(
+            listOf<NotificationSubscriptionResult>(
+                NotificationSubscriptionResult.Updated(false)
+            ),
+            outcomes,
+        )
+    }
+
+    @Test
     fun `reconnect terminates old ownership before activating new generation`() = runTest {
         val registry = AppleCentralOperationRegistry()
         val oldConnection = registry.connected("peripheral-a")

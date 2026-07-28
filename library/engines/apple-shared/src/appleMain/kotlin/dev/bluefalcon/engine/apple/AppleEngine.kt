@@ -46,11 +46,12 @@ class AppleEngine : BlueFalconEngine, CBCentralManagerCallback, CBPeripheralCall
         reliableWriteResults = true,
         writeWithoutResponseReadiness = true,
         perConnectionMaximumWriteLength = true,
-        notificationSubscriptionResults = false,
+        notificationSubscriptionResults = true,
         restoration = false,
     )
     override val characteristicWriteCapabilities = centralWriteController.capabilities
     override val characteristicWriteReady = centralWriteController.ready
+    override val notificationSubscriptionUpdates = centralWriteController.notificationUpdates
     
     override var isScanning: Boolean = false
         private set
@@ -319,6 +320,40 @@ class AppleEngine : BlueFalconEngine, CBCentralManagerCallback, CBPeripheralCall
         applePeripheral.cbPeripheral.delegate = peripheralDelegate
         applePeripheral.cbPeripheral.setNotifyValue(notify, appleCharacteristic.cbCharacteristic)
     }
+
+    override suspend fun setNotificationSubscription(
+        peripheral: BluetoothPeripheral,
+        characteristic: BluetoothCharacteristic,
+        enabled: Boolean,
+    ): NotificationSubscriptionResult {
+        val applePeripheral = peripheral as? AppleBluetoothPeripheral
+            ?: return centralWriteController.reportNotificationUpdate(
+                peripheralUuid = peripheral.uuid,
+                characteristicUuid = characteristic.uuid,
+                result = NotificationSubscriptionResult.Failed(
+                    IllegalArgumentException("Peripheral must be an AppleBluetoothPeripheral")
+                ),
+            )
+        val appleCharacteristic = characteristic as? AppleBluetoothCharacteristic
+            ?: return centralWriteController.reportNotificationUpdate(
+                peripheralUuid = peripheral.uuid,
+                characteristicUuid = characteristic.uuid,
+                result = NotificationSubscriptionResult.Failed(
+                    IllegalArgumentException(
+                        "Characteristic must be an AppleBluetoothCharacteristic"
+                    )
+                ),
+            )
+        applePeripheral.cbPeripheral.delegate = peripheralDelegate
+        return centralWriteController.setNotificationSubscription(
+            CoreBluetoothNotificationTarget(
+                peripheral = applePeripheral.cbPeripheral,
+                characteristic = appleCharacteristic.cbCharacteristic,
+                characteristicUuid = appleCharacteristic.uuid,
+            ),
+            enabled,
+        )
+    }
     
     override suspend fun indicateCharacteristic(
         peripheral: BluetoothPeripheral,
@@ -561,7 +596,16 @@ class AppleEngine : BlueFalconEngine, CBCentralManagerCallback, CBPeripheralCall
         characteristic: CBCharacteristic,
         error: NSError?
     ) {
-        // Notification state updated - automatically handled through characteristic.isNotifying property
+        scope.launch {
+            centralWriteController.onNotificationStateUpdated(
+                peripheralUuid = peripheral.identifier.UUIDString,
+                characteristicIdentity = characteristic.UUID.UUIDString,
+                isNotifying = characteristic.isNotifying,
+                failure = error?.let {
+                    IllegalStateException(it.localizedDescription)
+                },
+            )
+        }
     }
 
     override fun onReadyToSendWriteWithoutResponse(peripheral: CBPeripheral) {
@@ -620,6 +664,23 @@ private class CoreBluetoothWriteTarget(
             characteristic,
             writeType.toNativeWriteType(),
         )
+    }
+}
+
+private class CoreBluetoothNotificationTarget(
+    private val peripheral: CBPeripheral,
+    private val characteristic: CBCharacteristic,
+    override val characteristicUuid: Uuid,
+) : AppleNotificationTarget {
+    override val peripheralUuid: String
+        get() = peripheral.identifier.UUIDString
+    override val characteristicIdentity: String
+        get() = characteristic.UUID.UUIDString
+    override val connected: Boolean
+        get() = peripheral.state == CBPeripheralStateConnected
+
+    override suspend fun setNotifyValue(enabled: Boolean) {
+        peripheral.setNotifyValue(enabled, characteristic)
     }
 }
 
