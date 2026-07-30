@@ -57,6 +57,7 @@ kotlin {
                 implementation("dev.bluefalcon:blue-falcon-core:$falconVersion")
                 implementation("dev.bluefalcon:blue-falcon-peripheral:$falconVersion")
                 implementation("dev.bluefalcon:blue-falcon-plugin-logging:$falconVersion")
+                implementation("dev.bluefalcon:blue-falcon-plugin-queue:$falconVersion")
                 implementation("dev.bluefalcon:blue-falcon-plugin-retry:$falconVersion")
                 implementation("dev.bluefalcon:blue-falcon-plugin-nordic-fota:$falconVersion")
                 implementation("dev.bluefalcon:blue-falcon-plugin-clone:$falconVersion")
@@ -64,8 +65,15 @@ kotlin {
             }
         }
         val commonTest by getting {
+            // Verification-only wiring: compile the standalone tutorial and its tests without
+            // adding either directory to the example's production commonMain artifact.
+            kotlin.srcDirs(
+                "../../Peripheral-Example/src",
+                "../../Peripheral-Example/test",
+            )
             dependencies {
                 implementation(kotlin("test"))
+                implementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:$coroutinesVersion")
             }
         }
         val androidMain by getting {

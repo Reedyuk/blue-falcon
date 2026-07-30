@@ -9,14 +9,13 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.isSystemInDarkTheme
-import androidx.compose.ui.platform.LocalContext
 import androidx.core.app.ActivityCompat
 import com.example.bluefalconcomposemultiplatform.App
-import com.example.bluefalconcomposemultiplatform.di.AppModule
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        val appModule = (application as BlueFalconApplication).appModule
 
         if (needToAskForRuntimePermissions()) {
             askForRuntimePermissions {
@@ -28,7 +27,7 @@ class MainActivity : ComponentActivity() {
             App(
                 darkTheme = isSystemInDarkTheme(),
                 dynamicColor = false,
-                appModule = AppModule(LocalContext.current.applicationContext)
+                appModule = appModule
             )
         }
     }
@@ -40,6 +39,7 @@ class MainActivity : ComponentActivity() {
 
                 if (permissions[Manifest.permission.BLUETOOTH_SCAN] == true &&
                     permissions[Manifest.permission.BLUETOOTH_CONNECT] == true &&
+                    permissions[Manifest.permission.BLUETOOTH_ADVERTISE] == true &&
                     permissions[Manifest.permission.ACCESS_FINE_LOCATION] == true
                 ) {
                     doWhenPermissionAcquired()
@@ -52,6 +52,7 @@ class MainActivity : ComponentActivity() {
                     arrayOf(
                         Manifest.permission.BLUETOOTH_SCAN,
                         Manifest.permission.BLUETOOTH_CONNECT,
+                        Manifest.permission.BLUETOOTH_ADVERTISE,
                         Manifest.permission.ACCESS_FINE_LOCATION
                     )
                 )
@@ -69,6 +70,10 @@ class MainActivity : ComponentActivity() {
                         ActivityCompat.checkSelfPermission(
                             this,
                             Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED ||
+
+                        ActivityCompat.checkSelfPermission(
+                            this,
+                            Manifest.permission.BLUETOOTH_ADVERTISE) != PackageManager.PERMISSION_GRANTED ||
 
                         ActivityCompat.checkSelfPermission(
                             this,

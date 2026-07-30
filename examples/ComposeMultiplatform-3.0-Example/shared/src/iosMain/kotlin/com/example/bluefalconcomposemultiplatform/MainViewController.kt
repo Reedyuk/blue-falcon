@@ -7,13 +7,13 @@ import com.example.bluefalconcomposemultiplatform.di.AppModule
 import platform.UIKit.UIScreen
 import platform.UIKit.UIUserInterfaceStyle
 
-fun MainViewController() = ComposeUIViewController {
+fun MainViewController(appModule: AppModule) = ComposeUIViewController {
     val isDarkTheme =
         UIScreen.mainScreen.traitCollection.userInterfaceStyle ==
                 UIUserInterfaceStyle.UIUserInterfaceStyleDark
     App(
         darkTheme = isDarkTheme,
         dynamicColor = false,
-        appModule = AppModule()
+        appModule = appModule
     )
 }

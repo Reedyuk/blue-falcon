@@ -73,7 +73,24 @@ This directory contains example projects demonstrating Blue Falcon usage across 
 
 ---
 
-### 5. ComposeMultiplatform-3.0-Example
+### 5. Peripheral-Example
+
+**Platform**: Kotlin Multiplatform (Android + iOS + macOS)<br>
+**Language**: Kotlin<br>
+**Description**: Production peripheral-role GATT echo server with queued notifications
+
+**Features**:
+- Application-owned peripheral lifecycle
+- Explicit read/write ATT response routing
+- Subscription-aware notification fan-out
+- Bounded QueuePlugin backpressure
+
+**Location**: `Peripheral-Example/`<br>
+**See**: [Peripheral-Example/README.md](Peripheral-Example/README.md) for details
+
+---
+
+### 6. ComposeMultiplatform-3.0-Example
 
 **Platform**: Compose Multiplatform (Android + iOS)  
 **Language**: Kotlin  
@@ -108,7 +125,7 @@ blueFalcon.connect(device)
 
 ---
 
-### 6. ComposeMultiplatform-Legacy-Example
+### 7. ComposeMultiplatform-Legacy-Example
 
 **Platform**: Compose Multiplatform (Android + iOS)  
 **Language**: Kotlin  
@@ -140,7 +157,7 @@ blueFalcon.scan()
 
 ---
 
-### 7. JS-Example
+### 8. JS-Example
 
 **Platform**: JavaScript (Web Browser)  
 **Language**: Kotlin/JS  
@@ -167,7 +184,7 @@ cd JS-Example
 
 ---
 
-### 8. WASM-Example
+### 9. WASM-Example
 
 **Platform**: WebAssembly (Web Browser)  
 **Language**: Kotlin/Wasm  
