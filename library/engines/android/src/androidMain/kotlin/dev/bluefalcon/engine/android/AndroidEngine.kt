@@ -13,6 +13,7 @@ import dev.bluefalcon.core.*
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -20,6 +21,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.withContext
 import java.util.concurrent.CopyOnWriteArrayList
+import kotlin.coroutines.resume
 
 /**
  * Android implementation of BlueFalconEngine using Android BLE APIs.
@@ -50,6 +52,22 @@ class AndroidEngine(
 
     private val _serviceDiscoveryUpdates = MutableSharedFlow<ServiceDiscoveryUpdate>(extraBufferCapacity = 64)
     override val serviceDiscoveryUpdates: SharedFlow<ServiceDiscoveryUpdate> = _serviceDiscoveryUpdates
+
+    private val _notificationSubscriptionUpdates =
+        MutableSharedFlow<NotificationSubscriptionUpdate>(extraBufferCapacity = 64)
+    override val notificationSubscriptionUpdates: SharedFlow<NotificationSubscriptionUpdate> =
+        _notificationSubscriptionUpdates
+
+    private val centralWriteState = AndroidCentralWriteState()
+    override val centralCapabilities = CentralCapabilities(
+        reliableWriteResults = true,
+        writeWithoutResponseReadiness = true,
+        perConnectionMaximumWriteLength = true,
+        notificationSubscriptionResults = true,
+        restoration = false,
+    )
+    override val characteristicWriteCapabilities = centralWriteState.capabilities
+    override val characteristicWriteReady = centralWriteState.writeReady
     
     override var isScanning: Boolean = false
         private set
@@ -202,7 +220,7 @@ class AndroidEngine(
     override suspend fun discoverServices(peripheral: BluetoothPeripheral, serviceUUIDs: List<Uuid>) {
         val device = (peripheral as? AndroidBluetoothPeripheral)?.device ?: return
         gattCallback.gattsForDevice(device).forEach { gatt ->
-            gattCallback.enqueueOperation(gatt, GattOperationType.DISCOVER_SERVICES, "discoverServices") {
+            gattCallback.enqueueOperation(gatt, CentralGattOperationType.DiscoverServices, "discoverServices") {
                 it.discoverServices()
             }
         }
@@ -217,7 +235,7 @@ class AndroidEngine(
         val androidPeripheral = peripheral as AndroidBluetoothPeripheral
         if (!androidPeripheral.services.any { it.uuid == service.uuid }) {
             gattCallback.gattsForDevice(device).forEach { gatt ->
-                gattCallback.enqueueOperation(gatt, GattOperationType.DISCOVER_SERVICES, "discoverServices") {
+                gattCallback.enqueueOperation(gatt, CentralGattOperationType.DiscoverServices, "discoverServices") {
                     it.discoverServices()
                 }
             }
@@ -231,9 +249,12 @@ class AndroidEngine(
             fetchCharacteristic(androidChar, gatt).forEach { char ->
                 gattCallback.enqueueOperation(
                     gatt,
-                    GattOperationType.READ_CHAR,
+                    CentralGattOperationType.ReadCharacteristic,
                     "readCharacteristic ${char.uuid}",
-                    identity = char.uuid.toString()
+                    identity = characteristicOperationIdentity(
+                        char.service?.uuid?.toString(),
+                        char.uuid.toString(),
+                    )
                 ) {
                     it.readCharacteristic(char)
                 }
@@ -268,15 +289,232 @@ class AndroidEngine(
             fetchCharacteristic(androidChar, gatt).forEach { char ->
                 gattCallback.enqueueOperation(
                     gatt,
-                    GattOperationType.WRITE_CHAR,
+                    CentralGattOperationType.WriteCharacteristic,
                     "writeCharacteristic ${char.uuid}",
-                    identity = char.uuid.toString()
+                    identity = characteristicOperationIdentity(
+                        char.service?.uuid?.toString(),
+                        char.uuid.toString(),
+                    )
                 ) {
                     // Apply the value/writeType at dispatch time so a queued write never mutates the
                     // characteristic while a previously queued operation on it is still in flight.
                     writeType?.let { wt -> char.writeType = wt }
                     char.setValue(payload)
                     it.writeCharacteristic(char)
+                }
+            }
+        }
+    }
+
+    @OptIn(ExperimentalStdlibApi::class)
+    override suspend fun writeCharacteristic(
+        peripheral: BluetoothPeripheral,
+        characteristic: BluetoothCharacteristic,
+        value: ByteArray,
+        writeType: CharacteristicWriteType,
+    ): CharacteristicWriteResult {
+        logger?.debug(
+            "Writing typed value {length = ${value.size}, bytes = 0x${value.toHexString()}} " +
+                "type=$writeType"
+        )
+        val androidPeripheral = peripheral as? AndroidBluetoothPeripheral
+            ?: return CharacteristicWriteResult.Failed(
+                IllegalArgumentException("Peripheral must be an AndroidBluetoothPeripheral")
+            )
+        val requestedCharacteristic =
+            (characteristic as? AndroidBluetoothCharacteristic)?.characteristic
+                ?: return CharacteristicWriteResult.Failed(
+                    IllegalArgumentException(
+                        "Characteristic must be an AndroidBluetoothCharacteristic"
+                    )
+                )
+        val gatt = gattCallback.activeGattForDevice(androidPeripheral.device)
+            ?: return CharacteristicWriteResult.Disconnected
+        val generation = gattCallback.generationFor(gatt)
+            ?: return CharacteristicWriteResult.Disconnected
+        centralWriteState.validateWrite(
+            peripheralUuid = peripheral.uuid,
+            generation = generation,
+            writeType = writeType,
+            payloadSize = value.size,
+        )?.let { return it }
+        val targetCharacteristic =
+            fetchCharacteristic(requestedCharacteristic, gatt, exactNativeIdentity = true)
+                .firstOrNull()
+            ?: return CharacteristicWriteResult.Failed(
+                IllegalArgumentException(
+                    "Characteristic ${characteristic.uuid} is not part of the active GATT"
+                )
+            )
+        val operationKey = CentralGattOperationKey(
+            generation = generation,
+            type = CentralGattOperationType.WriteCharacteristic,
+            identity = characteristicOperationIdentity(
+                targetCharacteristic.service?.uuid?.toString(),
+                targetCharacteristic.uuid.toString(),
+            ),
+        )
+        val payload = value.copyOf()
+        val nativeWriteType = when (writeType) {
+            CharacteristicWriteType.WithResponse ->
+                BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT
+            CharacteristicWriteType.WithoutResponse ->
+                BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE
+        }
+        val gate = gattCallback.operationGateFor(gatt, generation)
+            ?: return CharacteristicWriteResult.Disconnected
+
+        return suspendCancellableCoroutine { continuation ->
+            val accepted = gate.trySubmitTyped(
+                key = operationKey,
+                label = "writeCharacteristic ${targetCharacteristic.uuid}",
+                action = {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                        gatt.writeCharacteristic(
+                            targetCharacteristic,
+                            payload,
+                            nativeWriteType,
+                        ) == BluetoothStatusCodes.SUCCESS
+                    } else {
+                        @Suppress("DEPRECATION")
+                        targetCharacteristic.writeType = nativeWriteType
+                        @Suppress("DEPRECATION")
+                        targetCharacteristic.value = payload
+                        @Suppress("DEPRECATION")
+                        gatt.writeCharacteristic(targetCharacteristic)
+                    }
+                },
+                onComplete = { outcome ->
+                    if (continuation.isActive) {
+                        continuation.resume(outcome.toWriteResult())
+                    }
+                },
+            )
+            if (!accepted) {
+                continuation.resume(
+                    if (gate.isPoisoned) {
+                        CharacteristicWriteResult.Disconnected
+                    } else {
+                        CharacteristicWriteResult.Backpressured
+                    }
+                )
+            } else {
+                continuation.invokeOnCancellation {
+                    gate.abandon(operationKey)
+                }
+            }
+        }
+    }
+
+    override suspend fun setNotificationSubscription(
+        peripheral: BluetoothPeripheral,
+        characteristic: BluetoothCharacteristic,
+        enabled: Boolean,
+    ): NotificationSubscriptionResult {
+        fun report(result: NotificationSubscriptionResult): NotificationSubscriptionResult {
+            _notificationSubscriptionUpdates.tryEmit(
+                NotificationSubscriptionUpdate(
+                    peripheralUuid = peripheral.uuid,
+                    characteristicUuid = characteristic.uuid,
+                    result = result,
+                )
+            )
+            return result
+        }
+
+        val androidPeripheral = peripheral as? AndroidBluetoothPeripheral
+            ?: return report(
+                NotificationSubscriptionResult.Failed(
+                    IllegalArgumentException("Peripheral must be an AndroidBluetoothPeripheral")
+                )
+            )
+        val requestedCharacteristic =
+            (characteristic as? AndroidBluetoothCharacteristic)?.characteristic
+                ?: return report(
+                    NotificationSubscriptionResult.Failed(
+                        IllegalArgumentException(
+                            "Characteristic must be an AndroidBluetoothCharacteristic"
+                        )
+                    )
+                )
+        val gatt = gattCallback.activeGattForDevice(androidPeripheral.device)
+            ?: return report(NotificationSubscriptionResult.Disconnected)
+        val generation = gattCallback.generationFor(gatt)
+            ?: return report(NotificationSubscriptionResult.Disconnected)
+        val targetCharacteristic =
+            fetchCharacteristic(requestedCharacteristic, gatt, exactNativeIdentity = true)
+                .firstOrNull()
+            ?: return report(
+                NotificationSubscriptionResult.Failed(
+                    IllegalArgumentException(
+                        "Characteristic ${characteristic.uuid} is not part of the active GATT"
+                    )
+                )
+            )
+        if (enabled &&
+            targetCharacteristic.properties and BluetoothGattCharacteristic.PROPERTY_NOTIFY == 0
+        ) {
+            return report(NotificationSubscriptionResult.Unsupported)
+        }
+        val cccd = targetCharacteristic.getDescriptor(CLIENT_CHARACTERISTIC_CONFIG_UUID)
+            ?: return report(NotificationSubscriptionResult.Unsupported)
+        val operationKey = CentralGattOperationKey(
+            generation = generation,
+            type = CentralGattOperationType.WriteDescriptor,
+            identity = descriptorOperationIdentity(
+                targetCharacteristic.service?.uuid?.toString(),
+                targetCharacteristic.uuid.toString(),
+                cccd.uuid.toString(),
+            ),
+        )
+        val gate = gattCallback.operationGateFor(gatt, generation)
+            ?: return report(NotificationSubscriptionResult.Disconnected)
+
+        return suspendCancellableCoroutine { continuation ->
+            val action = AndroidNotificationSubscriptionAction(
+                enabled = enabled,
+                setLocalNotification = {
+                    gatt.setCharacteristicNotification(targetCharacteristic, it)
+                },
+                writeCccd = { value ->
+                    val payload = value.copyOf()
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                        gatt.writeDescriptor(cccd, payload) == BluetoothStatusCodes.SUCCESS
+                    } else {
+                        @Suppress("DEPRECATION")
+                        cccd.value = payload
+                        @Suppress("DEPRECATION")
+                        gatt.writeDescriptor(cccd)
+                    }
+                },
+            )
+            val accepted = gate.trySubmitTyped(
+                key = operationKey,
+                label = "setNotificationSubscription ${targetCharacteristic.uuid} enabled=$enabled",
+                action = action::submit,
+                onComplete = { outcome ->
+                    if (continuation.isActive) {
+                        continuation.resume(report(outcome.toSubscriptionResult(enabled)))
+                    }
+                },
+            )
+            if (!accepted) {
+                continuation.resume(
+                    report(
+                        if (gate.isPoisoned) {
+                            NotificationSubscriptionResult.Disconnected
+                        } else {
+                            NotificationSubscriptionResult.Failed(
+                                IllegalStateException(
+                                    "Another Android GATT operation is already in progress"
+                                )
+                            )
+                        }
+                    )
+                )
+            } else {
+                continuation.invokeOnCancellation {
+                    gate.abandon(operationKey)
                 }
             }
         }
@@ -320,9 +558,13 @@ class AndroidEngine(
         gattCallback.gattsForDevice(device).forEach { gatt ->
             gattCallback.enqueueOperation(
                 gatt,
-                GattOperationType.READ_DESC,
+                CentralGattOperationType.ReadDescriptor,
                 "readDescriptor ${androidDesc.uuid}",
-                identity = androidDesc.uuid.toString()
+                identity = descriptorOperationIdentity(
+                    androidDesc.characteristic.service?.uuid?.toString(),
+                    androidDesc.characteristic.uuid.toString(),
+                    androidDesc.uuid.toString(),
+                )
             ) {
                 it.readDescriptor(androidDesc)
             }
@@ -345,9 +587,13 @@ class AndroidEngine(
         gattCallback.gattsForDevice(device).forEach { gatt ->
             gattCallback.enqueueOperation(
                 gatt,
-                GattOperationType.WRITE_DESC,
+                CentralGattOperationType.WriteDescriptor,
                 "writeDescriptor ${androidDesc.uuid}",
-                identity = androidDesc.uuid.toString()
+                identity = descriptorOperationIdentity(
+                    androidDesc.characteristic.service?.uuid?.toString(),
+                    androidDesc.characteristic.uuid.toString(),
+                    androidDesc.uuid.toString(),
+                )
             ) {
                 androidDesc.value = payload
                 it.writeDescriptor(androidDesc)
@@ -359,7 +605,7 @@ class AndroidEngine(
         logger?.debug("changeMTU -> ${peripheral.uuid} mtuSize: $mtuSize")
         val device = (peripheral as? AndroidBluetoothPeripheral)?.device ?: return
         gattCallback.gattsForDevice(device).forEach { gatt ->
-            gattCallback.enqueueOperation(gatt, GattOperationType.MTU, "requestMtu $mtuSize") {
+            gattCallback.enqueueOperation(gatt, CentralGattOperationType.ChangeMtu, "requestMtu $mtuSize") {
                 it.requestMtu(mtuSize)
             }
         }
@@ -460,9 +706,13 @@ class AndroidEngine(
                     char.descriptors.forEach { descriptor ->
                         gattCallback.enqueueOperation(
                             gatt,
-                            GattOperationType.WRITE_DESC,
+                            CentralGattOperationType.WriteDescriptor,
                             "writeDescriptor(CCC) ${descriptor.uuid} enable=$enable",
-                            identity = descriptor.uuid.toString()
+                            identity = descriptorOperationIdentity(
+                                char.service?.uuid?.toString(),
+                                char.uuid.toString(),
+                                descriptor.uuid.toString(),
+                            )
                         ) {
                             descriptor.value = payload
                             it.writeDescriptor(descriptor)
@@ -475,12 +725,19 @@ class AndroidEngine(
     
     private fun fetchCharacteristic(
         characteristic: BluetoothGattCharacteristic,
-        gatt: BluetoothGatt
-    ): List<BluetoothGattCharacteristic> =
-        gatt.services
-            .flatMap { service ->
-                service.characteristics.filter { it.uuid == characteristic.uuid }
-            }
+        gatt: BluetoothGatt,
+        exactNativeIdentity: Boolean = false,
+    ): List<BluetoothGattCharacteristic> {
+        val serviceUuid = characteristic.service?.uuid ?: return emptyList()
+        val resolved = gatt.getService(serviceUuid)?.getCharacteristic(characteristic.uuid)
+            ?: return emptyList()
+        val target = if (exactNativeIdentity) {
+            exactNativeAttribute(characteristic, resolved)
+        } else {
+            resolved
+        }
+        return listOfNotNull(target)
+    }
     
     fun destroy() {
         if (isBondReceiverRegistered) {
@@ -559,15 +816,19 @@ class AndroidEngine(
     private inner class GattClientCallback : BluetoothGattCallback() {
         internal val gatts: MutableList<BluetoothGatt> = CopyOnWriteArrayList()
         private val disconnectHandler = Handler(Looper.getMainLooper())
+        private val operationHandler = Handler(Looper.getMainLooper())
         private val pendingTimeouts = java.util.concurrent.ConcurrentHashMap<String, Runnable>()
-        private val operationQueues = java.util.concurrent.ConcurrentHashMap<BluetoothGatt, GattOperationQueue>()
+        private val operationGates =
+            java.util.concurrent.ConcurrentHashMap<BluetoothGatt, CentralGattOperationGate>()
+        private val gattGenerations =
+            java.util.concurrent.ConcurrentHashMap<BluetoothGatt, Long>()
 
-        // Guards every compound read-modify-write over [gatts]/[operationQueues] and the "is this the
+        // Guards every compound read-modify-write over [gatts]/[operationGates] and the "is this the
         // last gatt for the address?" reset decision. These run on three different threads — GATT
         // callbacks on a binder thread, the disconnect watchdog on the main thread, and operation
         // enqueues on the caller's thread — so check-then-act sequences must be serialized. Lock order
         // is always gattLock -> queue monitor; no path takes them the other way, so there is no
-        // deadlock with [GattOperationQueue]'s per-instance synchronization.
+        // deadlock with [CentralGattOperationGate]'s per-instance synchronization.
         private val gattLock = Any()
 
         /**
@@ -600,6 +861,9 @@ class AndroidEngine(
             if (gatts.none { it === gatt }) {
                 gatts.add(gatt)
             }
+            gattGenerations.computeIfAbsent(gatt) {
+                centralWriteState.onConnected(gatt.device.address)
+            }
         }
 
         /**
@@ -610,7 +874,11 @@ class AndroidEngine(
         private fun closeAndForget(gatt: BluetoothGatt) = synchronized(gattLock) {
             cancelDisconnectTimeout(gatt.device.address)
             gatts.remove(gatt)
-            operationQueues.remove(gatt)?.clear()
+            val generation = gattGenerations.remove(gatt)
+            operationGates.remove(gatt)?.disconnect()
+            if (generation != null) {
+                centralWriteState.onDisconnected(gatt.device.address, generation)
+            }
             try {
                 gatt.close()
             } catch (e: Exception) {
@@ -624,15 +892,73 @@ class AndroidEngine(
         fun gattsForDevice(device: BluetoothDevice): List<BluetoothGatt> =
             gatts.filter { it.device.address == device.address }
 
+        fun activeGattForDevice(device: BluetoothDevice): BluetoothGatt? =
+            gattsForDevice(device).firstOrNull { gattGenerations.containsKey(it) }
+
+        fun generationFor(gatt: BluetoothGatt): Long? = gattGenerations[gatt]
+
+        fun operationGateFor(
+            gatt: BluetoothGatt,
+            generation: Long,
+        ): CentralGattOperationGate? = synchronized(gattLock) {
+            if (gatts.none { it === gatt } || gattGenerations[gatt] != generation) {
+                return@synchronized null
+            }
+            operationGates.computeIfAbsent(gatt) {
+                createOperationGate(gatt, generation)
+            }
+        }
+
+        private fun createOperationGate(
+            gatt: BluetoothGatt,
+            generation: Long,
+        ): CentralGattOperationGate =
+            CentralGattOperationGate(
+                timeoutMillis = GATT_OPERATION_TIMEOUT_MS,
+                timeoutScheduler = CentralGattTimeoutScheduler { delayMillis, onTimeout ->
+                    val timeout = Runnable(onTimeout)
+                    operationHandler.postDelayed(timeout, delayMillis)
+                    CentralGattTimeoutHandle {
+                        operationHandler.removeCallbacks(timeout)
+                    }
+                },
+                onBusy = {
+                    centralWriteState.onBusy(gatt.device.address, generation)
+                },
+                onReady = {
+                    centralWriteState.onReady(gatt.device.address, generation)
+                },
+                onPoisoned = {
+                    logger?.warn(
+                        "GATT operation timeout for ${gatt.device.address}; " +
+                            "disconnecting the poisoned connection"
+                    )
+                    centralWriteState.onDisconnected(gatt.device.address, generation)
+                    try {
+                        gatt.disconnect()
+                    } catch (failure: Throwable) {
+                        logger?.error(
+                            "Failed to disconnect poisoned GATT for " +
+                                "${gatt.device.address}: ${failure.message}",
+                            failure,
+                        )
+                    } finally {
+                        scheduleDisconnectTimeout(gatt)
+                    }
+                },
+            )
+
         /**
          * Append a GATT operation to this gatt's serialized FIFO queue. Android allows only one GATT
          * operation in flight per connection; a second issued before the first's callback returns is
          * silently dropped. The queue dispatches one at a time and advances from the matching callback
-         * (or a timeout), so descriptor writes can no longer race service discovery / MTU / each other.
+         * so descriptor writes cannot race service discovery / MTU / each other. A timeout poisons and
+         * disconnects the connection because Android provides no operation token that could distinguish
+         * its late callback from a retry.
          */
         fun enqueueOperation(
             gatt: BluetoothGatt,
-            type: GattOperationType,
+            type: CentralGattOperationType,
             label: String,
             identity: String? = null,
             action: (BluetoothGatt) -> Boolean
@@ -644,14 +970,28 @@ class AndroidEngine(
                     logger?.debug("Skipping GATT op '$label' — gatt for ${gatt.device.address} is no longer tracked")
                     return
                 }
-                operationQueues
-                    .computeIfAbsent(gatt) { GattOperationQueue(it) }
-                    .enqueue(GattOperation(type, label, identity, action))
+                val generation = gattGenerations[gatt] ?: return
+                operationGateFor(gatt, generation)?.enqueueLegacy(
+                    key = CentralGattOperationKey(generation, type, identity),
+                    label = label,
+                ) {
+                    action(gatt)
+                }
             }
         }
 
-        private fun completeOperation(gatt: BluetoothGatt, type: GattOperationType, identity: String? = null) {
-            operationQueues[gatt]?.complete(type, identity)
+        private fun completeOperation(
+            gatt: BluetoothGatt,
+            type: CentralGattOperationType,
+            identity: String? = null,
+            status: Int,
+        ) {
+            val generation = gattGenerations[gatt] ?: return
+            operationGates[gatt]?.complete(
+                key = CentralGattOperationKey(generation, type, identity),
+                status = status,
+                successful = status == BluetoothGatt.GATT_SUCCESS,
+            )
         }
 
         fun scheduleDisconnectTimeout(gatt: BluetoothGatt) {
@@ -699,10 +1039,10 @@ class AndroidEngine(
                         // Discovery is enqueued first because it is the critical path consumers gate
                         // subscription work on — the best-effort RSSI read must not sit ahead of it,
                         // or a dropped RSSI callback would stall discovery for the full op watchdog.
-                        enqueueOperation(gatt, GattOperationType.DISCOVER_SERVICES, "discoverServices") {
+                        enqueueOperation(gatt, CentralGattOperationType.DiscoverServices, "discoverServices") {
                             it.discoverServices()
                         }
-                        enqueueOperation(gatt, GattOperationType.READ_RSSI, "readRemoteRssi") {
+                        enqueueOperation(gatt, CentralGattOperationType.ReadRssi, "readRemoteRssi") {
                             it.readRemoteRssi()
                         }
                     }
@@ -725,7 +1065,13 @@ class AndroidEngine(
         override fun onServicesDiscovered(gatt: BluetoothGatt?, status: Int) {
             logger?.info("onServicesDiscovered status=$status")
             // Advance the queue regardless of status so a failed discovery does not stall it.
-            gatt?.let { completeOperation(it, GattOperationType.DISCOVER_SERVICES) }
+            gatt?.let {
+                completeOperation(
+                    it,
+                    CentralGattOperationType.DiscoverServices,
+                    status = status,
+                )
+            }
             if (status != BluetoothGatt.GATT_SUCCESS) {
                 logger?.error("Service discovery failed with status $status")
                 return
@@ -748,17 +1094,37 @@ class AndroidEngine(
         
         override fun onMtuChanged(gatt: BluetoothGatt?, mtu: Int, status: Int) {
             logger?.debug("onMtuChanged mtu=$mtu status=$status")
-            gatt?.let { completeOperation(it, GattOperationType.MTU) }
             gatt?.device?.let { device ->
                 if (status == BluetoothGatt.GATT_SUCCESS) {
                     peripheralFor(device.address)?.mtuSize = mtu
                 }
+                gattGenerations[gatt]?.let { generation ->
+                    centralWriteState.onMtuChanged(
+                        peripheralUuid = device.address,
+                        generation = generation,
+                        mtu = mtu,
+                        successful = status == BluetoothGatt.GATT_SUCCESS,
+                    )
+                }
+            }
+            gatt?.let {
+                completeOperation(
+                    it,
+                    CentralGattOperationType.ChangeMtu,
+                    status = status,
+                )
             }
         }
         
         override fun onReadRemoteRssi(gatt: BluetoothGatt?, rssi: Int, status: Int) {
             logger?.debug("onReadRemoteRssi $rssi")
-            gatt?.let { completeOperation(it, GattOperationType.READ_RSSI) }
+            gatt?.let {
+                completeOperation(
+                    it,
+                    CentralGattOperationType.ReadRssi,
+                    status = status,
+                )
+            }
             gatt?.device?.let { device ->
                 peripheralFor(device.address)?.rssi = rssi.toFloat()
             }
@@ -770,7 +1136,17 @@ class AndroidEngine(
             status: Int
         ) {
             logger?.debug("onCharacteristicRead ${characteristic?.uuid} status=$status")
-            gatt?.let { completeOperation(it, GattOperationType.READ_CHAR, characteristic?.uuid?.toString()) }
+            gatt?.let {
+                completeOperation(
+                    it,
+                    CentralGattOperationType.ReadCharacteristic,
+                    characteristicOperationIdentity(
+                        characteristic?.service?.uuid?.toString(),
+                        characteristic?.uuid?.toString(),
+                    ),
+                    status,
+                )
+            }
         }
         
         override fun onCharacteristicChanged(
@@ -799,7 +1175,17 @@ class AndroidEngine(
             status: Int
         ) {
             logger?.debug("onCharacteristicWrite ${characteristic?.uuid} status=$status")
-            gatt?.let { completeOperation(it, GattOperationType.WRITE_CHAR, characteristic?.uuid?.toString()) }
+            gatt?.let {
+                completeOperation(
+                    it,
+                    CentralGattOperationType.WriteCharacteristic,
+                    characteristicOperationIdentity(
+                        characteristic?.service?.uuid?.toString(),
+                        characteristic?.uuid?.toString(),
+                    ),
+                    status,
+                )
+            }
         }
 
         override fun onDescriptorRead(
@@ -808,7 +1194,18 @@ class AndroidEngine(
             status: Int
         ) {
             logger?.debug("onDescriptorRead ${descriptor?.uuid}")
-            gatt?.let { completeOperation(it, GattOperationType.READ_DESC, descriptor?.uuid?.toString()) }
+            gatt?.let {
+                completeOperation(
+                    it,
+                    CentralGattOperationType.ReadDescriptor,
+                    descriptorOperationIdentity(
+                        descriptor?.characteristic?.service?.uuid?.toString(),
+                        descriptor?.characteristic?.uuid?.toString(),
+                        descriptor?.uuid?.toString(),
+                    ),
+                    status,
+                )
+            }
         }
 
         override fun onDescriptorWrite(
@@ -817,126 +1214,32 @@ class AndroidEngine(
             status: Int
         ) {
             logger?.debug("onDescriptorWrite ${descriptor?.uuid} status=$status")
-            gatt?.let { completeOperation(it, GattOperationType.WRITE_DESC, descriptor?.uuid?.toString()) }
-        }
-
-        /**
-         * Per-connection FIFO that serializes GATT operations. Android permits only one operation in
-         * flight per connection; the queue dispatches one at a time and advances when the matching
-         * callback fires (via [complete]) or a watchdog timeout elapses, so an operation can never be
-         * silently dropped by colliding with an in-flight one.
-         */
-        private inner class GattOperationQueue(private val gatt: BluetoothGatt) {
-            private val pending = ArrayDeque<GattOperation>()
-            private var current: GattOperation? = null
-            private val handler = Handler(Looper.getMainLooper())
-            private var timeout: Runnable? = null
-
-            @Synchronized
-            fun enqueue(operation: GattOperation) {
-                pending.addLast(operation)
-                if (current == null) dispatchNext()
-            }
-
-            @Synchronized
-            fun complete(type: GattOperationType, identity: String?) {
-                val op = current ?: return
-                // Type matching guards against spurious/out-of-band callbacks (e.g. a system-initiated
-                // MTU change) advancing the wrong operation; a genuine mismatch simply leaves the
-                // current op pending until its own callback or the watchdog fires.
-                if (op.type != type) return
-                // When both the op and the callback target a specific resource (characteristic/
-                // descriptor), require the UUIDs to match too. Without this, a same-type callback that
-                // arrives after the watchdog already advanced the queue (e.g. a delayed onDescriptorWrite
-                // landing once the next WRITE_DESC is current) would finish the wrong operation and let
-                // the one after it be dispatched onto a still-busy connection and silently dropped.
-                if (op.identity != null && identity != null && op.identity != identity) return
-                finish(op)
-            }
-
-            @Synchronized
-            fun clear() {
-                timeout?.let { handler.removeCallbacks(it) }
-                timeout = null
-                current = null
-                pending.clear()
-            }
-
-            @Synchronized
-            private fun dispatchNext() {
-                if (current != null) return
-                while (true) {
-                    val op = pending.removeFirstOrNull() ?: return
-                    current = op
-                    val accepted = try {
-                        op.action(gatt)
-                    } catch (e: Exception) {
-                        logger?.error("GATT operation '${op.label}' threw: ${e.message}", e)
-                        false
-                    }
-                    if (accepted) {
-                        val watchdog = Runnable {
-                            logger?.warn("GATT operation '${op.label}' timed out after ${GATT_OPERATION_TIMEOUT_MS}ms")
-                            onTimeout(op)
-                        }
-                        timeout = watchdog
-                        handler.postDelayed(watchdog, GATT_OPERATION_TIMEOUT_MS)
-                        return
-                    }
-                    // The stack rejected the call outright (no callback will arrive); skip to the next.
-                    logger?.warn("GATT operation '${op.label}' was rejected by the stack; skipping")
-                    current = null
-                }
-            }
-
-            @Synchronized
-            private fun onTimeout(op: GattOperation) {
-                if (current === op) finish(op)
-            }
-
-            @Synchronized
-            private fun finish(op: GattOperation) {
-                if (current !== op) return
-                timeout?.let { handler.removeCallbacks(it) }
-                timeout = null
-                current = null
-                dispatchNext()
+            gatt?.let {
+                completeOperation(
+                    it,
+                    CentralGattOperationType.WriteDescriptor,
+                    descriptorOperationIdentity(
+                        descriptor?.characteristic?.service?.uuid?.toString(),
+                        descriptor?.characteristic?.uuid?.toString(),
+                        descriptor?.uuid?.toString(),
+                    ),
+                    status,
+                )
             }
         }
+
     }
 
     companion object {
         private const val DISCONNECT_TIMEOUT_MS = 5_000L
+        private val CLIENT_CHARACTERISTIC_CONFIG_UUID =
+            java.util.UUID.fromString("00002902-0000-1000-8000-00805f9b34fb")
 
         /**
          * Watchdog timeout for a single in-flight GATT operation. If its callback never arrives (the
-         * stack occasionally drops one), the queue advances after this delay rather than stalling
-         * forever. Comfortably longer than any normal read/write/discover/MTU exchange.
+         * stack occasionally drops one), the connection is quarantined and disconnected after this
+         * delay. Comfortably longer than any normal read/write/discover/MTU exchange.
          */
         private const val GATT_OPERATION_TIMEOUT_MS = 10_000L
     }
 }
-
-private enum class GattOperationType {
-    DISCOVER_SERVICES,
-    MTU,
-    READ_RSSI,
-    READ_CHAR,
-    WRITE_CHAR,
-    READ_DESC,
-    WRITE_DESC
-}
-
-private class GattOperation(
-    val type: GattOperationType,
-    val label: String,
-    /**
-     * Resource UUID this operation targets (characteristic/descriptor), or null for connection-wide
-     * operations (discover/MTU/RSSI). When both this and a completion callback carry an identity, the
-     * queue requires them to match before advancing, so a late or stray same-type callback cannot
-     * finish a different operation. See [AndroidEngine.GattClientCallback.GattOperationQueue.complete].
-     */
-    val identity: String? = null,
-    /** Issues the underlying GATT call; returns the stack's accepted/false result. */
-    val action: (BluetoothGatt) -> Boolean
-)

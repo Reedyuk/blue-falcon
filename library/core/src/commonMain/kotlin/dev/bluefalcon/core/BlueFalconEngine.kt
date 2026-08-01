@@ -71,6 +71,19 @@ interface BlueFalconEngine {
      */
     val serviceDiscoveryUpdates: SharedFlow<ServiceDiscoveryUpdate>
         get() = MutableSharedFlow()
+
+    val centralCapabilities: CentralCapabilities
+        get() = CentralCapabilities.None
+
+    val characteristicWriteCapabilities:
+        StateFlow<Map<CharacteristicWriteKey, CharacteristicWriteCapability>>
+        get() = EmptyCharacteristicWriteCapabilities
+
+    val characteristicWriteReady: SharedFlow<CharacteristicWriteReady>
+        get() = EmptyCharacteristicWriteReady
+
+    val notificationSubscriptionUpdates: SharedFlow<NotificationSubscriptionUpdate>
+        get() = EmptyNotificationSubscriptionUpdates
     
     /**
      * Check if currently scanning
@@ -168,6 +181,26 @@ interface BlueFalconEngine {
         value: ByteArray,
         writeType: Int? = null
     )
+
+    suspend fun writeCharacteristic(
+        peripheral: BluetoothPeripheral,
+        characteristic: BluetoothCharacteristic,
+        value: ByteArray,
+        writeType: CharacteristicWriteType,
+    ): CharacteristicWriteResult = CharacteristicWriteResult.Unsupported
+
+    suspend fun setNotificationSubscription(
+        peripheral: BluetoothPeripheral,
+        characteristic: BluetoothCharacteristic,
+        enabled: Boolean,
+    ): NotificationSubscriptionResult = NotificationSubscriptionResult.Unsupported
+
+    fun maximumWriteValueLength(
+        peripheral: BluetoothPeripheral,
+        writeType: CharacteristicWriteType,
+    ): Int? = characteristicWriteCapabilities.value[
+        CharacteristicWriteKey(peripheral.uuid, writeType)
+    ]?.maximumLength
     
     /**
      * Enable/disable notifications for a characteristic

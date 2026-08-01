@@ -45,6 +45,12 @@ class FakeBlueFalconEngine : BlueFalconEngine {
     var shouldFailConnect = false
     var shouldFailRead = false
     var shouldFailWrite = false
+    var typedWriteResult: CharacteristicWriteResult = CharacteristicWriteResult.Unsupported
+    var typedWriteFailure: Throwable? = null
+    var lastTypedWriteValue: ByteArray? = null
+    var lastTypedWriteType: CharacteristicWriteType? = null
+    var subscriptionResult: NotificationSubscriptionResult =
+        NotificationSubscriptionResult.Unsupported
     var onConnect: () -> Unit = {}
     var onScan: () -> Unit = {}
     
@@ -130,6 +136,24 @@ class FakeBlueFalconEngine : BlueFalconEngine {
             throw BluetoothUnknownException()
         }
     }
+
+    override suspend fun writeCharacteristic(
+        peripheral: BluetoothPeripheral,
+        characteristic: BluetoothCharacteristic,
+        value: ByteArray,
+        writeType: CharacteristicWriteType,
+    ): CharacteristicWriteResult {
+        typedWriteFailure?.let { throw it }
+        lastTypedWriteValue = value.copyOf()
+        lastTypedWriteType = writeType
+        return typedWriteResult
+    }
+
+    override suspend fun setNotificationSubscription(
+        peripheral: BluetoothPeripheral,
+        characteristic: BluetoothCharacteristic,
+        enabled: Boolean,
+    ): NotificationSubscriptionResult = subscriptionResult
     
     override suspend fun notifyCharacteristic(
         peripheral: BluetoothPeripheral,
@@ -217,6 +241,11 @@ class FakeBlueFalconEngine : BlueFalconEngine {
         shouldFailConnect = false
         shouldFailRead = false
         shouldFailWrite = false
+        typedWriteResult = CharacteristicWriteResult.Unsupported
+        typedWriteFailure = null
+        lastTypedWriteValue = null
+        lastTypedWriteType = null
+        subscriptionResult = NotificationSubscriptionResult.Unsupported
         isScanning = false
         _peripherals.value = emptySet()
         _managerState.value = BluetoothManagerState.Ready

@@ -21,18 +21,38 @@ kotlin {
     
     sourceSets {
         val macosMain by creating {
+            kotlin.srcDir("../apple-shared/src/appleMain/kotlin")
             dependencies {
                 implementation(project(":core"))
                 implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:$kotlinx_coroutines_version")
+            }
+        }
+
+        val macosTest by creating {
+            dependsOn(commonTest.get())
+            kotlin.srcDir("../apple-shared/src/appleTest/kotlin")
+            dependencies {
+                implementation(kotlin("test"))
+                implementation(
+                    "org.jetbrains.kotlinx:kotlinx-coroutines-test:$kotlinx_coroutines_version"
+                )
             }
         }
         
         val macosArm64Main by getting {
             dependsOn(macosMain)
         }
+
+        val macosArm64Test by getting {
+            dependsOn(macosTest)
+        }
         
         val macosX64Main by getting {
             dependsOn(macosMain)
+        }
+
+        val macosX64Test by getting {
+            dependsOn(macosTest)
         }
     }
 }

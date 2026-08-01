@@ -15,6 +15,7 @@ interface CBPeripheralCallback {
     fun onCharacteristicWritten(peripheral: CBPeripheral, characteristic: CBCharacteristic, error: NSError?)
     fun onDescriptorsDiscovered(peripheral: CBPeripheral, characteristic: CBCharacteristic, error: NSError?)
     fun onNotificationStateUpdated(peripheral: CBPeripheral, characteristic: CBCharacteristic, error: NSError?)
+    fun onReadyToSendWriteWithoutResponse(peripheral: CBPeripheral)
     fun onL2CAPChannelOpened(peripheral: CBPeripheral, channel: CBL2CAPChannel?, error: NSError?)
     fun onDescriptorWritten(peripheral: CBPeripheral, descriptor: CBDescriptor, error: NSError?)
 }
@@ -73,6 +74,10 @@ class CBPeripheralDelegateWrapper(
         error: NSError?
     ) {
         callback.onNotificationStateUpdated(peripheral, didUpdateNotificationStateForCharacteristic, error)
+    }
+
+    override fun peripheralIsReadyToSendWriteWithoutResponse(peripheral: CBPeripheral) {
+        callback.onReadyToSendWriteWithoutResponse(peripheral)
     }
     
     @ObjCSignatureOverride
