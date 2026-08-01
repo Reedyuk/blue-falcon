@@ -343,6 +343,7 @@ blueFalcon.writeCharacteristic(
 )
 
 // Typed central write
+val payload = "Hello BLE".encodeToByteArray()
 val result = blueFalcon.writeCharacteristic(
     bluetoothPeripheral,
     bluetoothCharacteristic,

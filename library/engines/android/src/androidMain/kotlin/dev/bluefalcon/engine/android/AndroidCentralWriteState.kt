@@ -14,7 +14,8 @@ import kotlinx.coroutines.flow.asStateFlow
 
 internal class AndroidCentralWriteState {
     private val lock = Any()
-    private val generations = mutableMapOf<String, Long>()
+    private val lastGenerations = mutableMapOf<String, Long>()
+    private val activeGenerations = mutableMapOf<String, Long>()
 
     private val _capabilities = MutableStateFlow<
         Map<CharacteristicWriteKey, CharacteristicWriteCapability>
@@ -29,8 +30,9 @@ internal class AndroidCentralWriteState {
     val writeReady: SharedFlow<CharacteristicWriteReady> = _writeReady.asSharedFlow()
 
     fun onConnected(peripheralUuid: String): Long = synchronized(lock) {
-        val generation = (generations[peripheralUuid] ?: 0L) + 1L
-        generations[peripheralUuid] = generation
+        val generation = (lastGenerations[peripheralUuid] ?: 0L) + 1L
+        lastGenerations[peripheralUuid] = generation
+        activeGenerations[peripheralUuid] = generation
         replaceCapabilities(
             peripheralUuid = peripheralUuid,
             maximumLength = DEFAULT_WRITE_PAYLOAD_LENGTH,
@@ -40,7 +42,7 @@ internal class AndroidCentralWriteState {
     }
 
     fun currentGeneration(peripheralUuid: String): Long? = synchronized(lock) {
-        generations[peripheralUuid]
+        activeGenerations[peripheralUuid]
     }
 
     fun onMtuChanged(
@@ -49,7 +51,7 @@ internal class AndroidCentralWriteState {
         mtu: Int,
         successful: Boolean,
     ) = synchronized(lock) {
-        if (!successful || generations[peripheralUuid] != generation) return@synchronized
+        if (!successful || activeGenerations[peripheralUuid] != generation) return@synchronized
         replaceCapabilities(
             peripheralUuid = peripheralUuid,
             maximumLength = (mtu - ATT_HEADER_LENGTH).coerceAtLeast(0),
@@ -61,7 +63,7 @@ internal class AndroidCentralWriteState {
         peripheralUuid: String,
         generation: Long,
     ) = synchronized(lock) {
-        if (generations[peripheralUuid] != generation) return@synchronized
+        if (activeGenerations[peripheralUuid] != generation) return@synchronized
         replaceCapabilities(
             peripheralUuid = peripheralUuid,
             maximumLength = currentMaximum(peripheralUuid),
@@ -74,7 +76,7 @@ internal class AndroidCentralWriteState {
         generation: Long,
     ) {
         val readyKeys = synchronized(lock) {
-            if (generations[peripheralUuid] != generation) return
+            if (activeGenerations[peripheralUuid] != generation) return
             val keys = CharacteristicWriteType.entries.map { writeType ->
                 CharacteristicWriteKey(peripheralUuid, writeType)
             }
@@ -97,7 +99,8 @@ internal class AndroidCentralWriteState {
         peripheralUuid: String,
         generation: Long,
     ) = synchronized(lock) {
-        if (generations[peripheralUuid] != generation) return@synchronized
+        if (activeGenerations[peripheralUuid] != generation) return@synchronized
+        activeGenerations.remove(peripheralUuid)
         _capabilities.value = _capabilities.value.filterKeys { key ->
             key.peripheralUuid != peripheralUuid
         }
@@ -109,7 +112,7 @@ internal class AndroidCentralWriteState {
         writeType: CharacteristicWriteType,
         payloadSize: Int,
     ): CharacteristicWriteResult? = synchronized(lock) {
-        if (generations[peripheralUuid] != generation) {
+        if (activeGenerations[peripheralUuid] != generation) {
             return CharacteristicWriteResult.Disconnected
         }
         val capability = _capabilities.value[

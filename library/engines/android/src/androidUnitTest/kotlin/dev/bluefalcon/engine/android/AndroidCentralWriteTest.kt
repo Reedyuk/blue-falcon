@@ -148,6 +148,27 @@ class AndroidCentralWriteTest {
     }
 
     @Test
+    fun `late callbacks after disconnect cannot restore write capabilities`() {
+        val state = AndroidCentralWriteState()
+        val generation = state.onConnected("peer-a")
+
+        state.onDisconnected("peer-a", generation)
+        state.onMtuChanged("peer-a", generation, mtu = 247, successful = true)
+        state.onReady("peer-a", generation)
+
+        assertTrue(state.capabilities.value.isEmpty())
+        assertEquals(
+            CharacteristicWriteResult.Disconnected,
+            state.validateWrite(
+                "peer-a",
+                generation,
+                CharacteristicWriteType.WithoutResponse,
+                payloadSize = 1,
+            ),
+        )
+    }
+
+    @Test
     fun `gate outcomes map to typed write results`() {
         assertEquals(
             CharacteristicWriteResult.Sent,
