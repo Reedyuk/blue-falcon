@@ -24,6 +24,11 @@
 	<true/>
 	<key>NSBluetoothAlwaysUsageDescription</key>
 	<string>This example needs bluetooth usage permission to demonstrate the capabilities of BlueFalcon in this example project.</string>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>bluetooth-central</string>
+		<string>bluetooth-peripheral</string>
+	</array>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

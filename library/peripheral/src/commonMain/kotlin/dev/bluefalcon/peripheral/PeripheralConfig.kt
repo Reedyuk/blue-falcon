@@ -8,6 +8,9 @@ data class PeripheralConfig(
     val advertiseConfig: AdvertiseConfig,
     val responseDeadline: Duration = 30.seconds,
     val inactiveSessionTimeout: Duration = 5.minutes,
+    // On Apple platforms, setting this requires the app's Info.plist to declare
+    // "bluetooth-peripheral" in UIBackgroundModes, otherwise CBPeripheralManager
+    // state restoration crashes with NSInternalInconsistencyException at launch.
     val restorationIdentifier: String? = null,
 ) {
     init {

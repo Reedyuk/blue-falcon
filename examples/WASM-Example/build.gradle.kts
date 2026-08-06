@@ -11,7 +11,7 @@ repositories {
 }
 
 // Must match the version published to mavenLocal from ../../library.
-val falconVersion = "3.4.3"
+val falconVersion = "3.7.0"
 
 kotlin {
     jvmToolchain(17)
