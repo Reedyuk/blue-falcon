@@ -181,6 +181,16 @@ class MacosJvmEngine : BlueFalconEngine {
     }
 
     @Suppress("unused")
+    private fun onNotificationStateChanged(
+        peripheralUuid: String,
+        serviceUuid: String,
+        characteristicUuid: String,
+        isNotifying: Boolean
+    ) {
+        findCharacteristic(peripheralUuid, serviceUuid, characteristicUuid)?.updateNotifying(isNotifying)
+    }
+
+    @Suppress("unused")
     private fun onCharacteristicWritten(
         peripheralUuid: String,
         serviceUuid: String,
