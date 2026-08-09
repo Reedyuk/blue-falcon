@@ -262,7 +262,11 @@ internal class FrameworkApplePeripheralStack(
             central: CBCentral,
             didSubscribeToCharacteristic: CBCharacteristic,
         ) {
-            val ids = resolveIds(didSubscribeToCharacteristic) ?: return
+            val ids = resolveIds(didSubscribeToCharacteristic) ?: run {
+                logger?.debug("didSubscribeToCharacteristic: resolveIds returned null, dropping event")
+                return
+            }
+            logger?.debug("didSubscribeToCharacteristic: resolved ids=$ids for central=${central.identifier}")
             retainCentral(central)
             listenerSnapshot()?.onEvent(
                 AppleGattEvent.Subscribed(
@@ -296,6 +300,7 @@ internal class FrameworkApplePeripheralStack(
         ) {
             val ids = resolveIds(didReceiveReadRequest.characteristic)
             if (ids == null) {
+                logger?.debug("didReceiveReadRequest: resolveIds returned null, rejecting request")
                 peripheral.respondToRequest(didReceiveReadRequest, CBATTErrorAttributeNotFound)
                 return
             }
@@ -653,9 +658,25 @@ internal class FrameworkApplePeripheralStack(
     private fun resolveIds(
         characteristic: CBCharacteristic,
     ): Pair<GattServiceId, GattCharacteristicId>? {
-        val service = characteristic.service ?: return null
+        val service = characteristic.service ?: run {
+            logger?.debug("resolveIds: characteristic ${characteristic.UUID.UUIDString} has no service, rejecting")
+            return null
+        }
         val characteristicId = GattCharacteristicId(characteristic.UUID.UUIDString.toUuid())
-        if (locked { characteristics[characteristicId] !== characteristic }) return null
+        val known = locked { characteristics[characteristicId] }
+        if (known == null) {
+            logger?.debug(
+                "resolveIds: no registered characteristic for id $characteristicId " +
+                    "(known ids=${locked { characteristics.keys }})",
+            )
+            return null
+        }
+        if (known !== characteristic) {
+            logger?.debug(
+                "resolveIds: identity mismatch for $characteristicId " +
+                    "(known=$known, incoming=$characteristic) - falling back to value equality",
+            )
+        }
         return GattServiceId(service.UUID.UUIDString.toUuid()) to characteristicId
     }
 
