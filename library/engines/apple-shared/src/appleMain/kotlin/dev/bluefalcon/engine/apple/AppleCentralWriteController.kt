@@ -8,6 +8,7 @@ import dev.bluefalcon.core.CharacteristicWriteType
 import dev.bluefalcon.core.NotificationSubscriptionResult
 import dev.bluefalcon.core.NotificationSubscriptionUpdate
 import dev.bluefalcon.core.Uuid
+import platform.CoreBluetooth.CBPeripheral
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
@@ -32,6 +33,12 @@ internal fun <T : Any> nativeAttributeBelongsTo(
     expectedOwner: T,
     actualOwner: T?,
 ): Boolean = expectedOwner === actualOwner
+
+internal fun nativeAttributeBelongsTo(
+    expectedOwner: CBPeripheral,
+    actualOwner: CBPeripheral?,
+): Boolean = actualOwner != null &&
+    expectedOwner.identifier.UUIDString == actualOwner.identifier.UUIDString
 
 internal interface AppleCentralWritePeer {
     val peripheralUuid: String
