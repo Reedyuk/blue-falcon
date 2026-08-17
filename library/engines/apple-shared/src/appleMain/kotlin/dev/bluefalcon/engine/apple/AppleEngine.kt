@@ -493,11 +493,13 @@ class AppleEngine : BlueFalconEngine, CBCentralManagerCallback, CBPeripheralCall
         callbackDispatcher.dispatch {
             val uuid = peripheral.identifier.UUIDString
             val existingConnection = connectedPeripherals[uuid]
+            // Reuse the existing device wrapper (updating its native reference in-place so
+            // callers that hold a reference to the old object continue to work), but always
+            // create a fresh write-peer so it holds the current CBPeripheral instance.
             val device = existingConnection?.device?.also {
                 it.updatePeripheral(peripheral)
             } ?: AppleBluetoothPeripheral(peripheral, null)
-            val connection = existingConnection?.connection
-                ?: centralWriteController.connected(CoreBluetoothWritePeer(peripheral))
+            val connection = centralWriteController.connected(CoreBluetoothWritePeer(peripheral))
             connectedPeripherals[uuid] = ActiveAppleConnection(
                 peripheral = peripheral,
                 device = device,
