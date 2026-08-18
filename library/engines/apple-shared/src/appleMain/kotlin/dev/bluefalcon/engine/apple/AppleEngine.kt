@@ -491,11 +491,16 @@ class AppleEngine : BlueFalconEngine, CBCentralManagerCallback, CBPeripheralCall
             peripheral,
         )
         callbackDispatcher.dispatch {
-            val device = AppleBluetoothPeripheral(peripheral, null)
-            val connection = centralWriteController.connected(
-                CoreBluetoothWritePeer(peripheral)
-            )
-            connectedPeripherals[device.uuid] = ActiveAppleConnection(
+            val uuid = peripheral.identifier.UUIDString
+            val existingConnection = connectedPeripherals[uuid]
+            // Reuse the existing device wrapper (updating its native reference in-place so
+            // callers that hold a reference to the old object continue to work), but always
+            // create a fresh write-peer so it holds the current CBPeripheral instance.
+            val device = existingConnection?.device?.also {
+                it.updatePeripheral(peripheral)
+            } ?: AppleBluetoothPeripheral(peripheral, null)
+            val connection = centralWriteController.connected(CoreBluetoothWritePeer(peripheral))
+            connectedPeripherals[uuid] = ActiveAppleConnection(
                 peripheral = peripheral,
                 device = device,
                 connection = connection,
@@ -511,7 +516,6 @@ class AppleEngine : BlueFalconEngine, CBCentralManagerCallback, CBPeripheralCall
         nativeConnectionOwnership.disconnected(uuid, peripheral)
         callbackDispatcher.dispatch {
             val active = connectedPeripherals[uuid]
-            if (active != null && active.peripheral !== peripheral) return@dispatch
             val device = active?.device ?: AppleBluetoothPeripheral(peripheral, null)
             connectedPeripherals.remove(uuid)
             peripheral.delegate = null
@@ -532,7 +536,6 @@ class AppleEngine : BlueFalconEngine, CBCentralManagerCallback, CBPeripheralCall
         callbackDispatcher.dispatch {
             val device = AppleBluetoothPeripheral(peripheral, null)
             val active = connectedPeripherals[device.uuid]
-            if (active != null && active.peripheral !== peripheral) return@dispatch
             if (active != null) {
                 connectedPeripherals.remove(device.uuid)
                 centralWriteController.disconnected(active.connection)
@@ -684,10 +687,8 @@ class AppleEngine : BlueFalconEngine, CBCentralManagerCallback, CBPeripheralCall
         // Descriptor written - could expose this through a callback if needed
     }
 
-    private fun activeConnection(peripheral: CBPeripheral): ActiveAppleConnection? {
-        val active = connectedPeripherals[peripheral.identifier.UUIDString] ?: return null
-        return active.takeIf { it.peripheral === peripheral }
-    }
+    private fun activeConnection(peripheral: CBPeripheral): ActiveAppleConnection? =
+        connectedPeripherals[peripheral.identifier.UUIDString]
 }
 
 private data class ActiveAppleConnection(

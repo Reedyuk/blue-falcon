@@ -13,14 +13,28 @@ import platform.posix.memcpy
  * Apple implementation of BluetoothPeripheral
  */
 class AppleBluetoothPeripheral(
-    val cbPeripheral: CBPeripheral,
+    cbPeripheral: CBPeripheral,
     override var rssi: Float? = null,
     override var manufacturerData: Map<Int, ByteArray> = emptyMap()
 ) : BluetoothPeripheral {
     
+    var cbPeripheral: CBPeripheral = cbPeripheral
+        private set
+    
     override val name: String? get() = cbPeripheral.name
     override val uuid: String = cbPeripheral.identifier.UUIDString
     override var mtuSize: Int? = null
+    
+    /**
+     * Updates the underlying native peripheral reference when CoreBluetooth provides
+     * a new object instance for the same physical device (identified by UUID).
+     */
+    fun updatePeripheral(peripheral: CBPeripheral) {
+        require(peripheral.identifier.UUIDString == uuid) {
+            "Cannot update peripheral: UUID mismatch (expected $uuid, got ${peripheral.identifier.UUIDString})"
+        }
+        cbPeripheral = peripheral
+    }
     
     override val services: List<BluetoothService>
         get() = cbPeripheral.services
