@@ -382,6 +382,63 @@ class PeripheralHeartRateControllerTest {
     }
 
     @Test
+    fun heartRateMeasurementCccdWriteRequiresBondingWhenEnabled() = runTest {
+        val manager = HeartRateFakePeripheral()
+        val controller = PeripheralHeartRateController(
+            runtime = PeripheralExampleRuntime(manager, HeartRateFakeQueue()),
+            scope = backgroundScope,
+            initialBondingRequired = true,
+        )
+        manager.mutableState.value = PeripheralManagerState.Running
+        val session = HeartRateFakeSession()
+        manager.mutableSessions.value = setOf(session)
+        runCurrent()
+
+        // Standard Bluetooth behaviour for a security-gated attribute on an unbonded
+        // link: the connection stays up and the server rejects the operation with
+        // InsufficientAuthentication (not a disconnect, not a silent no-op), which
+        // prompts the platform Bluetooth stack to bond and retry automatically.
+        val firstResponse = HeartRateRecordingResponseHandle()
+        manager.requestsChannel.send(
+            GattDescriptorWriteRequest(
+                session = session,
+                serviceId = HeartRateGatt.serviceId,
+                characteristicId = HeartRateGatt.heartRateMeasurementId,
+                descriptorId = ClientCharacteristicConfigurationDescriptor.id,
+                offset = 0,
+                value = byteArrayOf(0x01, 0x00),
+                preparedWrite = false,
+                response = firstResponse,
+            ),
+        )
+        runCurrent()
+
+        assertEquals(
+            GattResponseStatus.InsufficientAuthentication,
+            firstResponse.singleStatus,
+        )
+        assertEquals(0, controller.state.value.bondedSessionCount)
+
+        val secondResponse = HeartRateRecordingResponseHandle()
+        manager.requestsChannel.send(
+            GattDescriptorWriteRequest(
+                session = session,
+                serviceId = HeartRateGatt.serviceId,
+                characteristicId = HeartRateGatt.heartRateMeasurementId,
+                descriptorId = ClientCharacteristicConfigurationDescriptor.id,
+                offset = 0,
+                value = byteArrayOf(0x01, 0x00),
+                preparedWrite = false,
+                response = secondResponse,
+            ),
+        )
+        runCurrent()
+
+        assertEquals(GattResponseStatus.Success, secondResponse.singleStatus)
+        assertEquals(1, controller.state.value.bondedSessionCount)
+    }
+
+    @Test
     fun unknownDescriptorWriteIsUnsupported() = runTest {
         val manager = HeartRateFakePeripheral()
         PeripheralHeartRateController(

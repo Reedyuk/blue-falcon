@@ -360,28 +360,50 @@ class PeripheralHeartRateController(
         logPrefix: String,
         characteristicLabel: String,
         value: () -> ByteArray,
+    ): HeartRateRequestDecision = decideBondingGatedOperation(
+        sessionId = sessionId,
+        logPrefix = logPrefix,
+        operationLabel = "read $characteristicLabel",
+        value = value,
+    )
+
+    /**
+     * Shared bonding gate for a GATT server operation (a characteristic read, or a CCCD
+     * write to enable notifications): rejects the operation with
+     * [GattResponseStatus.InsufficientAuthentication] the first time a session attempts
+     * it, which the platform Bluetooth stack turns into a bonding/pairing request. Once
+     * bonding completes, the central automatically retries the operation and it succeeds
+     * - this is the standard Bluetooth behaviour for an unbonded link touching a
+     * security-gated attribute, rather than dropping the connection or silently
+     * withholding data.
+     */
+    private fun decideBondingGatedOperation(
+        sessionId: PeripheralSessionId,
+        logPrefix: String,
+        operationLabel: String,
+        value: (() -> ByteArray)? = null,
     ): HeartRateRequestDecision {
         if (sessionId in bondedSessions) {
             return HeartRateRequestDecision(
                 status = GattResponseStatus.Success,
-                value = value(),
-                log = "$logPrefix read $characteristicLabel (already bonded)",
+                value = value?.invoke(),
+                log = "$logPrefix $operationLabel (already bonded)",
             )
         }
         if (sessionId in bondingRequestedSessions) {
-            // The central retried the read, which only happens after the platform
+            // The central retried the operation, which only happens after the platform
             // Bluetooth stack has successfully established an encrypted/bonded link.
             return HeartRateRequestDecision(
                 status = GattResponseStatus.Success,
-                value = value(),
+                value = value?.invoke(),
                 stagedBondedSessionId = sessionId,
-                log = "$logPrefix bonded; returned $characteristicLabel",
+                log = "$logPrefix bonded; accepted $operationLabel",
             )
         }
         bondingRequestedSessions += sessionId
         return HeartRateRequestDecision(
             status = GattResponseStatus.InsufficientAuthentication,
-            log = "$logPrefix read $characteristicLabel: requesting bonding " +
+            log = "$logPrefix $operationLabel: requesting bonding " +
                 "(insufficient authentication)",
         )
     }
@@ -459,6 +481,13 @@ class PeripheralHeartRateController(
      * from ever registering the subscription, so [sendHeartRateMeasurement] never finds
      * a subscribed session to notify. Accept it here so subscriptions work correctly;
      * any other descriptor remains unsupported.
+     *
+     * When [PeripheralServerState.bondingRequired] is enabled, this CCCD write is gated
+     * by bonding the same way a protected characteristic read is: standard Bluetooth
+     * behaviour for a security-gated attribute on an unbonded link is for the GATT server
+     * to reject the operation with [GattResponseStatus.InsufficientAuthentication] (not to
+     * drop the connection or silently withhold notifications), which prompts the platform
+     * Bluetooth stack to bond and then retry the write automatically.
      */
     private fun decideDescriptorWrite(
         request: GattDescriptorWriteRequest,
@@ -467,14 +496,21 @@ class PeripheralHeartRateController(
         if (!request.hasHeartRateHandle()) {
             return invalidHandleDecision(logPrefix)
         }
-        return if (request.descriptorId == ClientCharacteristicConfigurationDescriptor.id) {
-            HeartRateRequestDecision(
-                status = GattResponseStatus.Success,
-                log = "$logPrefix accepted client characteristic configuration write",
-            )
-        } else {
-            unsupportedDecision(logPrefix, "descriptor write")
+        if (request.descriptorId != ClientCharacteristicConfigurationDescriptor.id) {
+            return unsupportedDecision(logPrefix, "descriptor write")
         }
+        if (!mutableState.value.bondingRequired) {
+            return HeartRateRequestDecision(
+                status = GattResponseStatus.Success,
+                log = "$logPrefix accepted client characteristic configuration write " +
+                    "(bonding not enforced)",
+            )
+        }
+        return decideBondingGatedOperation(
+            sessionId = request.sessionId,
+            logPrefix = logPrefix,
+            operationLabel = "client characteristic configuration write",
+        )
     }
 
     private suspend fun handleProcessingFailure(
