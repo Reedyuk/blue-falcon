@@ -329,6 +329,27 @@ class WindowsEngine : BlueFalconEngine {
     
     // Callbacks from native code
     @Suppress("unused")
+    private fun onAdapterStateChanged(ready: Boolean) {
+        _managerState.value = if (ready) BluetoothManagerState.Ready else BluetoothManagerState.NotReady
+    }
+
+    @Suppress("unused")
+    private fun onConnectionStateChanged(address: Long, state: Int) {
+        val peripheral = connections[address] ?: return
+        val newState = when (state) {
+            0 -> BluetoothPeripheralState.Disconnected
+            1 -> BluetoothPeripheralState.Connecting
+            2 -> BluetoothPeripheralState.Connected
+            3 -> BluetoothPeripheralState.Disconnecting
+            else -> BluetoothPeripheralState.Unknown
+        }
+        if (newState == BluetoothPeripheralState.Disconnected) {
+            connections.remove(address)
+        }
+        _connectionStateUpdates.tryEmit(ConnectionStateUpdate(peripheral, newState))
+    }
+
+    @Suppress("unused")
     private fun onDeviceDiscovered(
         address: Long,
         name: String?,
