@@ -1,5 +1,6 @@
 package com.example.bluefalconcomposemultiplatform.peripheral.presentation
 
+import com.example.bluefalconcomposemultiplatform.peripheral.ClientCharacteristicConfigurationDescriptor
 import com.example.bluefalconcomposemultiplatform.peripheral.HeartRateGatt
 import com.example.bluefalconcomposemultiplatform.peripheral.PeripheralExampleRuntime
 import dev.bluefalcon.peripheral.AdvertiseConfig
@@ -287,13 +288,7 @@ class PeripheralHeartRateController(
                 }
             }
 
-            is GattDescriptorWriteRequest -> {
-                if (!request.hasHeartRateHandle()) {
-                    invalidHandleDecision(logPrefix)
-                } else {
-                    unsupportedDecision(logPrefix, "descriptor write")
-                }
-            }
+            is GattDescriptorWriteRequest -> decideDescriptorWrite(request, logPrefix)
 
             is GattExecuteWriteRequest -> unsupportedDecision(logPrefix, "execute write")
         }
@@ -454,6 +449,33 @@ class PeripheralHeartRateController(
         status = GattResponseStatus.RequestNotSupported,
         log = "$logPrefix unsupported request: $operation",
     )
+
+    /**
+     * Writes to the Client Characteristic Configuration Descriptor (`0x2902`) are how a
+     * central enables/disables Heart Rate Measurement notifications. On platforms that
+     * forward this write to the app (e.g. Android), rejecting it - as
+     * [unsupportedDecision] previously did unconditionally for every descriptor write -
+     * both surfaces an ATT error to the central and prevents the peripheral framework
+     * from ever registering the subscription, so [sendHeartRateMeasurement] never finds
+     * a subscribed session to notify. Accept it here so subscriptions work correctly;
+     * any other descriptor remains unsupported.
+     */
+    private fun decideDescriptorWrite(
+        request: GattDescriptorWriteRequest,
+        logPrefix: String,
+    ): HeartRateRequestDecision {
+        if (!request.hasHeartRateHandle()) {
+            return invalidHandleDecision(logPrefix)
+        }
+        return if (request.descriptorId == ClientCharacteristicConfigurationDescriptor.id) {
+            HeartRateRequestDecision(
+                status = GattResponseStatus.Success,
+                log = "$logPrefix accepted client characteristic configuration write",
+            )
+        } else {
+            unsupportedDecision(logPrefix, "descriptor write")
+        }
+    }
 
     private suspend fun handleProcessingFailure(
         terminal: TerminalHeartRateResponse,

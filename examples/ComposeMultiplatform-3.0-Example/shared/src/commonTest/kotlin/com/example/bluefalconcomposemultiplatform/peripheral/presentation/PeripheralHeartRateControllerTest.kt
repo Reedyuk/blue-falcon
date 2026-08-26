@@ -1,5 +1,6 @@
 package com.example.bluefalconcomposemultiplatform.peripheral.presentation
 
+import com.example.bluefalconcomposemultiplatform.peripheral.ClientCharacteristicConfigurationDescriptor
 import com.example.bluefalconcomposemultiplatform.peripheral.HeartRateGatt
 import dev.bluefalcon.core.toUuid
 import com.example.bluefalconcomposemultiplatform.peripheral.PeripheralExampleRuntime
@@ -9,6 +10,8 @@ import dev.bluefalcon.peripheral.DisconnectResult
 import dev.bluefalcon.peripheral.GattCharacteristicId
 import dev.bluefalcon.peripheral.GattCharacteristicReadRequest
 import dev.bluefalcon.peripheral.GattCharacteristicWriteRequest
+import dev.bluefalcon.peripheral.GattDescriptorId
+import dev.bluefalcon.peripheral.GattDescriptorWriteRequest
 import dev.bluefalcon.peripheral.GattResponseHandle
 import dev.bluefalcon.peripheral.GattResponseResult
 import dev.bluefalcon.peripheral.GattResponseStatus
@@ -343,6 +346,68 @@ class PeripheralHeartRateControllerTest {
 
         controller.setBondOnHeartRateRead(false)
         assertTrue(controller.state.value.bondOnHeartRateRead)
+    }
+
+    @Test
+    fun heartRateMeasurementCccdWriteIsAccepted() = runTest {
+        val manager = HeartRateFakePeripheral()
+        PeripheralHeartRateController(
+            runtime = PeripheralExampleRuntime(manager, HeartRateFakeQueue()),
+            scope = backgroundScope,
+        )
+        val session = HeartRateFakeSession()
+        manager.mutableSessions.value = setOf(session)
+        runCurrent()
+
+        val response = HeartRateRecordingResponseHandle()
+        manager.requestsChannel.send(
+            GattDescriptorWriteRequest(
+                session = session,
+                serviceId = HeartRateGatt.serviceId,
+                characteristicId = HeartRateGatt.heartRateMeasurementId,
+                descriptorId = ClientCharacteristicConfigurationDescriptor.id,
+                offset = 0,
+                value = byteArrayOf(0x01, 0x00),
+                preparedWrite = false,
+                response = response,
+            ),
+        )
+        runCurrent()
+
+        // Accepting this write is what lets the peripheral framework register the
+        // central's notification subscription; rejecting it (as previously happened
+        // for every descriptor write) breaks heart rate notifications on platforms -
+        // like Android - that surface CCCD writes to the app.
+        assertEquals(GattResponseStatus.Success, response.singleStatus)
+    }
+
+    @Test
+    fun unknownDescriptorWriteIsUnsupported() = runTest {
+        val manager = HeartRateFakePeripheral()
+        PeripheralHeartRateController(
+            runtime = PeripheralExampleRuntime(manager, HeartRateFakeQueue()),
+            scope = backgroundScope,
+        )
+        val session = HeartRateFakeSession()
+        manager.mutableSessions.value = setOf(session)
+        runCurrent()
+
+        val response = HeartRateRecordingResponseHandle()
+        manager.requestsChannel.send(
+            GattDescriptorWriteRequest(
+                session = session,
+                serviceId = HeartRateGatt.serviceId,
+                characteristicId = HeartRateGatt.heartRateMeasurementId,
+                descriptorId = GattDescriptorId("00002901-0000-1000-8000-00805f9b34fb".toUuid()),
+                offset = 0,
+                value = byteArrayOf(0x00),
+                preparedWrite = false,
+                response = response,
+            ),
+        )
+        runCurrent()
+
+        assertEquals(GattResponseStatus.RequestNotSupported, response.singleStatus)
     }
 
     @Test

@@ -3,6 +3,7 @@ package com.example.bluefalconcomposemultiplatform.peripheral
 import dev.bluefalcon.core.toUuid
 import dev.bluefalcon.peripheral.BlueFalconPeripheral
 import dev.bluefalcon.peripheral.GattCharacteristicId
+import dev.bluefalcon.peripheral.GattDescriptorId
 import dev.bluefalcon.peripheral.GattServiceId
 import dev.bluefalcon.plugins.queue.PeripheralQueue
 import kotlin.uuid.ExperimentalUuidApi
@@ -11,6 +12,29 @@ data class PeripheralExampleRuntime(
     val manager: BlueFalconPeripheral,
     val queue: PeripheralQueue,
 )
+
+/**
+ * Client Characteristic Configuration Descriptor (`0x2902`). Centrals write this
+ * descriptor to enable/disable notifications or indications on a characteristic.
+ *
+ * Platform peripheral backends handle this descriptor differently:
+ * - Android forwards the raw ATT descriptor write to the app as a
+ *   [dev.bluefalcon.peripheral.GattDescriptorWriteRequest] and only registers the
+ *   subscription (and lets `PeripheralSession.subscriptions` reflect it) once the app
+ *   responds with [dev.bluefalcon.peripheral.GattResponseStatus.Success].
+ * - Apple's CoreBluetooth-backed stack manages the CCCD transparently via
+ *   `didSubscribeToCharacteristic`/`didUnsubscribeFromCharacteristic` and never
+ *   forwards a descriptor write request to the app for it.
+ *
+ * Example request handlers must therefore accept writes to this descriptor (instead of
+ * rejecting all descriptor writes as unsupported) so notification subscriptions work on
+ * platforms that surface it explicitly.
+ */
+@OptIn(ExperimentalUuidApi::class)
+object ClientCharacteristicConfigurationDescriptor {
+    const val uuid = "00002902-0000-1000-8000-00805f9b34fb"
+    val id: GattDescriptorId = GattDescriptorId(uuid.toUuid())
+}
 
 @OptIn(ExperimentalUuidApi::class)
 object EchoGatt {
