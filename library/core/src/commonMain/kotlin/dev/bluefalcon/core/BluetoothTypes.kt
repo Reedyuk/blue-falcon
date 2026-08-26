@@ -47,6 +47,26 @@ interface BluetoothPeripheral {
      */
     val manufacturerData: Map<Int, ByteArray>
         get() = emptyMap()
+
+    /**
+     * Service UUIDs advertised by this peripheral, gathered from every advertisement AD
+     * structure that carries a service UUID: the complete/incomplete service UUID list *and*
+     * the service data structure. Populated from scan results; empty when not advertised or
+     * not yet scanned.
+     *
+     * Many real-world devices (e.g. Xiaomi/Mi Home accessories) only advertise their service
+     * UUID inside the service-data AD structure rather than the service UUID list, so this is
+     * a superset of what a platform's native scan-filter UUID matching considers.
+     */
+    val advertisedServiceUUIDs: List<Uuid>
+        get() = emptyList()
+
+    /**
+     * Whether the peripheral's advertisement indicated it is connectable, or `null` when the
+     * platform/advertisement does not expose this information.
+     */
+    val isConnectable: Boolean?
+        get() = null
 }
 
 /**

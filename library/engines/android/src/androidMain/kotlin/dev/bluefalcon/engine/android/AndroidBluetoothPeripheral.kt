@@ -37,6 +37,12 @@ class AndroidBluetoothPeripheral(val device: BluetoothDevice) : BluetoothPeriphe
     @Volatile
     override var manufacturerData: Map<Int, ByteArray> = emptyMap()
 
+    @Volatile
+    override var advertisedServiceUUIDs: List<Uuid> = emptyList()
+
+    @Volatile
+    override var isConnectable: Boolean? = null
+
     /**
      * Clears transient per-connection state (discovered services and the negotiated MTU) so that a
      * later reconnect using this same reused instance does not observe stale values from the previous

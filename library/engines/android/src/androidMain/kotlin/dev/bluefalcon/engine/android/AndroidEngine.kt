@@ -71,6 +71,11 @@ class AndroidEngine(
     
     override var isScanning: Boolean = false
         private set
+
+    // Filters requested via scan(); matching is performed in software in the scan callback -
+    // see the comment in scan() for why we don't rely on the native ScanFilter for this.
+    @Volatile
+    private var activeScanFilters: List<ServiceFilter> = emptyList()
     
     private val bluetoothManager: BluetoothManager =
         context.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
@@ -119,18 +124,18 @@ class AndroidEngine(
     override suspend fun scan(filters: List<ServiceFilter>) {
         logger?.info("Starting scan with ${filters.size} filters")
         isScanning = true
-        
-        val scanFilters: List<ScanFilter> = if (filters.isEmpty()) {
-            listOf(ScanFilter.Builder().build())
-        } else {
-            filters.map { filter ->
-                val filterBuilder = ScanFilter.Builder()
-                val parcelUuid = android.os.ParcelUuid(java.util.UUID.fromString(filter.uuid.toString()))
-                filterBuilder.setServiceUuid(parcelUuid)
-                filterBuilder.build()
-            }
-        }
-        
+        activeScanFilters = filters
+
+        // Android's native ScanFilter.setServiceUuid() only matches the "complete/incomplete
+        // service UUID list" AD structure. Many real devices (e.g. Xiaomi/Mi Home accessories,
+        // which advertise 0000fe95-...) only put their service UUID in the "service data" AD
+        // structure instead, so a hardware-level ScanFilter silently drops them before they ever
+        // reach our callback - see https://github.com/Reedyuk/blue-falcon/issues/222. To match the
+        // more lenient behaviour of CoreBluetooth (macOS/iOS) we always scan unfiltered at the
+        // platform level and apply [ServiceFilter] matching in software against every advertised
+        // service UUID we can observe (see [matchesActiveFilters]).
+        val scanFilters: List<ScanFilter> = listOf(ScanFilter.Builder().build())
+
         val settings = ScanSettings.Builder()
             .setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY)
             .build()
@@ -764,21 +769,53 @@ class AndroidEngine(
         private fun addScanResult(result: ScanResult?) {
             logger?.debug("addScanResult $result")
             result?.device?.let { device ->
+                val advertisedServiceUUIDs = extractServiceUuids(result)
+                if (!matchesActiveFilters(advertisedServiceUUIDs)) return
                 val bluetoothPeripheral = AndroidBluetoothPeripheral(device)
                 val newRssi = result.rssi.toFloat()
                 bluetoothPeripheral.rssi = newRssi
                 bluetoothPeripheral.manufacturerData = extractManufacturerData(result)
+                bluetoothPeripheral.advertisedServiceUUIDs = advertisedServiceUUIDs
+                bluetoothPeripheral.isConnectable = extractConnectable(result)
                 val existing = _peripherals.value.find { it.uuid == bluetoothPeripheral.uuid }
                 if (existing != null) {
                     (existing as? AndroidBluetoothPeripheral)?.rssi = newRssi
                     (existing as? AndroidBluetoothPeripheral)?.manufacturerData =
                         bluetoothPeripheral.manufacturerData
+                    (existing as? AndroidBluetoothPeripheral)?.advertisedServiceUUIDs =
+                        bluetoothPeripheral.advertisedServiceUUIDs
+                    (existing as? AndroidBluetoothPeripheral)?.isConnectable =
+                        bluetoothPeripheral.isConnectable
                     _rssiUpdates.tryEmit(bluetoothPeripheral.uuid to newRssi)
                 } else {
                     _peripherals.value = _peripherals.value + setOf(bluetoothPeripheral)
                 }
             }
         }
+
+        /**
+         * Matches [ServiceFilter]s in software against every service UUID we can observe in the
+         * advertisement (service UUID list *and* service data), rather than relying on Android's
+         * native `ScanFilter`, which only inspects the service UUID list AD structure. See
+         * https://github.com/Reedyuk/blue-falcon/issues/222.
+         */
+        private fun matchesActiveFilters(advertisedServiceUUIDs: List<Uuid>): Boolean {
+            val filters = activeScanFilters
+            if (filters.isEmpty()) return true
+            return filters.any { it.uuid in advertisedServiceUUIDs }
+        }
+
+        private fun extractServiceUuids(result: ScanResult): List<Uuid> {
+            val scanRecord = result.scanRecord ?: return emptyList()
+            val fromServiceUuidList = scanRecord.serviceUuids?.map { it.uuid.toString().toUuid() }
+                ?: emptyList()
+            val fromServiceData = scanRecord.serviceData?.keys?.map { it.uuid.toString().toUuid() }
+                ?: emptyList()
+            return (fromServiceUuidList + fromServiceData).distinct()
+        }
+
+        private fun extractConnectable(result: ScanResult): Boolean? =
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) result.isConnectable else null
 
         private fun extractManufacturerData(result: ScanResult): Map<Int, ByteArray> {
             val scanRecord = result.scanRecord ?: return emptyMap()
