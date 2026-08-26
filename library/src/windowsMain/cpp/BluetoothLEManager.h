@@ -8,6 +8,7 @@
 #include <winrt/Windows.Devices.Bluetooth.GenericAttributeProfile.h>
 #include <winrt/Windows.Devices.Bluetooth.Advertisement.h>
 #include <winrt/Windows.Devices.Enumeration.h>
+#include <winrt/Windows.Devices.Radios.h>
 #include <winrt/Windows.Storage.Streams.h>
 #include <string>
 #include <map>
@@ -22,6 +23,7 @@ using namespace Windows::Devices::Bluetooth;
 using namespace Windows::Devices::Bluetooth::GenericAttributeProfile;
 using namespace Windows::Devices::Bluetooth::Advertisement;
 using namespace Windows::Devices::Enumeration;
+using namespace Windows::Devices::Radios;
 
 // Forward declarations
 class BluetoothLEManager;
@@ -33,6 +35,7 @@ struct DeviceConnection {
     std::map<winrt::guid, GattDeviceService> services;
     std::map<winrt::guid, GattCharacteristic> characteristics;
     int connectionState; // 0=disconnected, 1=connecting, 2=connected, 3=disconnecting
+    event_token connectionStatusChangedToken;
 };
 
 // Singleton manager for Bluetooth LE operations
@@ -69,6 +72,10 @@ private:
     // Helper methods
     void callJavaMethod(const char* methodName, const char* signature, ...);
     uint64_t bluetoothAddressToUint64(uint64_t address);
+    void notifyConnectionStateChanged(uint64_t address, int state);
+    void subscribeToDeviceConnectionStatus(std::shared_ptr<DeviceConnection> connection);
+    void initializeRadioMonitoring();
+    void notifyManagerStateChanged(bool ready);
     
     // Advertisement watcher
     BluetoothLEAdvertisementWatcher m_watcher{nullptr};
@@ -82,4 +89,9 @@ private:
     // Device connections
     std::map<uint64_t, std::shared_ptr<DeviceConnection>> m_connections;
     SRWLOCK m_connectionsMutex = SRWLOCK_INIT;
+
+    // Bluetooth radio (adapter) state monitoring
+    Radio m_bluetoothRadio{nullptr};
+    event_token m_radioStateChangedToken;
+    bool m_lastReportedRadioReady = false;
 };

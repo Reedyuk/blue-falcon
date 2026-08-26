@@ -11,6 +11,10 @@ BluetoothLEManager& BluetoothLEManager::getInstance() {
 
 BluetoothLEManager::~BluetoothLEManager() {
     stopScan();
+    if (m_radioStateChangedToken.value != 0 && m_bluetoothRadio != nullptr) {
+        m_bluetoothRadio.StateChanged(m_radioStateChangedToken);
+        m_radioStateChangedToken = event_token{};
+    }
     if (m_javaObject) {
         JNIEnv* env = nullptr;
         m_jvm->GetEnv((void**)&env, JNI_VERSION_1_6);
@@ -31,6 +35,110 @@ void BluetoothLEManager::initialize(JavaVM* jvm, jobject javaObject) {
     
     // Initialize WinRT
     init_apartment();
+
+    initializeRadioMonitoring();
+}
+
+void BluetoothLEManager::initializeRadioMonitoring() {
+    try {
+        // Find the first Bluetooth radio and subscribe to its power state so we can
+        // reflect the OS-level adapter on/off state as BluetoothManagerState, instead
+        // of only reporting Ready/NotReady once at native-library load time.
+        auto radiosOp = Radio::GetRadiosAsync();
+        radiosOp.Completed([this](auto&& asyncInfo, AsyncStatus status) {
+            if (status != AsyncStatus::Completed) return;
+            try {
+                auto radios = asyncInfo.GetResults();
+                for (auto radio : radios) {
+                    if (radio.Kind() == RadioKind::Bluetooth) {
+                        m_bluetoothRadio = radio;
+                        break;
+                    }
+                }
+                if (m_bluetoothRadio == nullptr) {
+                    notifyManagerStateChanged(false);
+                    return;
+                }
+
+                notifyManagerStateChanged(
+                    m_bluetoothRadio.State() == RadioState::On
+                );
+
+                m_radioStateChangedToken = m_bluetoothRadio.StateChanged(
+                    [this](Radio radio, auto&& args) {
+                        notifyManagerStateChanged(radio.State() == RadioState::On);
+                    });
+            } catch (...) {
+                notifyManagerStateChanged(false);
+            }
+        });
+    } catch (...) {
+        notifyManagerStateChanged(false);
+    }
+}
+
+void BluetoothLEManager::notifyManagerStateChanged(bool ready) {
+    m_lastReportedRadioReady = ready;
+
+    JNIEnv* env = nullptr;
+    if (m_jvm->AttachCurrentThread((void**)&env, nullptr) == JNI_OK) {
+        jclass cls = env->GetObjectClass(m_javaObject);
+        jmethodID mid = env->GetMethodID(cls, "onAdapterStateChanged", "(Z)V");
+        if (mid != nullptr) {
+            env->CallVoidMethod(m_javaObject, mid, (jboolean)ready);
+        }
+        env->DeleteLocalRef(cls);
+        m_jvm->DetachCurrentThread();
+    }
+}
+
+void BluetoothLEManager::notifyConnectionStateChanged(uint64_t address, int state) {
+    JNIEnv* env = nullptr;
+    if (m_jvm->AttachCurrentThread((void**)&env, nullptr) == JNI_OK) {
+        jclass cls = env->GetObjectClass(m_javaObject);
+        jmethodID mid = env->GetMethodID(cls, "onConnectionStateChanged", "(JI)V");
+        if (mid != nullptr) {
+            env->CallVoidMethod(m_javaObject, mid, (jlong)address, (jint)state);
+        }
+        env->DeleteLocalRef(cls);
+        m_jvm->DetachCurrentThread();
+    }
+}
+
+void BluetoothLEManager::subscribeToDeviceConnectionStatus(std::shared_ptr<DeviceConnection> connection) {
+    if (connection->device == nullptr) return;
+
+    uint64_t address = connection->address;
+    connection->connectionStatusChangedToken = connection->device.ConnectionStatusChanged(
+        [this, address](BluetoothLEDevice device, auto&& args) {
+            int newState;
+            if (device.ConnectionStatus() == BluetoothConnectionStatus::Connected) {
+                newState = 2; // Connected
+            } else {
+                newState = 0; // Disconnected
+            }
+
+            {
+                SRWLockGuard lock(&m_connectionsMutex);
+                auto it = m_connections.find(address);
+                if (it == m_connections.end()) return;
+                if (it->second->connectionState == newState) return;
+                it->second->connectionState = newState;
+                if (newState == 0) {
+                    // The remote device (or its own radio) dropped the link outside of
+                    // our own disconnect() call - e.g. the peripheral's Bluetooth was
+                    // turned off. Clear cached GATT state so a future connect() starts
+                    // clean, but keep the map entry removed only after notifying Java.
+                    if (it->second->device != nullptr) {
+                        it->second->device.ConnectionStatusChanged(
+                            it->second->connectionStatusChangedToken);
+                    }
+                    m_connections.erase(it);
+                }
+            }
+
+            notifyConnectionStateChanged(address, newState);
+        });
 }
 
 void BluetoothLEManager::startScan(JNIEnv* env, jobjectArray serviceUuids) {
@@ -177,26 +285,31 @@ void BluetoothLEManager::connect(uint64_t address) {
     // Connect to device asynchronously
     auto asyncOp = BluetoothLEDevice::FromBluetoothAddressAsync(address);
     asyncOp.Completed([this, address](auto&& asyncInfo, AsyncStatus status) {
-        SRWLockGuard lock(&m_connectionsMutex);
-        auto it = m_connections.find(address);
-        if (it == m_connections.end()) return;
-        
-        if (status == AsyncStatus::Completed) {
-            try {
-                it->second->device = asyncInfo.GetResults();
-                it->second->connectionState = 2; // Connected
-                
-                // Notify Java
-                JNIEnv* env = nullptr;
-                if (m_jvm->AttachCurrentThread((void**)&env, nullptr) == JNI_OK) {
-                    // Connection successful - Java code will call discoverServices
-                    m_jvm->DetachCurrentThread();
+        std::shared_ptr<DeviceConnection> connectedConnection;
+        {
+            SRWLockGuard lock(&m_connectionsMutex);
+            auto it = m_connections.find(address);
+            if (it == m_connections.end()) return;
+
+            if (status == AsyncStatus::Completed) {
+                try {
+                    it->second->device = asyncInfo.GetResults();
+                    it->second->connectionState = 2; // Connected
+                    connectedConnection = it->second;
+                } catch (...) {
+                    m_connections.erase(it);
+                    return;
                 }
-            } catch (...) {
+            } else {
                 m_connections.erase(it);
+                return;
             }
-        } else {
-            m_connections.erase(it);
+        }
+
+        // Subscribe outside the lock so the callback (which re-acquires the lock)
+        // can never deadlock against this completion handler.
+        if (connectedConnection) {
+            subscribeToDeviceConnectionStatus(connectedConnection);
         }
     });
 }
@@ -210,6 +323,7 @@ void BluetoothLEManager::disconnect(uint64_t address) {
         
         // Close device
         if (it->second->device != nullptr) {
+            it->second->device.ConnectionStatusChanged(it->second->connectionStatusChangedToken);
             it->second->device.Close();
             it->second->device = nullptr;
         }
