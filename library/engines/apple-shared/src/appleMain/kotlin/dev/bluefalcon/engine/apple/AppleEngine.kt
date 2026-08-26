@@ -587,11 +587,12 @@ class AppleEngine : BlueFalconEngine, CBCentralManagerCallback, CBPeripheralCall
         error: NSError?
     ) {
         if (error != null) return
-        if (!nativeConnectionOwnership.isActive(
-                peripheral.identifier.UUIDString,
-                peripheral,
-            )
-        ) {
+        // Gate on the UUID-tracked connection (not referential equality of the CBPeripheral
+        // instance) to stay consistent with activeConnection(). CoreBluetooth can hand back a
+        // different CBPeripheral wrapper for the same underlying device (e.g. after a
+        // reconnect via retrievePeripheralsWithIdentifiers), which previously caused valid
+        // notifications to be silently dropped on iOS.
+        if (connectedPeripherals[peripheral.identifier.UUIDString] == null) {
             return
         }
         val value = snapshotCallbackPayload(
