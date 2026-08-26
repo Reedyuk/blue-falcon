@@ -21,6 +21,7 @@ class PeripheralServerViewModel(
 ) : ViewModel() {
     private var controllerScope = newControllerScope()
     private var bondingRequiredPreference = false
+    private var bondOnHeartRateReadPreference = false
     private var active: ActiveController =
         ActiveController.Echo(PeripheralEchoController(runtime, controllerScope))
 
@@ -56,6 +57,11 @@ class PeripheralServerViewModel(
         (active as? ActiveController.HeartRate)?.controller?.setBondingRequired(required)
     }
 
+    fun setBondOnHeartRateRead(required: Boolean) {
+        bondOnHeartRateReadPreference = required
+        (active as? ActiveController.HeartRate)?.controller?.setBondOnHeartRateRead(required)
+    }
+
     fun selectProfile(profile: PeripheralProfile) {
         if (!mutableState.value.canSwitchProfile) return
         if (profile == mutableState.value.profile) return
@@ -74,6 +80,7 @@ class PeripheralServerViewModel(
                             runtime = runtime,
                             scope = controllerScope,
                             initialBondingRequired = bondingRequiredPreference,
+                            initialBondOnHeartRateRead = bondOnHeartRateReadPreference,
                         ),
                     )
             }

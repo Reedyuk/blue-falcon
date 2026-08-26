@@ -45,11 +45,20 @@ import kotlin.time.Duration.Companion.seconds
  * attempt from a session is rejected with [GattResponseStatus.InsufficientAuthentication],
  * which the platform Bluetooth stack turns into a bonding/pairing request. Once bonding
  * completes, the central retries the read and the controller returns the sensor location.
+ *
+ * The Heart Rate Measurement characteristic is normally notify-only, but when
+ * [PeripheralServerState.bondOnHeartRateRead] is enabled, an explicit read of it is gated
+ * by bonding the same way: the first read is rejected with
+ * [GattResponseStatus.InsufficientAuthentication] to request bonding immediately, and once
+ * bonded, reads succeed with the current heart rate reading. This lets bonding be
+ * requested as soon as the heart rate characteristic is read, instead of waiting for a
+ * Body Sensor Location read.
  */
 class PeripheralHeartRateController(
     private val runtime: PeripheralExampleRuntime?,
     private val scope: CoroutineScope,
     initialBondingRequired: Boolean = false,
+    initialBondOnHeartRateRead: Boolean = false,
 ) {
     private val supported = runtime?.manager?.capabilities?.let { capabilities ->
         capabilities.localGattServer && capabilities.connectableAdvertising
@@ -59,6 +68,7 @@ class PeripheralHeartRateController(
             supported = supported,
             profile = PeripheralProfile.HEART_RATE_MONITOR,
             bondingRequired = initialBondingRequired,
+            bondOnHeartRateRead = initialBondOnHeartRateRead,
         ),
     )
     val state: StateFlow<PeripheralServerState> = mutableState.asStateFlow()
@@ -186,6 +196,11 @@ class PeripheralHeartRateController(
         mutableState.update { current -> current.copy(bondingRequired = required) }
     }
 
+    fun setBondOnHeartRateRead(required: Boolean) {
+        if (!state.value.canToggleBondOnHeartRateRead) return
+        mutableState.update { current -> current.copy(bondOnHeartRateRead = required) }
+    }
+
     private fun startSimulation() {
         val currentRuntime = runtime?.takeIf { supported } ?: return
         if (simulationJob != null) return
@@ -224,7 +239,7 @@ class PeripheralHeartRateController(
         if (currentRuntime.manager.state.value != PeripheralManagerState.Running) return
 
         // Flags byte 0x00: heart rate value format is UINT8, no optional fields present.
-        val payload = byteArrayOf(0x00, bpm.toByte())
+        val payload = heartRateMeasurementPayload(bpm)
         val targets = currentRuntime.manager.sessions.value.filter { session ->
             HeartRateGatt.heartRateMeasurementId in session.subscriptions.value
         }
@@ -295,10 +310,8 @@ class PeripheralHeartRateController(
             HeartRateGatt.bodySensorLocationId ->
                 decideBodySensorLocationRead(request, logPrefix)
 
-            HeartRateGatt.heartRateMeasurementId -> HeartRateRequestDecision(
-                status = GattResponseStatus.ReadNotPermitted,
-                log = "$logPrefix rejected: heart rate measurement is notify-only",
-            )
+            HeartRateGatt.heartRateMeasurementId ->
+                decideHeartRateMeasurementRead(request, logPrefix)
 
             else -> invalidHandleDecision(logPrefix)
         }
@@ -308,7 +321,6 @@ class PeripheralHeartRateController(
         request: GattCharacteristicReadRequest,
         logPrefix: String,
     ): HeartRateRequestDecision {
-        val sessionId = request.sessionId
         if (!mutableState.value.bondingRequired) {
             return HeartRateRequestDecision(
                 status = GattResponseStatus.Success,
@@ -316,11 +328,49 @@ class PeripheralHeartRateController(
                 log = "$logPrefix read body sensor location (bonding not enforced)",
             )
         }
+        return decideBondingGatedRead(
+            sessionId = request.sessionId,
+            logPrefix = logPrefix,
+            characteristicLabel = "body sensor location",
+            value = { byteArrayOf(HeartRateGatt.BODY_SENSOR_LOCATION_CHEST) },
+        )
+    }
+
+    private fun decideHeartRateMeasurementRead(
+        request: GattCharacteristicReadRequest,
+        logPrefix: String,
+    ): HeartRateRequestDecision {
+        if (!mutableState.value.bondOnHeartRateRead) {
+            return HeartRateRequestDecision(
+                status = GattResponseStatus.ReadNotPermitted,
+                log = "$logPrefix rejected: heart rate measurement is notify-only",
+            )
+        }
+        return decideBondingGatedRead(
+            sessionId = request.sessionId,
+            logPrefix = logPrefix,
+            characteristicLabel = "heart rate measurement",
+            value = { currentHeartRateMeasurementPayload() },
+        )
+    }
+
+    /**
+     * Shared bonding gate for a characteristic read: rejects the first read from a session
+     * with [GattResponseStatus.InsufficientAuthentication] to request bonding immediately,
+     * then succeeds with [value] once the platform Bluetooth stack retries the read after
+     * bonding completes.
+     */
+    private fun decideBondingGatedRead(
+        sessionId: PeripheralSessionId,
+        logPrefix: String,
+        characteristicLabel: String,
+        value: () -> ByteArray,
+    ): HeartRateRequestDecision {
         if (sessionId in bondedSessions) {
             return HeartRateRequestDecision(
                 status = GattResponseStatus.Success,
-                value = byteArrayOf(HeartRateGatt.BODY_SENSOR_LOCATION_CHEST),
-                log = "$logPrefix read body sensor location (already bonded)",
+                value = value(),
+                log = "$logPrefix read $characteristicLabel (already bonded)",
             )
         }
         if (sessionId in bondingRequestedSessions) {
@@ -328,18 +378,21 @@ class PeripheralHeartRateController(
             // Bluetooth stack has successfully established an encrypted/bonded link.
             return HeartRateRequestDecision(
                 status = GattResponseStatus.Success,
-                value = byteArrayOf(HeartRateGatt.BODY_SENSOR_LOCATION_CHEST),
+                value = value(),
                 stagedBondedSessionId = sessionId,
-                log = "$logPrefix bonded; returned body sensor location",
+                log = "$logPrefix bonded; returned $characteristicLabel",
             )
         }
         bondingRequestedSessions += sessionId
         return HeartRateRequestDecision(
             status = GattResponseStatus.InsufficientAuthentication,
-            log = "$logPrefix read body sensor location: requesting bonding " +
+            log = "$logPrefix read $characteristicLabel: requesting bonding " +
                 "(insufficient authentication)",
         )
     }
+
+    private fun currentHeartRateMeasurementPayload(): ByteArray =
+        heartRateMeasurementPayload(mutableState.value.heartRateBpm)
 
     private fun decideWrite(
         request: GattCharacteristicWriteRequest,
@@ -521,6 +574,11 @@ private fun heartRateConfig() = PeripheralConfig(
     ),
     restorationIdentifier = HeartRateGatt.restorationIdentifier,
 )
+
+private fun heartRateMeasurementPayload(bpm: Int): ByteArray {
+    // Flags byte 0x00: heart rate value format is UINT8, no optional fields present.
+    return byteArrayOf(0x00, bpm.toByte())
+}
 
 private const val MIN_SIMULATED_BPM = 55
 private const val MAX_SIMULATED_BPM = 120

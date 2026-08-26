@@ -247,6 +247,105 @@ class PeripheralHeartRateControllerTest {
     }
 
     @Test
+    fun heartRateMeasurementReadRequiresBondingWhenEnabled() = runTest {
+        val manager = HeartRateFakePeripheral()
+        val controller = PeripheralHeartRateController(
+            runtime = PeripheralExampleRuntime(manager, HeartRateFakeQueue()),
+            scope = backgroundScope,
+            initialBondOnHeartRateRead = true,
+        )
+        manager.mutableState.value = PeripheralManagerState.Running
+        val session = HeartRateFakeSession()
+        manager.mutableSessions.value = setOf(session)
+        runCurrent()
+
+        val firstResponse = HeartRateRecordingResponseHandle()
+        manager.requestsChannel.send(
+            GattCharacteristicReadRequest(
+                session = session,
+                serviceId = HeartRateGatt.serviceId,
+                characteristicId = HeartRateGatt.heartRateMeasurementId,
+                offset = 0,
+                response = firstResponse,
+            ),
+        )
+        runCurrent()
+
+        assertEquals(
+            GattResponseStatus.InsufficientAuthentication,
+            firstResponse.singleStatus,
+        )
+        assertEquals(0, controller.state.value.bondedSessionCount)
+
+        val secondResponse = HeartRateRecordingResponseHandle()
+        manager.requestsChannel.send(
+            GattCharacteristicReadRequest(
+                session = session,
+                serviceId = HeartRateGatt.serviceId,
+                characteristicId = HeartRateGatt.heartRateMeasurementId,
+                offset = 0,
+                response = secondResponse,
+            ),
+        )
+        runCurrent()
+
+        assertEquals(GattResponseStatus.Success, secondResponse.singleStatus)
+        assertContentEquals(
+            byteArrayOf(0x00, controller.state.value.heartRateBpm.toByte()),
+            secondResponse.singleValue,
+        )
+        assertEquals(1, controller.state.value.bondedSessionCount)
+    }
+
+    @Test
+    fun bondOnHeartRateReadNotEnforcedKeepsRejectingReads() = runTest {
+        val manager = HeartRateFakePeripheral()
+        val controller = PeripheralHeartRateController(
+            runtime = PeripheralExampleRuntime(manager, HeartRateFakeQueue()),
+            scope = backgroundScope,
+            initialBondOnHeartRateRead = false,
+        )
+        val session = HeartRateFakeSession()
+        manager.mutableSessions.value = setOf(session)
+        runCurrent()
+
+        assertFalse(controller.state.value.bondOnHeartRateRead)
+
+        val response = HeartRateRecordingResponseHandle()
+        manager.requestsChannel.send(
+            GattCharacteristicReadRequest(
+                session = session,
+                serviceId = HeartRateGatt.serviceId,
+                characteristicId = HeartRateGatt.heartRateMeasurementId,
+                offset = 0,
+                response = response,
+            ),
+        )
+        runCurrent()
+
+        assertEquals(GattResponseStatus.ReadNotPermitted, response.singleStatus)
+        assertEquals(0, controller.state.value.bondedSessionCount)
+    }
+
+    @Test
+    fun bondOnHeartRateReadCanOnlyBeChangedWhileStopped() = runTest {
+        val manager = HeartRateFakePeripheral()
+        val controller = PeripheralHeartRateController(
+            runtime = PeripheralExampleRuntime(manager, HeartRateFakeQueue()),
+            scope = backgroundScope,
+        )
+
+        controller.setBondOnHeartRateRead(true)
+        assertTrue(controller.state.value.bondOnHeartRateRead)
+
+        controller.start()
+        runCurrent()
+
+        controller.setBondOnHeartRateRead(false)
+        assertTrue(controller.state.value.bondOnHeartRateRead)
+    }
+
+    @Test
     fun controlPointResetSucceedsAndUnsupportedOpcodeIsRejected() = runTest {
         val manager = HeartRateFakePeripheral()
         PeripheralHeartRateController(

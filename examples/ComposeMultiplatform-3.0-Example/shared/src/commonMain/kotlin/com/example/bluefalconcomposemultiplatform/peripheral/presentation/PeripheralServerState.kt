@@ -12,6 +12,7 @@ data class PeripheralServerState(
     val heartRateBpm: Int = DEFAULT_HEART_RATE_BPM,
     val simulatingHeartRate: Boolean = false,
     val bondingRequired: Boolean = false,
+    val bondOnHeartRateRead: Boolean = false,
     val bondedSessionCount: Int = 0,
     val log: List<String> = emptyList(),
 ) {
@@ -30,6 +31,10 @@ data class PeripheralServerState(
         get() = supported && managerState == PeripheralManagerState.Running
     val canSwitchProfile get() = supported && managerState == PeripheralManagerState.Stopped
     val canToggleBondingRequirement
+        get() = supported &&
+            profile == PeripheralProfile.HEART_RATE_MONITOR &&
+            managerState == PeripheralManagerState.Stopped
+    val canToggleBondOnHeartRateRead
         get() = supported &&
             profile == PeripheralProfile.HEART_RATE_MONITOR &&
             managerState == PeripheralManagerState.Stopped

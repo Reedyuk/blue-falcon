@@ -40,6 +40,7 @@ fun PeripheralServerView(
         onSend = viewModel::sendNotification,
         onToggleHeartRateSimulation = viewModel::toggleHeartRateSimulation,
         onSetBondingRequired = viewModel::setBondingRequired,
+        onSetBondOnHeartRateRead = viewModel::setBondOnHeartRateRead,
         modifier = modifier,
     )
 }
@@ -54,6 +55,7 @@ fun PeripheralServerView(
     onSend: () -> Unit,
     onToggleHeartRateSimulation: () -> Unit,
     onSetBondingRequired: (Boolean) -> Unit,
+    onSetBondOnHeartRateRead: (Boolean) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     LazyColumn(
@@ -191,6 +193,34 @@ fun PeripheralServerView(
                                     } else {
                                         "Bonding is not enforced: Body Sensor " +
                                             "Location can be read immediately."
+                                    },
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                ) {
+                                    Text(
+                                        text = "Request bonding as soon as " +
+                                            "Heart Rate Measurement is read",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        modifier = Modifier.weight(1f),
+                                    )
+                                    Switch(
+                                        checked = state.bondOnHeartRateRead,
+                                        onCheckedChange = onSetBondOnHeartRateRead,
+                                        enabled = state.canToggleBondOnHeartRateRead,
+                                    )
+                                }
+                                Text(
+                                    text = if (state.bondOnHeartRateRead) {
+                                        "Reading Heart Rate Measurement requests " +
+                                            "bonding immediately: the first read is " +
+                                            "rejected and triggers a pairing request."
+                                    } else {
+                                        "Heart Rate Measurement stays notify-only " +
+                                            "and rejects explicit reads."
                                     },
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
