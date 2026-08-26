@@ -3,9 +3,11 @@ package com.example.bluefalconcomposemultiplatform.peripheral.presentation
 import com.example.bluefalconcomposemultiplatform.peripheral.ClientCharacteristicConfigurationDescriptor
 import com.example.bluefalconcomposemultiplatform.peripheral.HeartRateGatt
 import com.example.bluefalconcomposemultiplatform.peripheral.PeripheralExampleRuntime
+import com.example.bluefalconcomposemultiplatform.peripheral.PlatformGattPermissions
 import dev.bluefalcon.peripheral.AdvertiseConfig
 import dev.bluefalcon.peripheral.CharacteristicProperty
 import dev.bluefalcon.peripheral.GattCharacteristicConfig
+import dev.bluefalcon.peripheral.GattDescriptorConfig
 import dev.bluefalcon.peripheral.GattCharacteristicReadRequest
 import dev.bluefalcon.peripheral.GattCharacteristicWrite
 import dev.bluefalcon.peripheral.GattCharacteristicWriteBatchRequest
@@ -74,7 +76,6 @@ class PeripheralHeartRateController(
     )
     val state: StateFlow<PeripheralServerState> = mutableState.asStateFlow()
 
-    private val config = heartRateConfig()
     private var subscriptionObserverJob: Job? = null
     private var simulationJob: Job? = null
 
@@ -163,7 +164,7 @@ class PeripheralHeartRateController(
     suspend fun start() {
         val manager = runtime?.manager?.takeIf { supported } ?: return
         try {
-            manager.start(config)
+            manager.start(heartRateConfig(mutableState.value))
         } catch (cause: CancellationException) {
             throw cause
         } catch (cause: Exception) {
@@ -603,7 +604,20 @@ private class TerminalHeartRateResponse(
     }
 }
 
-private fun heartRateConfig() = PeripheralConfig(
+/**
+ * Builds the Heart Rate GATT server configuration for the current [PeripheralServerState].
+ *
+ * When [PeripheralServerState.bondingRequired] is enabled, the Body Sensor Location
+ * characteristic and the Heart Rate Measurement CCCD descriptor are additionally marked
+ * with the platform's real "requires encryption" permission bits
+ * ([PlatformGattPermissions.readEncrypted]/[PlatformGattPermissions.writeEncrypted]).
+ * This makes the OS Bluetooth stack itself enforce and track the security requirement -
+ * and therefore complete and persist a real bond visible in system Settings - rather than
+ * relying solely on the app faking an
+ * [dev.bluefalcon.peripheral.GattResponseStatus.InsufficientAuthentication] response, which
+ * is enough to trigger pairing/retry but does not guarantee a persisted OS-level bond.
+ */
+private fun heartRateConfig(state: PeripheralServerState) = PeripheralConfig(
     advertiseConfig = AdvertiseConfig(
         localName = "Blue Falcon Heart Rate",
         serviceUuids = listOf(HeartRateGatt.serviceUuid),
@@ -614,10 +628,25 @@ private fun heartRateConfig() = PeripheralConfig(
                     GattCharacteristicConfig(
                         uuid = HeartRateGatt.heartRateMeasurementUuid,
                         properties = setOf(CharacteristicProperty.NOTIFY),
+                        descriptors = if (state.bondingRequired) {
+                            listOf(
+                                GattDescriptorConfig(
+                                    uuid = ClientCharacteristicConfigurationDescriptor.uuid,
+                                    permissions = PlatformGattPermissions.writeEncrypted,
+                                ),
+                            )
+                        } else {
+                            emptyList()
+                        },
                     ),
                     GattCharacteristicConfig(
                         uuid = HeartRateGatt.bodySensorLocationUuid,
                         properties = setOf(CharacteristicProperty.READ),
+                        permissions = if (state.bondingRequired) {
+                            PlatformGattPermissions.readEncrypted
+                        } else {
+                            0
+                        },
                         initialValue = byteArrayOf(
                             HeartRateGatt.BODY_SENSOR_LOCATION_CHEST,
                         ),
