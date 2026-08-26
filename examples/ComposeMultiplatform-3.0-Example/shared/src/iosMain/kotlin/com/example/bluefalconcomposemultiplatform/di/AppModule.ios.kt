@@ -20,8 +20,9 @@ actual class AppModule {
     }
 
     private val engine = IosEngine()
+    private val peripheralLogger: dev.bluefalcon.core.Logger = dev.bluefalcon.core.PrintLnLogger
     actual val advertiser: BluetoothAdvertiser = createBluetoothAdvertiser()
-    private val peripheralManager = createBlueFalconPeripheral()
+    private val peripheralManager = createBlueFalconPeripheral(logger = peripheralLogger)
     actual val peripheralRuntime: PeripheralExampleRuntime? = PeripheralExampleRuntime(
         manager = peripheralManager,
         queue = peripheralManager.plugins.install(QueuePlugin) {

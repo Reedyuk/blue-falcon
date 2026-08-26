@@ -21,6 +21,12 @@ class MacosJvmBluetoothCharacteristic(
     private var _service: BluetoothService? = null
     private val _notifications = MutableSharedFlow<ByteArray>(extraBufferCapacity = 64)
 
+    // Reflects CoreBluetooth's actual subscription state, updated from
+    // didUpdateNotificationStateForCharacteristic — not whether NOTIFY is a
+    // supported property (that would always be true for a notifiable characteristic).
+    @Volatile
+    private var _isNotifying: Boolean = false
+
     override val value: ByteArray?
         get() = _value
 
@@ -31,10 +37,12 @@ class MacosJvmBluetoothCharacteristic(
         get() = _notifications.asSharedFlow()
 
     override val isNotifying: Boolean
-        get() = (properties and PROPERTY_NOTIFY) != 0
+        get() = _isNotifying
 
     override val service: BluetoothService?
         get() = _service
+
+    internal fun updateNotifying(notifying: Boolean) { _isNotifying = notifying }
 
     internal fun updateValue(value: ByteArray) { _value = value }
 

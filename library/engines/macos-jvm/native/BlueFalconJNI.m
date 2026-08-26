@@ -584,7 +584,27 @@ didUpdateValueForDescriptor:(CBDescriptor *)descriptor
 - (void)peripheral:(CBPeripheral *)peripheral
 didUpdateNotificationStateForCharacteristic:(CBCharacteristic *)characteristic
              error:(NSError *)error {
-    // Notification state is reflected in characteristic.isNotifying; no extra callback needed
+    if (error) return;
+
+    jboolean att; JNIEnv *env = getEnv(&att);
+    if (!env || !gEngineRef) { releaseEnv(att); return; }
+
+    jclass cls = (*env)->GetObjectClass(env, gEngineRef);
+    jmethodID m = (*env)->GetMethodID(env, cls, "onNotificationStateChanged",
+        "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Z)V");
+    (*env)->DeleteLocalRef(env, cls);
+
+    if (m) {
+        jstring jpuuid = toJString(env, peripheral.identifier.UUIDString);
+        jstring jsuuid = toJString(env, characteristic.service.UUID.UUIDString);
+        jstring jcuuid = toJString(env, characteristic.UUID.UUIDString);
+        (*env)->CallVoidMethod(env, gEngineRef, m, jpuuid, jsuuid, jcuuid,
+            characteristic.isNotifying ? JNI_TRUE : JNI_FALSE);
+        (*env)->DeleteLocalRef(env, jpuuid);
+        (*env)->DeleteLocalRef(env, jsuuid);
+        (*env)->DeleteLocalRef(env, jcuuid);
+    }
+    releaseEnv(att);
 }
 
 - (void)peripheral:(CBPeripheral *)peripheral
