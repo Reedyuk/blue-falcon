@@ -33,6 +33,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LocalContentColor
+import kotlin.math.round
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -166,8 +167,9 @@ fun ScanResultCard(
                     )
                     // Show estimated distance if available
                     estimatedDistanceMeters?.let { distance ->
+                        val roundedDistance = round(distance * 10) / 10
                         Text(
-                            text = "~${String.format("%.1f", distance)}m",
+                            text = "~${roundedDistance}m",
                             fontSize = 8.sp,
                             color = MaterialTheme.colorScheme.outline
                         )
