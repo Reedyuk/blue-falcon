@@ -404,6 +404,13 @@ class MeshNode(
      * forwards received frames into [handleInboundFrame].
      */
     private suspend fun subscribeToNeighborNotifications(neighbor: BluetoothPeripheral, scope: CoroutineScope) {
+        // Auto-discovery of services after connect is only implemented by the Android
+        // engine; on Apple platforms `neighbor.services` stays empty forever unless
+        // discovery is explicitly requested here, which silently broke central-role
+        // reads/writes/subscriptions on iOS/macOS. Requesting discovery is harmless
+        // (and a no-op wait) on platforms that already auto-discover.
+        runCatching { central.discoverServices(neighbor, listOf(config.meshServiceUuid)) }
+
         val characteristic = withTimeoutOrNull(10.seconds) {
             var found: BluetoothCharacteristic? = null
             while (found == null) {
