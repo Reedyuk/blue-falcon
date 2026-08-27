@@ -70,7 +70,7 @@ class DistanceEstimationTest {
     @Test
     fun `typical beacon ranges produce reasonable estimates`() {
         val txPower = -59f
-        val pathLoss = 2.5 // typical indoor
+        val pathLoss = 2.5 // typical indoor (matches plugin default)
         
         // Immediate range (strong signal)
         val immediate = estimateDistance(-45f, txPower, pathLoss)

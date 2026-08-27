@@ -10,13 +10,6 @@ class ProximityZoneTest {
 
     @Test
     fun `immediate zone for strong signal`() {
-        val plugin = ProximityPlugin.create {
-            immediateThreshold = -50f
-            nearThreshold = -75f
-        }
-        
-        // Access internal method via reflection or test through readings
-        // For now, test via the public interface by checking zone assignment
         assertEquals(ProximityZone.Immediate, classifyZone(-40f, -50f, -75f))
         assertEquals(ProximityZone.Immediate, classifyZone(-50f, -50f, -75f))
     }

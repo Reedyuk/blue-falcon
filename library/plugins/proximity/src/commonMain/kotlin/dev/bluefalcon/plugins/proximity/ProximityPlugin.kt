@@ -10,6 +10,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlin.math.pow
 
 /**
@@ -75,8 +77,10 @@ class ProximityPlugin(private val config: Config) : BlueFalconPlugin {
          * - 2.0: Free space (ideal, unobstructed)
          * - 2.5-3.0: Typical indoor environment
          * - 3.0-4.0: Obstructed/cluttered environment
+         *
+         * Default 2.5 is suitable for typical indoor BLE deployments.
          */
-        var pathLossExponent: Double = 2.0
+        var pathLossExponent: Double = 2.5
 
         /**
          * Smoothed RSSI threshold (dBm) at or above which a peripheral is classified as [ProximityZone.Immediate].
@@ -111,7 +115,9 @@ class ProximityPlugin(private val config: Config) : BlueFalconPlugin {
     val proximityReadings: StateFlow<Map<String, ProximityReading>> = _proximityReadings.asStateFlow()
 
     // Per-peripheral filter state: filter instance + sample count
+    // Guarded by filterStatesMutex for thread-safe access from concurrent coroutines.
     private val filterStates = mutableMapOf<String, FilterState>()
+    private val filterStatesMutex = Mutex()
 
     private data class FilterState(
         val filter: RssiFilter,
@@ -126,7 +132,13 @@ class ProximityPlugin(private val config: Config) : BlueFalconPlugin {
         return _proximityReadings.value[peripheral.uuid]
     }
 
-    override fun install(client: BlueFalconClient, config: PluginConfig) {
+    /**
+     * Installs the plugin into the BlueFalcon client.
+     *
+     * Note: The framework-provided config parameter is intentionally unused; this plugin uses
+     * its own [Config] instance passed to the constructor via [create].
+     */
+    override fun install(client: BlueFalconClient, @Suppress("UNUSED_PARAMETER") config: PluginConfig) {
         // Cast to BlueFalcon to access rssiUpdates and peripherals flows
         val blueFalcon = client as? BlueFalcon ?: return
 
@@ -146,20 +158,22 @@ class ProximityPlugin(private val config: Config) : BlueFalconPlugin {
         }
     }
 
-    private fun processRssiUpdate(uuid: String, rawRssi: Float) {
-        // Get or create filter state for this peripheral
-        val state = filterStates.getOrPut(uuid) {
-            FilterState(filter = createFilter(config.smoothing))
+    private suspend fun processRssiUpdate(uuid: String, rawRssi: Float) {
+        // Get or create filter state for this peripheral (thread-safe)
+        val (state, smoothedRssi, sampleCount) = filterStatesMutex.withLock {
+            val state = filterStates.getOrPut(uuid) {
+                FilterState(filter = createFilter(config.smoothing))
+            }
+            state.sampleCount++
+            val smoothedRssi = state.filter.filter(rawRssi)
+            Triple(state, smoothedRssi, state.sampleCount)
         }
-
-        state.sampleCount++
-        val smoothedRssi = state.filter.filter(rawRssi)
 
         // Classify proximity zone based on smoothed RSSI
         val zone = classifyZone(smoothedRssi)
 
         // Estimate distance only if we have enough samples
-        val estimatedDistance = if (state.sampleCount >= config.minSamplesForDistance) {
+        val estimatedDistance = if (sampleCount >= config.minSamplesForDistance) {
             estimateDistance(smoothedRssi, config.defaultTxPower, config.pathLossExponent)
         } else {
             null
@@ -171,7 +185,7 @@ class ProximityPlugin(private val config: Config) : BlueFalconPlugin {
             smoothedRssi = smoothedRssi,
             estimatedDistanceMeters = estimatedDistance,
             zone = zone,
-            sampleCount = state.sampleCount
+            sampleCount = sampleCount
         )
 
         _proximityReadings.update { current ->
@@ -201,9 +215,11 @@ class ProximityPlugin(private val config: Config) : BlueFalconPlugin {
         return 10.0.pow(ratio)
     }
 
-    private fun pruneStaleEntries(currentUuids: Set<String>) {
-        // Remove filter states for peripherals no longer present
-        filterStates.keys.removeAll { it !in currentUuids }
+    private suspend fun pruneStaleEntries(currentUuids: Set<String>) {
+        // Remove filter states for peripherals no longer present (thread-safe)
+        filterStatesMutex.withLock {
+            filterStates.keys.removeAll { it !in currentUuids }
+        }
 
         // Remove readings for peripherals no longer present
         _proximityReadings.update { current ->
@@ -214,6 +230,9 @@ class ProximityPlugin(private val config: Config) : BlueFalconPlugin {
     /**
      * Clear all proximity readings and reset filter state.
      * Useful when starting a fresh scan session.
+     *
+     * Note: This method is not thread-safe with ongoing RSSI processing. Call it only
+     * when you're certain no RSSI updates are being processed (e.g., when scanning is stopped).
      */
     fun clearAll() {
         filterStates.clear()
@@ -222,6 +241,8 @@ class ProximityPlugin(private val config: Config) : BlueFalconPlugin {
 
     /**
      * Clear the proximity reading and filter state for a specific peripheral.
+     *
+     * Note: This method is not thread-safe with ongoing RSSI processing for the same peripheral.
      */
     fun clearPeripheral(uuid: String) {
         filterStates.remove(uuid)
