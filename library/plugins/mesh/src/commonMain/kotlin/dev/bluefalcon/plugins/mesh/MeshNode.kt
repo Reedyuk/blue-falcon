@@ -1,6 +1,7 @@
 package dev.bluefalcon.plugins.mesh
 
 import dev.bluefalcon.core.BlueFalcon
+import dev.bluefalcon.core.BluetoothCharacteristic
 import dev.bluefalcon.core.BluetoothPeripheral
 import dev.bluefalcon.core.CharacteristicWriteType
 import dev.bluefalcon.core.PeripheralConnectionState
@@ -366,6 +367,13 @@ class MeshNode(
                 runCatching { central.changeMTU(neighbor, config.preferredMtu) }
                 awaitSufficientWriteCapability(neighbor)
 
+                // Subscribe to the mesh characteristic's notifications so this node
+                // actually receives messages relayed by the neighbor. Without this,
+                // the connection is write-only: this node can send to the neighbor
+                // but the neighbor's notify() calls have no subscriber and are never
+                // delivered here.
+                subscribeToNeighborNotifications(neighbor, scope)
+
                 // Wait for connection and add to neighbors
                 centralNeighborsMutex.withLock {
                     centralNeighbors[neighbor.uuid] = neighbor
@@ -388,6 +396,38 @@ class MeshNode(
                 // Connection failed - neighbor will be retried on next scan discovery
             }
         }
+    }
+
+    /**
+     * Waits for the mesh characteristic to be discovered on [neighbor] (services are
+     * discovered automatically on connect), then enables notifications on it and
+     * forwards received frames into [handleInboundFrame].
+     */
+    private suspend fun subscribeToNeighborNotifications(neighbor: BluetoothPeripheral, scope: CoroutineScope) {
+        val characteristic = withTimeoutOrNull(10.seconds) {
+            var found: BluetoothCharacteristic? = null
+            while (found == null) {
+                found = neighbor.services
+                    .find { it.uuid == config.meshServiceUuid }
+                    ?.characteristics
+                    ?.find { it.uuid == config.meshCharacteristicUuid }
+                if (found == null) delay(100)
+            }
+            found
+        } ?: return
+
+        scope.launch {
+            characteristic.notifications.collect { frame ->
+                handleInboundFrame(
+                    sourceId = neighbor.uuid,
+                    sourceSession = null,
+                    sourcePeripheral = neighbor,
+                    frame = frame,
+                )
+            }
+        }
+
+        central.setNotificationSubscription(neighbor, characteristic, enabled = true)
     }
 
     private suspend fun handleInboundFrame(
