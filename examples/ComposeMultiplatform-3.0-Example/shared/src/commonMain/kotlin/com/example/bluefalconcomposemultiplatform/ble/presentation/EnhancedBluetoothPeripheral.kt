@@ -18,5 +18,12 @@ data class EnhancedBluetoothPeripheral(
     /** Cached RSSI, kept fresh by rssiUpdates flow (falls back to peripheral.rssi on first discovery). */
     val rssi: Float? = null,
     /** Manufacturer-specific data from scan advertisement: company ID → hex payload string. */
-    val manufacturerData: Map<Int, String> = emptyMap()
+    val manufacturerData: Map<Int, String> = emptyMap(),
+    /**
+     * Human-readable reason the last connect attempt failed or the peripheral unexpectedly
+     * disconnected, derived from [dev.bluefalcon.core.DisconnectReason] via
+     * [dev.bluefalcon.core.BlueFalcon.connectionStates]. `null` while connected/connecting or if
+     * the peripheral has never failed/dropped.
+     */
+    val connectionError: String? = null
 )

@@ -1,6 +1,7 @@
 package dev.bluefalcon.core.plugin
 
 import dev.bluefalcon.core.*
+import kotlin.time.Duration
 
 /**
  * Base interface for Blue Falcon plugins
@@ -76,6 +77,33 @@ interface BlueFalconPlugin {
         characteristic: BluetoothCharacteristic,
         value: ByteArray
     ) {}
+}
+
+/**
+ * The kind of operation a [RetryCapable] plugin is being asked to retry.
+ */
+enum class RetryableOperation {
+    CONNECT,
+    READ,
+    WRITE
+}
+
+/**
+ * Optional capability that a [BlueFalconPlugin] can implement to actually drive retries of
+ * failed operations. The [PluginRegistry] consults every installed [RetryCapable] plugin after
+ * an operation fails and, if any of them return a non-null delay, re-invokes the underlying
+ * platform operation after waiting for that delay.
+ */
+interface RetryCapable {
+    /**
+     * Called after [operation] fails with [error].
+     *
+     * @param attempt zero-based index of the retry being considered (0 for the first retry
+     * following the initial failed attempt).
+     * @return the [Duration] to wait before retrying, or `null` if this operation should not be
+     * retried (either because the error isn't retryable or the retry budget is exhausted).
+     */
+    suspend fun retryDelay(operation: RetryableOperation, attempt: Int, error: Throwable): Duration?
 }
 
 /**

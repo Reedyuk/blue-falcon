@@ -2,6 +2,7 @@ package dev.bluefalcon.core.plugin
 
 import dev.bluefalcon.core.CharacteristicWriteResult
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.delay
 
 /**
  * Registry for managing installed plugins
@@ -45,6 +46,43 @@ class PluginRegistry {
     }
     
     /**
+     * Plugins that can decide whether a failed operation should be retried.
+     */
+    private val retryCapablePlugins: List<RetryCapable>
+        get() = plugins.filterIsInstance<RetryCapable>()
+
+    /**
+     * Re-invokes [proceed] while any installed [RetryCapable] plugin requests a retry after
+     * [result] represents a failure. Returns the last result observed.
+     */
+    private suspend fun <C, R> retryUntilSatisfied(
+        operation: RetryableOperation,
+        call: C,
+        initialResult: R,
+        isFailure: (R) -> Boolean,
+        failureCause: (R) -> Throwable?,
+        proceed: suspend (C) -> R
+    ): R {
+        val retryPlugins = retryCapablePlugins
+        if (retryPlugins.isEmpty()) {
+            return initialResult
+        }
+
+        var result = initialResult
+        var attempt = 0
+        while (isFailure(result)) {
+            val error = failureCause(result) ?: break
+            val delayDuration = retryPlugins.firstNotNullOfOrNull {
+                it.retryDelay(operation, attempt, error)
+            } ?: break
+            delay(delayDuration)
+            attempt++
+            result = proceed(call)
+        }
+        return result
+    }
+
+    /**
      * Execute connect interceptors
      */
     suspend fun interceptConnect(call: ConnectCall, proceed: suspend (ConnectCall) -> Result<Unit>): Result<Unit> {
@@ -52,7 +90,15 @@ class PluginRegistry {
         for (plugin in plugins) {
             currentCall = plugin.onBeforeConnect(currentCall)
         }
-        val result = proceed(currentCall)
+        val initialResult = proceed(currentCall)
+        val result = retryUntilSatisfied(
+            operation = RetryableOperation.CONNECT,
+            call = currentCall,
+            initialResult = initialResult,
+            isFailure = { it.isFailure },
+            failureCause = { it.exceptionOrNull() },
+            proceed = proceed
+        )
         for (plugin in plugins.reversed()) {
             plugin.onAfterConnect(currentCall, result)
         }
@@ -67,7 +113,15 @@ class PluginRegistry {
         for (plugin in plugins) {
             currentCall = plugin.onBeforeRead(currentCall)
         }
-        val result = proceed(currentCall)
+        val initialResult = proceed(currentCall)
+        val result = retryUntilSatisfied(
+            operation = RetryableOperation.READ,
+            call = currentCall,
+            initialResult = initialResult,
+            isFailure = { it.isFailure },
+            failureCause = { it.exceptionOrNull() },
+            proceed = proceed
+        )
         for (plugin in plugins.reversed()) {
             plugin.onAfterRead(currentCall, result)
         }
@@ -82,7 +136,15 @@ class PluginRegistry {
         for (plugin in plugins) {
             currentCall = plugin.onBeforeWrite(currentCall)
         }
-        val result = proceed(currentCall)
+        val initialResult = proceed(currentCall)
+        val result = retryUntilSatisfied(
+            operation = RetryableOperation.WRITE,
+            call = currentCall,
+            initialResult = initialResult,
+            isFailure = { it.isFailure },
+            failureCause = { it.exceptionOrNull() },
+            proceed = proceed
+        )
         for (plugin in plugins.reversed()) {
             plugin.onAfterWrite(currentCall, result)
         }

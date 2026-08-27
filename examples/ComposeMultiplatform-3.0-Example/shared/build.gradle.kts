@@ -6,6 +6,7 @@ plugins {
 }
 
 val falconVersion = "3.7.3"
+val peripheralVersion = "3.7.1"
 val coroutinesVersion = "1.11.0"
 
 kotlin {
@@ -55,7 +56,7 @@ kotlin {
 
                 // Blue Falcon 3.0
                 implementation("dev.bluefalcon:blue-falcon-core:$falconVersion")
-                implementation("dev.bluefalcon:blue-falcon-peripheral:$falconVersion")
+                implementation("dev.bluefalcon:blue-falcon-peripheral:$peripheralVersion")
                 implementation("dev.bluefalcon:blue-falcon-plugin-logging:$falconVersion")
                 implementation("dev.bluefalcon:blue-falcon-plugin-queue:$falconVersion")
                 implementation("dev.bluefalcon:blue-falcon-plugin-retry:$falconVersion")

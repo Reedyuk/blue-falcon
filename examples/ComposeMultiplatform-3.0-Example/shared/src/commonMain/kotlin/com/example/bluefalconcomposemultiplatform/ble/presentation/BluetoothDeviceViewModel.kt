@@ -1,7 +1,8 @@
 package com.example.bluefalconcomposemultiplatform.ble.presentation
 
 import dev.bluefalcon.core.BlueFalcon
-import dev.bluefalcon.core.BluetoothPeripheralState
+import dev.bluefalcon.core.DisconnectReason
+import dev.bluefalcon.core.PeripheralConnectionState
 import dev.bluefalcon.core.ServiceDiscoveryPhase
 import dev.bluefalcon.core.ServiceFilter
 import dev.bluefalcon.core.toUuid
@@ -111,21 +112,25 @@ class BluetoothDeviceViewModel(
             }
         }
 
-        // Collect connection state updates so the UI reflects actual BLE state.
-        // Do not rely on connectionState() polling after connect() — BLE connections are
-        // asynchronous and the state will still read Disconnected until this callback fires.
+        // Collect the structured per-peripheral connection state machine (ADR 0008) so the UI
+        // reflects actual BLE state, including synchronous connect failures that never emit a
+        // raw connectionStateUpdates event at all (engine.connect() throwing before any platform
+        // callback fires). This is a StateFlow, so it also derives an authoritative snapshot for
+        // every peripheral currently known to the UI on each emission - no polling required.
         viewModelScope.launch(Dispatchers.IO) {
-            blueFalcon.connectionStateUpdates.collect { update ->
-                val peripheralId = update.peripheral.uuid
-                val isNowConnected = update.state == BluetoothPeripheralState.Connected
+            blueFalcon.connectionStates.collect { states ->
                 _deviceState.update { state ->
                     val updatedDevices = state.devices.toMutableMap()
-                    updatedDevices[peripheralId]?.let { device ->
-                        // The connect/disconnect operation has resolved, so clear the
-                        // in-flight spinner regardless of the resulting connection state.
-                        updatedDevices[peripheralId] = device.copy(connected = isNowConnected, connecting = false)
+                    var changed = false
+                    state.devices.forEach { (peripheralId, device) ->
+                        val peripheralState = states[peripheralId] ?: return@forEach
+                        val updated = device.applyConnectionState(peripheralState)
+                        if (updated != device) {
+                            updatedDevices[peripheralId] = updated
+                            changed = true
+                        }
                     }
-                    state.copy(devices = HashMap(updatedDevices))
+                    if (changed) state.copy(devices = HashMap(updatedDevices)) else state
                 }
             }
         }
@@ -287,8 +292,11 @@ class BluetoothDeviceViewModel(
                     if (device.connected && device.peripheral.services.isEmpty()) {
                         viewModelScope.launch(Dispatchers.IO) {
                             try {
-                                val state = blueFalcon.connectionState(device.peripheral)
-                                if (state == BluetoothPeripheralState.Connected) {
+                                // peripheralState() (ADR 0008) reflects the same authoritative
+                                // state as connectionStates, so this check is consistent with the
+                                // connected/connecting flags already driving the UI.
+                                val state = blueFalcon.peripheralState(device.peripheral)
+                                if (state is PeripheralConnectionState.Connected || state is PeripheralConnectionState.Ready) {
                                     blueFalcon.discoverServices(device.peripheral)
                                 }
                             } catch (e: Exception) {
@@ -526,7 +534,8 @@ class BluetoothDeviceViewModel(
                 notificationData = existingDevice?.notificationData ?: emptyMap(),
                 fotaState = existingDevice?.fotaState ?: FotaState.Idle,
                 rssi = peripheral.rssi ?: existingDevice?.rssi,
-                manufacturerData = mfData.ifEmpty { existingDevice?.manufacturerData ?: emptyMap() }
+                manufacturerData = mfData.ifEmpty { existingDevice?.manufacturerData ?: emptyMap() },
+                connectionError = existingDevice?.connectionError
             )
         }
         return updatedDevices
@@ -548,4 +557,32 @@ class BluetoothDeviceViewModel(
         }
         return null
     }
+}
+
+/**
+ * Folds a [PeripheralConnectionState] (ADR 0008) into this device's UI-facing
+ * connected/connecting/connectionError fields.
+ */
+private fun EnhancedBluetoothPeripheral.applyConnectionState(
+    state: PeripheralConnectionState
+): EnhancedBluetoothPeripheral = when (state) {
+    is PeripheralConnectionState.Connecting ->
+        copy(connecting = true, connected = false, connectionError = null)
+    is PeripheralConnectionState.Connected, is PeripheralConnectionState.Ready ->
+        copy(connecting = false, connected = true, connectionError = null)
+    is PeripheralConnectionState.Disconnecting ->
+        copy(connecting = true)
+    is PeripheralConnectionState.Disconnected ->
+        copy(
+            connecting = false,
+            connected = false,
+            connectionError = state.reason?.toDisplayMessage()
+        )
+}
+
+/** Human-readable message for a [DisconnectReason], or `null` for an expected user-initiated disconnect. */
+private fun DisconnectReason.toDisplayMessage(): String? = when (this) {
+    is DisconnectReason.UserInitiated -> null
+    is DisconnectReason.ConnectFailed -> "Failed to connect: ${cause.message ?: cause::class.simpleName}"
+    is DisconnectReason.Unexpected -> "Connection lost unexpectedly"
 }

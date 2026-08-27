@@ -45,6 +45,16 @@ class FakeBlueFalconEngine : BlueFalconEngine {
     var shouldFailConnect = false
     var shouldFailRead = false
     var shouldFailWrite = false
+
+    // Number of remaining calls that should fail before the operation succeeds. Decremented on
+    // each invocation while > 0, allowing tests to simulate transient failures that eventually
+    // resolve (e.g. to exercise retry plugins).
+    var failConnectTimes = 0
+    var failReadTimes = 0
+    var failWriteTimes = 0
+    var connectCallCount = 0
+    var readCallCount = 0
+    var writeCallCount = 0
     var typedWriteResult: CharacteristicWriteResult = CharacteristicWriteResult.Unsupported
     var typedWriteFailure: Throwable? = null
     var lastTypedWriteValue: ByteArray? = null
@@ -72,7 +82,9 @@ class FakeBlueFalconEngine : BlueFalconEngine {
     
     override suspend fun connect(peripheral: BluetoothPeripheral, autoConnect: Boolean) {
         connectCalled = true
-        if (shouldFailConnect) {
+        connectCallCount++
+        if (shouldFailConnect || failConnectTimes > 0) {
+            if (failConnectTimes > 0) failConnectTimes--
             throw BluetoothUnknownException()
         }
         onConnect()
@@ -110,7 +122,9 @@ class FakeBlueFalconEngine : BlueFalconEngine {
         peripheral: BluetoothPeripheral,
         characteristic: BluetoothCharacteristic
     ) {
-        if (shouldFailRead) {
+        readCallCount++
+        if (shouldFailRead || failReadTimes > 0) {
+            if (failReadTimes > 0) failReadTimes--
             throw BluetoothUnknownException()
         }
     }
@@ -121,7 +135,9 @@ class FakeBlueFalconEngine : BlueFalconEngine {
         value: ByteArray,
         writeType: Int?
     ) {
-        if (shouldFailWrite) {
+        writeCallCount++
+        if (shouldFailWrite || failWriteTimes > 0) {
+            if (failWriteTimes > 0) failWriteTimes--
             throw BluetoothUnknownException()
         }
     }
@@ -241,6 +257,12 @@ class FakeBlueFalconEngine : BlueFalconEngine {
         shouldFailConnect = false
         shouldFailRead = false
         shouldFailWrite = false
+        failConnectTimes = 0
+        failReadTimes = 0
+        failWriteTimes = 0
+        connectCallCount = 0
+        readCallCount = 0
+        writeCallCount = 0
         typedWriteResult = CharacteristicWriteResult.Unsupported
         typedWriteFailure = null
         lastTypedWriteValue = null

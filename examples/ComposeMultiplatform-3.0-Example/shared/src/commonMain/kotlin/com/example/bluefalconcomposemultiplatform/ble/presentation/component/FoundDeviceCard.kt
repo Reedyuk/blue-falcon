@@ -54,6 +54,8 @@ fun ScanResultCard(
     manufacturerData: Map<Int, String> = emptyMap(),
     connected: Boolean,
     connecting: Boolean = false,
+    /** Message from the last failed connect attempt or unexpected disconnect (ADR 0008); null when none. */
+    connectionError: String? = null,
     onConnect: () -> Unit,
     onSelect: () -> Unit
 ) {
@@ -122,6 +124,14 @@ fun ScanResultCard(
                         text = "MFR: $mfText",
                         fontSize = 10.sp,
                         color = MaterialTheme.colorScheme.outline
+                    )
+                }
+                if (!connectionError.isNullOrBlank() && !connected && !connecting) {
+                    Text(
+                        text = connectionError,
+                        fontSize = 10.sp,
+                        color = MaterialTheme.colorScheme.error,
+                        fontWeight = FontWeight.Medium
                     )
                 }
             }

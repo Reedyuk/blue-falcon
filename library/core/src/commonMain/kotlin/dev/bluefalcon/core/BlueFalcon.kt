@@ -3,8 +3,14 @@ package dev.bluefalcon.core
 import dev.bluefalcon.core.plugin.*
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.update
 
 /**
  * Main Blue Falcon client that wraps an engine and provides plugin support
@@ -18,6 +24,12 @@ class BlueFalcon(
      */
     val plugins: PluginRegistry = PluginRegistry()
 
+    /**
+     * Backing store for the structured per-peripheral connection state machine (ADR 0008),
+     * keyed by [BluetoothPeripheral.uuid].
+     */
+    private val _connectionStates = MutableStateFlow<Map<String, PeripheralConnectionState>>(emptyMap())
+
     init {
         engine.scope.launch {
             engine.characteristicNotifications.collect { notification ->
@@ -28,6 +40,53 @@ class BlueFalcon(
                         value = notification.value
                     )
                 )
+            }
+        }
+
+        engine.scope.launch {
+            engine.connectionStateUpdates.collect { update ->
+                val uuid = update.peripheral.uuid
+                when (update.state) {
+                    BluetoothPeripheralState.Connected -> {
+                        _connectionStates.update { it + (uuid to PeripheralConnectionState.Connected) }
+                    }
+                    BluetoothPeripheralState.Disconnected -> {
+                        val previous = _connectionStates.value[uuid]
+                        val reason = when (previous) {
+                            is PeripheralConnectionState.Disconnecting -> DisconnectReason.UserInitiated
+                            is PeripheralConnectionState.Connecting -> DisconnectReason.ConnectFailed(
+                                BluetoothUnknownException()
+                            )
+                            is PeripheralConnectionState.Connected,
+                            is PeripheralConnectionState.Ready -> DisconnectReason.Unexpected
+                            else -> null
+                        }
+                        _connectionStates.update {
+                            it + (uuid to PeripheralConnectionState.Disconnected(reason))
+                        }
+                    }
+                    BluetoothPeripheralState.Connecting -> {
+                        _connectionStates.update { it + (uuid to PeripheralConnectionState.Connecting) }
+                    }
+                    BluetoothPeripheralState.Disconnecting -> {
+                        _connectionStates.update { it + (uuid to PeripheralConnectionState.Disconnecting) }
+                    }
+                    BluetoothPeripheralState.Unknown -> Unit
+                }
+            }
+        }
+
+        engine.scope.launch {
+            engine.serviceDiscoveryUpdates.collect { update ->
+                if (update.phase != ServiceDiscoveryPhase.ServicesDiscovered) return@collect
+                val uuid = update.peripheral.uuid
+                _connectionStates.update { current ->
+                    if (current[uuid] == PeripheralConnectionState.Connected) {
+                        current + (uuid to PeripheralConnectionState.Ready)
+                    } else {
+                        current
+                    }
+                }
             }
         }
     }
@@ -94,6 +153,48 @@ class BlueFalcon(
      * ```
      */
     val serviceDiscoveryUpdates: SharedFlow<ServiceDiscoveryUpdate> get() = engine.serviceDiscoveryUpdates
+
+    /**
+     * Structured, per-peripheral connection state (ADR 0008), keyed by [BluetoothPeripheral.uuid].
+     *
+     * Derived from [connectionStateUpdates] and [serviceDiscoveryUpdates]. Prefer
+     * [connectionStateFlow] or [peripheralState] for working with a single peripheral.
+     */
+    val connectionStates: StateFlow<Map<String, PeripheralConnectionState>> = _connectionStates.asStateFlow()
+
+    /**
+     * The current, structured connection state of [peripheral] (ADR 0008).
+     *
+     * Unlike [connectionState], this folds in GATT service discovery and typed disconnect
+     * reasons. Returns [PeripheralConnectionState.Disconnected] with a `null` reason for a
+     * peripheral that has never been connected to.
+     */
+    fun peripheralState(peripheral: BluetoothPeripheral): PeripheralConnectionState =
+        _connectionStates.value[peripheral.uuid] ?: PeripheralConnectionState.Disconnected()
+
+    /**
+     * A [StateFlow] of [peripheral]'s structured connection state (ADR 0008).
+     *
+     * Unlike [connectionStateUpdates] (a `SharedFlow` with no replay), a collector that
+     * subscribes after [peripheral] already connected immediately observes the current state
+     * instead of waiting for the next transition.
+     *
+     * ```kotlin
+     * launch {
+     *     blueFalcon.connectionStateFlow(peripheral).collect { state ->
+     *         when (state) {
+     *             is PeripheralConnectionState.Ready -> println("Ready to use ${peripheral.name}")
+     *             is PeripheralConnectionState.Disconnected -> println("Disconnected: ${state.reason}")
+     *             else -> Unit
+     *         }
+     *     }
+     * }
+     * ```
+     */
+    fun connectionStateFlow(peripheral: BluetoothPeripheral): StateFlow<PeripheralConnectionState> =
+        _connectionStates
+            .map { it[peripheral.uuid] ?: PeripheralConnectionState.Disconnected() }
+            .stateIn(engine.scope, SharingStarted.Eagerly, peripheralState(peripheral))
     
     /**
      * Scan for BLE devices
@@ -122,9 +223,17 @@ class BlueFalcon(
      * Connect to a peripheral
      */
     suspend fun connect(peripheral: BluetoothPeripheral, autoConnect: Boolean = false) {
-        plugins.interceptConnect(ConnectCall(peripheral, autoConnect)) { call ->
+        _connectionStates.update {
+            it + (peripheral.uuid to PeripheralConnectionState.Connecting)
+        }
+        val result = plugins.interceptConnect(ConnectCall(peripheral, autoConnect)) { call ->
             runCatching {
                 engine.connect(call.peripheral, call.autoConnect)
+            }
+        }
+        result.exceptionOrNull()?.let { cause ->
+            _connectionStates.update {
+                it + (peripheral.uuid to PeripheralConnectionState.Disconnected(DisconnectReason.ConnectFailed(cause)))
             }
         }
     }
@@ -133,6 +242,9 @@ class BlueFalcon(
      * Disconnect from a peripheral
      */
     suspend fun disconnect(peripheral: BluetoothPeripheral) {
+        _connectionStates.update {
+            it + (peripheral.uuid to PeripheralConnectionState.Disconnecting)
+        }
         plugins.interceptDisconnect(DisconnectCall(peripheral)) { call ->
             runCatching {
                 engine.disconnect(call.peripheral)

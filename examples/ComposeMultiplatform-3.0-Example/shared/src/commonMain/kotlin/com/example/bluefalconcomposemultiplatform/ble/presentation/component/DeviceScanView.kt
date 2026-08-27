@@ -232,6 +232,7 @@ fun DeviceScanView(
                             manufacturerData = device.manufacturerData,
                             connected = device.connected,
                             connecting = device.connecting,
+                            connectionError = device.connectionError,
                             onConnect = { onEvent(UiEvent.OnConnectClick(device.peripheral.uuid)) },
                             onSelect = { onEvent(UiEvent.OnDeviceSelected(device.peripheral.uuid)) }
                         )

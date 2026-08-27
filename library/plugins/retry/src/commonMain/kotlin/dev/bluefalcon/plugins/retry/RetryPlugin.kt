@@ -2,159 +2,103 @@ package dev.bluefalcon.plugins.retry
 
 import dev.bluefalcon.core.*
 import dev.bluefalcon.core.plugin.*
-import kotlinx.coroutines.delay
+import kotlin.math.pow
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
 
 /**
- * Plugin that automatically retries failed BLE operations.
- * 
+ * Plugin that automatically retries failed BLE operations with exponential backoff.
+ *
+ * The plugin implements [RetryCapable], which the [PluginRegistry] consults after a connect,
+ * read, or write operation fails. When installed, failed operations are genuinely re-invoked
+ * against the underlying platform engine (not just re-reported) until they succeed, the retry
+ * budget is exhausted, or [retryOn] rejects the error.
+ *
  * Usage:
  * ```
- * install(RetryPlugin) {
+ * install(RetryPlugin.create {
  *     maxRetries = 3
  *     initialDelay = 500.milliseconds
  *     maxDelay = 5.seconds
  *     backoffMultiplier = 2.0
  *     retryOn = { error -> error is BluetoothException }
- * }
+ * })
  * ```
  */
-class RetryPlugin(private val config: Config) : BlueFalconPlugin {
-    
+class RetryPlugin(private val config: Config) : BlueFalconPlugin, RetryCapable {
+
     /**
      * Configuration for the retry plugin
      */
     class Config : PluginConfig() {
         /**
-         * Maximum number of retry attempts
+         * Maximum number of attempts made for an operation (the initial attempt plus retries).
+         * A value of 3 means the initial attempt followed by up to 2 retries.
          */
         var maxRetries: Int = 3
-        
+
         /**
          * Initial delay before first retry
          */
         var initialDelay: Duration = 500.milliseconds
-        
+
         /**
          * Maximum delay between retries
          */
         var maxDelay: Duration = 5.seconds
-        
+
         /**
          * Multiplier for exponential backoff
          */
         var backoffMultiplier: Double = 2.0
-        
+
         /**
          * Predicate to determine if an error should trigger a retry
          */
         var retryOn: (Throwable) -> Boolean = { true }
-        
+
         /**
          * Whether to retry connect operations
          */
         var retryConnect: Boolean = true
-        
+
         /**
          * Whether to retry read operations
          */
         var retryRead: Boolean = true
-        
+
         /**
          * Whether to retry write operations
          */
         var retryWrite: Boolean = true
     }
-    
+
     override fun install(client: BlueFalconClient, config: PluginConfig) {
-        // Plugin installed
+        // Plugin installed; retry behaviour is driven entirely through RetryCapable.retryDelay,
+        // which PluginRegistry invokes directly.
     }
-    
-    override suspend fun onBeforeConnect(call: ConnectCall): ConnectCall {
-        return call
-    }
-    
-    override suspend fun onAfterConnect(call: ConnectCall, result: Result<Unit>) {
-        if (config.retryConnect && result.isFailure) {
-            val error = result.exceptionOrNull()
-            if (error != null && config.retryOn(error)) {
-                retryOperation("connect", config.maxRetries) {
-                    // In a real implementation, this would trigger the actual connect operation
-                    // For now, this is a placeholder showing the retry logic structure
-                    result.getOrThrow()
-                }
-            }
+
+    override suspend fun retryDelay(
+        operation: RetryableOperation,
+        attempt: Int,
+        error: Throwable
+    ): Duration? {
+        val enabled = when (operation) {
+            RetryableOperation.CONNECT -> config.retryConnect
+            RetryableOperation.READ -> config.retryRead
+            RetryableOperation.WRITE -> config.retryWrite
         }
+        if (!enabled) return null
+        if (attempt >= config.maxRetries - 1) return null
+        if (!config.retryOn(error)) return null
+
+        val scaledDelayMs = config.initialDelay.inWholeMilliseconds *
+            config.backoffMultiplier.pow(attempt)
+        val delayMs = scaledDelayMs.toLong().coerceAtMost(config.maxDelay.inWholeMilliseconds)
+        return delayMs.milliseconds
     }
-    
-    override suspend fun onBeforeRead(call: ReadCall): ReadCall {
-        return call
-    }
-    
-    override suspend fun onAfterRead(call: ReadCall, result: Result<ByteArray?>) {
-        if (config.retryRead && result.isFailure) {
-            val error = result.exceptionOrNull()
-            if (error != null && config.retryOn(error)) {
-                retryOperation("read", config.maxRetries) {
-                    // Placeholder for actual read retry
-                    result.getOrThrow()
-                }
-            }
-        }
-    }
-    
-    override suspend fun onBeforeWrite(call: WriteCall): WriteCall {
-        return call
-    }
-    
-    override suspend fun onAfterWrite(call: WriteCall, result: Result<Unit>) {
-        if (config.retryWrite && result.isFailure) {
-            val error = result.exceptionOrNull()
-            if (error != null && config.retryOn(error)) {
-                retryOperation("write", config.maxRetries) {
-                    // Placeholder for actual write retry
-                    result.getOrThrow()
-                }
-            }
-        }
-    }
-    
-    /**
-     * Executes an operation with retry logic and exponential backoff
-     */
-    private suspend fun <T> retryOperation(
-        operationName: String,
-        maxRetries: Int,
-        operation: suspend () -> T
-    ): Result<T> {
-        var currentDelay = config.initialDelay
-        var lastError: Throwable? = null
-        
-        repeat(maxRetries) { attempt ->
-            try {
-                val result = operation()
-                return Result.success(result)
-            } catch (e: Throwable) {
-                lastError = e
-                
-                if (attempt < maxRetries - 1) {
-                    // Wait before retrying with exponential backoff
-                    delay(currentDelay)
-                    
-                    // Calculate next delay with backoff
-                    currentDelay = minOf(
-                        (currentDelay.inWholeMilliseconds * config.backoffMultiplier).toLong().milliseconds,
-                        config.maxDelay
-                    )
-                }
-            }
-        }
-        
-        return Result.failure(lastError ?: Exception("Operation failed after $maxRetries retries"))
-    }
-    
+
     companion object {
         /**
          * Creates a new RetryPlugin instance with the given configuration
@@ -174,12 +118,12 @@ sealed class RetryableException : Exception() {
      * Connection timeout
      */
     class ConnectionTimeout : RetryableException()
-    
+
     /**
      * Device not available
      */
     class DeviceNotAvailable : RetryableException()
-    
+
     /**
      * GATT error
      */
