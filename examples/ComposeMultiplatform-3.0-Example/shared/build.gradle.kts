@@ -6,6 +6,8 @@ plugins {
 }
 
 val falconVersion = "3.7.3"
+val pluginVersion = "3.7.4"
+
 val peripheralVersion = "3.7.1"
 val coroutinesVersion = "1.11.0"
 
@@ -57,13 +59,13 @@ kotlin {
                 // Blue Falcon 3.0
                 implementation("dev.bluefalcon:blue-falcon-core:$falconVersion")
                 implementation("dev.bluefalcon:blue-falcon-peripheral:$peripheralVersion")
-                implementation("dev.bluefalcon:blue-falcon-plugin-logging:$falconVersion")
-                implementation("dev.bluefalcon:blue-falcon-plugin-queue:$falconVersion")
-                implementation("dev.bluefalcon:blue-falcon-plugin-retry:$falconVersion")
-                implementation("dev.bluefalcon:blue-falcon-plugin-nordic-fota:$falconVersion")
-                implementation("dev.bluefalcon:blue-falcon-plugin-clone:$falconVersion")
-                implementation("dev.bluefalcon:blue-falcon-plugin-broadcast:$falconVersion")
-                implementation("dev.bluefalcon:blue-falcon-plugin-bonding:$falconVersion")
+                implementation("dev.bluefalcon:blue-falcon-plugin-logging:$pluginVersion")
+                implementation("dev.bluefalcon:blue-falcon-plugin-queue:$pluginVersion")
+                implementation("dev.bluefalcon:blue-falcon-plugin-retry:$pluginVersion")
+                implementation("dev.bluefalcon:blue-falcon-plugin-nordic-fota:$pluginVersion")
+                implementation("dev.bluefalcon:blue-falcon-plugin-clone:$pluginVersion")
+                implementation("dev.bluefalcon:blue-falcon-plugin-broadcast:$pluginVersion")
+                implementation("dev.bluefalcon:blue-falcon-plugin-bonding:$pluginVersion")
             }
         }
         val commonTest by getting {
