@@ -404,12 +404,27 @@ class MeshNode(
      * forwards received frames into [handleInboundFrame].
      */
     private suspend fun subscribeToNeighborNotifications(neighbor: BluetoothPeripheral, scope: CoroutineScope) {
-        // Auto-discovery of services after connect is only implemented by the Android
-        // engine; on Apple platforms `neighbor.services` stays empty forever unless
-        // discovery is explicitly requested here, which silently broke central-role
-        // reads/writes/subscriptions on iOS/macOS. Requesting discovery is harmless
-        // (and a no-op wait) on platforms that already auto-discover.
+        // Auto-discovery of services (and, on Android, characteristics in the same
+        // pass) after connect is only implemented by the Android engine; on Apple
+        // platforms `neighbor.services` stays empty forever, and even once services
+        // are discovered each service's `characteristics` list stays empty until
+        // discoverCharacteristics() is explicitly called per-service. Both calls are
+        // harmless no-ops (or fast no-op waits) on platforms that already
+        // auto-discover both in one shot.
         runCatching { central.discoverServices(neighbor, listOf(config.meshServiceUuid)) }
+
+        val service = withTimeoutOrNull(10.seconds) {
+            var found: dev.bluefalcon.core.BluetoothService? = null
+            while (found == null) {
+                found = neighbor.services.find { it.uuid == config.meshServiceUuid }
+                if (found == null) delay(100)
+            }
+            found
+        } ?: return
+
+        runCatching {
+            central.discoverCharacteristics(neighbor, service, listOf(config.meshCharacteristicUuid))
+        }
 
         val characteristic = withTimeoutOrNull(10.seconds) {
             var found: BluetoothCharacteristic? = null
