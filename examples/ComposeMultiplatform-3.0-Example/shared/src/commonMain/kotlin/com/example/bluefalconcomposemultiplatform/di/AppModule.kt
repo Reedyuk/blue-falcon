@@ -10,11 +10,8 @@ import dev.bluefalcon.plugins.proximity.ProximityPlugin
 expect class AppModule {
     val blueFalcon: BlueFalcon
     val fotaPlugin: NordicFotaPlugin
-<<<<<<< HEAD
-    val proximityPlugin: ProximityPlugin
-=======
     val bondingPlugin: BondingPlugin
->>>>>>> origin/master
+    val proximityPlugin: ProximityPlugin
     val advertiser: BluetoothAdvertiser
     val peripheralRuntime: PeripheralExampleRuntime?
 }

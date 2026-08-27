@@ -22,15 +22,13 @@ actual class AppModule {
         autoReset = true
     }
 
-<<<<<<< HEAD
+    actual val bondingPlugin: BondingPlugin = BondingPlugin.create()
+
     actual val proximityPlugin: ProximityPlugin = ProximityPlugin.create {
         smoothing = SmoothingStrategy.Kalman()
         immediateThreshold = -50f
         nearThreshold = -75f
     }
-=======
-    actual val bondingPlugin: BondingPlugin = BondingPlugin.create()
->>>>>>> origin/master
 
     private val engine = MacosEngine()
     actual val advertiser: BluetoothAdvertiser = createBluetoothAdvertiser()
@@ -60,13 +58,11 @@ actual class AppModule {
 
         plugins.install(fotaPlugin) { }
 
-<<<<<<< HEAD
-        // Install Proximity plugin for RSSI smoothing and distance estimation
-        plugins.install(proximityPlugin) { }
-=======
         // Install bonding plugin and bind to this BlueFalcon instance
         plugins.install(bondingPlugin) { }
         bondingPlugin.bind(this)
->>>>>>> origin/master
+
+        // Install Proximity plugin for RSSI smoothing and distance estimation
+        plugins.install(proximityPlugin) { }
     }
 }

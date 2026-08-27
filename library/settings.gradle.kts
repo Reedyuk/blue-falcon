@@ -44,8 +44,5 @@ include(":plugins:nordic-fota")
 include(":plugins:clone")
 include(":plugins:broadcast")
 include(":plugins:queue")
-<<<<<<< HEAD
 include(":plugins:proximity")
-=======
 include(":plugins:bonding")
->>>>>>> origin/master

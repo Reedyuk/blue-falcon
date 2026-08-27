@@ -59,15 +59,6 @@ kotlin {
                 // Blue Falcon 3.0
                 implementation("dev.bluefalcon:blue-falcon-core:$falconVersion")
                 implementation("dev.bluefalcon:blue-falcon-peripheral:$peripheralVersion")
-<<<<<<< HEAD
-                implementation("dev.bluefalcon:blue-falcon-plugin-logging:$falconVersion")
-                implementation("dev.bluefalcon:blue-falcon-plugin-queue:$falconVersion")
-                implementation("dev.bluefalcon:blue-falcon-plugin-retry:$falconVersion")
-                implementation("dev.bluefalcon:blue-falcon-plugin-nordic-fota:$falconVersion")
-                implementation("dev.bluefalcon:blue-falcon-plugin-clone:$falconVersion")
-                implementation("dev.bluefalcon:blue-falcon-plugin-broadcast:$falconVersion")
-                implementation("dev.bluefalcon:blue-falcon-plugin-proximity:$falconVersion")
-=======
                 implementation("dev.bluefalcon:blue-falcon-plugin-logging:$pluginVersion")
                 implementation("dev.bluefalcon:blue-falcon-plugin-queue:$pluginVersion")
                 implementation("dev.bluefalcon:blue-falcon-plugin-retry:$pluginVersion")
@@ -75,7 +66,7 @@ kotlin {
                 implementation("dev.bluefalcon:blue-falcon-plugin-clone:$pluginVersion")
                 implementation("dev.bluefalcon:blue-falcon-plugin-broadcast:$pluginVersion")
                 implementation("dev.bluefalcon:blue-falcon-plugin-bonding:$pluginVersion")
->>>>>>> origin/master
+                implementation("dev.bluefalcon:blue-falcon-plugin-proximity:$pluginVersion")
             }
         }
         val commonTest by getting {

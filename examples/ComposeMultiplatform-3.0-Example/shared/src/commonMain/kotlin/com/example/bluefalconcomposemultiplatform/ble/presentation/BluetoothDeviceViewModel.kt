@@ -30,11 +30,8 @@ import kotlin.uuid.ExperimentalUuidApi
 class BluetoothDeviceViewModel(
     private val blueFalcon: BlueFalcon,
     private val fotaPlugin: NordicFotaPlugin,
-<<<<<<< HEAD
-    private val proximityPlugin: ProximityPlugin,
-=======
     private val bondingPlugin: BondingPlugin,
->>>>>>> origin/master
+    private val proximityPlugin: ProximityPlugin,
     private val advertiser: BluetoothAdvertiser
 ): ViewModel() {
 

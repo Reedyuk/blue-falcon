@@ -12,12 +12,9 @@ import dev.bluefalcon.plugins.logging.LogLevel
 import dev.bluefalcon.plugins.queue.QueuePlugin
 import dev.bluefalcon.plugins.retry.RetryPlugin
 import dev.bluefalcon.plugins.nordicfota.NordicFotaPlugin
-<<<<<<< HEAD
+import dev.bluefalcon.plugins.bonding.BondingPlugin
 import dev.bluefalcon.plugins.proximity.ProximityPlugin
 import dev.bluefalcon.plugins.proximity.SmoothingStrategy
-=======
-import dev.bluefalcon.plugins.bonding.BondingPlugin
->>>>>>> origin/master
 
 actual class AppModule(
     private val context: Context
@@ -28,15 +25,13 @@ actual class AppModule(
         autoReset = true
     }
 
-<<<<<<< HEAD
+    actual val bondingPlugin: BondingPlugin = BondingPlugin.create()
+
     actual val proximityPlugin: ProximityPlugin = ProximityPlugin.create {
         smoothing = SmoothingStrategy.Kalman()
         immediateThreshold = -50f
         nearThreshold = -75f
     }
-=======
-    actual val bondingPlugin: BondingPlugin = BondingPlugin.create()
->>>>>>> origin/master
 
     private val engine = AndroidEngine(context)
     actual val advertiser: BluetoothAdvertiser = createBluetoothAdvertiser(context)
@@ -69,13 +64,11 @@ actual class AppModule(
         // Install Nordic FOTA plugin
         plugins.install(fotaPlugin) { }
 
-<<<<<<< HEAD
-        // Install Proximity plugin for RSSI smoothing and distance estimation
-        plugins.install(proximityPlugin) { }
-=======
         // Install bonding plugin and bind to this BlueFalcon instance
         plugins.install(bondingPlugin) { }
         bondingPlugin.bind(this)
->>>>>>> origin/master
+
+        // Install Proximity plugin for RSSI smoothing and distance estimation
+        plugins.install(proximityPlugin) { }
     }
 }
