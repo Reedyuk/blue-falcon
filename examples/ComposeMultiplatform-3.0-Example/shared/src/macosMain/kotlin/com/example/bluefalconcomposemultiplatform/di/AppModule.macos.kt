@@ -11,6 +11,7 @@ import dev.bluefalcon.plugins.logging.LoggingPlugin
 import dev.bluefalcon.plugins.nordicfota.NordicFotaPlugin
 import dev.bluefalcon.plugins.queue.QueuePlugin
 import dev.bluefalcon.plugins.retry.RetryPlugin
+import dev.bluefalcon.plugins.bonding.BondingPlugin
 
 actual class AppModule {
     actual val fotaPlugin: NordicFotaPlugin = NordicFotaPlugin.create {
@@ -18,6 +19,8 @@ actual class AppModule {
         autoConfirm = true
         autoReset = true
     }
+
+    actual val bondingPlugin: BondingPlugin = BondingPlugin.create()
 
     private val engine = MacosEngine()
     actual val advertiser: BluetoothAdvertiser = createBluetoothAdvertiser()
@@ -46,5 +49,9 @@ actual class AppModule {
         })) { }
 
         plugins.install(fotaPlugin) { }
+
+        // Install bonding plugin and bind to this BlueFalcon instance
+        plugins.install(bondingPlugin) { }
+        bondingPlugin.bind(this)
     }
 }
