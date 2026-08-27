@@ -36,4 +36,8 @@ sealed interface UiEvent {
     // Broadcast events
     data class OnStartBroadcast(val clone: DeviceClone): UiEvent
     object OnStopBroadcast: UiEvent
+
+    // Bonding events
+    data class OnRequestBond(val macId: String): UiEvent
+    data class OnRequestUnbond(val macId: String): UiEvent
 }

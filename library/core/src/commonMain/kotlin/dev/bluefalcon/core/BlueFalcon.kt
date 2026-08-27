@@ -108,6 +108,11 @@ class BlueFalcon(
         get() = engine.notificationSubscriptionUpdates
 
     /**
+     * Reactive stream of bond/pairing state changes, delegated from the engine.
+     */
+    val bondStateUpdates: SharedFlow<BondStateUpdate> get() = engine.bondStateUpdates
+
+    /**
      * Reactive stream of peripheral connection state changes.
      *
      * Subscribe to this flow to be notified when a peripheral connects or disconnects.

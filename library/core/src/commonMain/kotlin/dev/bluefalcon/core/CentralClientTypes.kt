@@ -63,12 +63,25 @@ data class NotificationSubscriptionUpdate(
     val result: NotificationSubscriptionResult,
 )
 
+/**
+ * Describes the platform's bonding/pairing capability.
+ */
+enum class BondCapability {
+    /** The platform can both request bonding and report state changes (Android, RPi/BlueZ). */
+    Supported,
+    /** Bonding happens implicitly on first encrypted access; the app cannot request or observe it (Apple). */
+    Implicit,
+    /** The platform exposes no bonding API at all (Windows, JS/Web Bluetooth). */
+    Unsupported,
+}
+
 data class CentralCapabilities(
     val reliableWriteResults: Boolean,
     val writeWithoutResponseReadiness: Boolean,
     val perConnectionMaximumWriteLength: Boolean,
     val notificationSubscriptionResults: Boolean,
     val restoration: Boolean,
+    val bondCapability: BondCapability = BondCapability.Unsupported,
 ) {
     companion object {
         val None = CentralCapabilities(
@@ -77,6 +90,7 @@ data class CentralCapabilities(
             perConnectionMaximumWriteLength = false,
             notificationSubscriptionResults = false,
             restoration = false,
+            bondCapability = BondCapability.Unsupported,
         )
     }
 }
@@ -89,4 +103,7 @@ internal val EmptyCharacteristicWriteReady: SharedFlow<CharacteristicWriteReady>
     MutableSharedFlow()
 
 internal val EmptyNotificationSubscriptionUpdates: SharedFlow<NotificationSubscriptionUpdate> =
+    MutableSharedFlow()
+
+internal val EmptyBondStateUpdates: SharedFlow<BondStateUpdate> =
     MutableSharedFlow()

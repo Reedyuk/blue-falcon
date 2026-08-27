@@ -12,6 +12,7 @@ import dev.bluefalcon.plugins.logging.LogLevel
 import dev.bluefalcon.plugins.logging.LoggingPlugin
 import dev.bluefalcon.plugins.nordicfota.NordicFotaPlugin
 import dev.bluefalcon.plugins.retry.RetryPlugin
+import dev.bluefalcon.plugins.bonding.BondingPlugin
 
 actual class AppModule {
     actual val fotaPlugin: NordicFotaPlugin = NordicFotaPlugin.create {
@@ -19,6 +20,8 @@ actual class AppModule {
         autoConfirm = true
         autoReset = true
     }
+
+    actual val bondingPlugin: BondingPlugin = BondingPlugin.create()
 
     // Desktop JVM engines do not support the peripheral/advertising role
     actual val advertiser: BluetoothAdvertiser = NoOpBluetoothAdvertiser()
@@ -40,6 +43,10 @@ actual class AppModule {
         })) { }
 
         plugins.install(fotaPlugin) { }
+
+        // Install bonding plugin and bind to this BlueFalcon instance
+        plugins.install(bondingPlugin) { }
+        bondingPlugin.bind(this)
     }
 }
 

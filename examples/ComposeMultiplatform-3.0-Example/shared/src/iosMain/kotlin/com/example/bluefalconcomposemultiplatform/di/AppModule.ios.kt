@@ -11,6 +11,7 @@ import dev.bluefalcon.plugins.logging.LogLevel
 import dev.bluefalcon.plugins.retry.RetryPlugin
 import dev.bluefalcon.plugins.nordicfota.NordicFotaPlugin
 import dev.bluefalcon.plugins.queue.QueuePlugin
+import dev.bluefalcon.plugins.bonding.BondingPlugin
 
 actual class AppModule {
     actual val fotaPlugin: NordicFotaPlugin = NordicFotaPlugin.create {
@@ -18,6 +19,8 @@ actual class AppModule {
         autoConfirm = true
         autoReset = true
     }
+
+    actual val bondingPlugin: BondingPlugin = BondingPlugin.create()
 
     private val engine = IosEngine()
     private val peripheralLogger: dev.bluefalcon.core.Logger = dev.bluefalcon.core.PrintLnLogger
@@ -50,5 +53,9 @@ actual class AppModule {
 
         // Install Nordic FOTA plugin
         plugins.install(fotaPlugin) { }
+
+        // Install bonding plugin and bind to this BlueFalcon instance
+        plugins.install(bondingPlugin) { }
+        bondingPlugin.bind(this)
     }
 }
