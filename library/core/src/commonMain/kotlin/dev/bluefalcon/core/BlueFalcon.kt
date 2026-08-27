@@ -22,7 +22,7 @@ class BlueFalcon(
     /**
      * Plugin registry for managing installed plugins
      */
-    val plugins: PluginRegistry = PluginRegistry()
+    val plugins: PluginRegistry = PluginRegistry(this)
 
     /**
      * Backing store for the structured per-peripheral connection state machine (ADR 0008),
@@ -483,9 +483,8 @@ fun BlueFalcon(block: BlueFalconConfig.() -> Unit): BlueFalcon {
     val config = BlueFalconConfig().apply(block)
     val client = BlueFalcon(config.engine)
     
-    // Install all configured plugins
+    // Install all configured plugins (PluginRegistry.install invokes plugin.install(client, ...) internally)
     config.pluginConfigs.forEach { (plugin, configure) ->
-        plugin.install(client, PluginConfig().apply(configure))
         client.plugins.install(plugin, configure)
     }
     
