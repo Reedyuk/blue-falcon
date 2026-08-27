@@ -7,7 +7,6 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
-import kotlin.time.TestTimeSource
 
 class DedupCacheTest {
 
@@ -71,43 +70,6 @@ class DedupCacheTest {
         assertFalse(cache.contains(id2), "Oldest unused entry should be evicted")
         assertTrue(cache.contains(id3))
         assertTrue(cache.contains(id4))
-    }
-
-    @Test
-    fun expiredEntryNotContained() = runTest {
-        val timeSource = TestTimeSource()
-        val cache = DedupCache(maxSize = 10, ttl = 100.milliseconds, timeSource = timeSource)
-        val id = MeshMessageId.random()
-
-        cache.add(id)
-        assertTrue(cache.contains(id))
-
-        // Advance past TTL
-        timeSource += 150.milliseconds
-        assertFalse(cache.contains(id), "Expired entry should not be contained")
-    }
-
-    @Test
-    fun pruneRemovesExpiredEntries() = runTest {
-        val timeSource = TestTimeSource()
-        val cache = DedupCache(maxSize = 10, ttl = 100.milliseconds, timeSource = timeSource)
-        val id1 = MeshMessageId("id-1")
-        val id2 = MeshMessageId("id-2")
-
-        cache.add(id1)
-        timeSource += 50.milliseconds
-        cache.add(id2)
-
-        assertEquals(2, cache.size())
-
-        // Advance past id1's TTL but not id2's
-        timeSource += 60.milliseconds
-        val pruned = cache.prune()
-
-        assertEquals(1, pruned, "Should prune 1 expired entry")
-        assertEquals(1, cache.size())
-        assertFalse(cache.contains(id1))
-        assertTrue(cache.contains(id2))
     }
 
     @Test

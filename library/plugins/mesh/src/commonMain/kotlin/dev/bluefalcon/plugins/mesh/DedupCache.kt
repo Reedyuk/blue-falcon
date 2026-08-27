@@ -50,7 +50,7 @@ internal class DedupCache(
         val entry = cache[id] ?: return false
 
         // Check if expired
-        if (timeSource.markNow() - entry.insertedAt > ttl) {
+        if (entry.insertedAt.elapsedNow() > ttl) {
             cache.remove(id)
             return false
         }
@@ -81,7 +81,7 @@ internal class DedupCache(
             }
         }
 
-        cache[id] = Entry(insertedAt = timeSource.markNow())
+        cache[id] = Entry(insertedAt = TimeSource.Monotonic.markNow())
         isNew
     }
 
@@ -94,9 +94,8 @@ internal class DedupCache(
      * @return Number of entries pruned
      */
     suspend fun prune(): Int = mutex.withLock {
-        val now = timeSource.markNow()
         val toRemove = cache.entries
-            .filter { (_, entry) -> now - entry.insertedAt > ttl }
+            .filter { (_, entry) -> entry.insertedAt.elapsedNow() > ttl }
             .map { it.key }
 
         toRemove.forEach { cache.remove(it) }

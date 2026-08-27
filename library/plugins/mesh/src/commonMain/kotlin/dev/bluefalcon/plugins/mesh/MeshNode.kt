@@ -5,6 +5,7 @@ import dev.bluefalcon.core.BluetoothPeripheral
 import dev.bluefalcon.core.CharacteristicWriteType
 import dev.bluefalcon.core.PeripheralConnectionState
 import dev.bluefalcon.core.ServiceFilter
+import dev.bluefalcon.peripheral.AdvertiseConfig
 import dev.bluefalcon.peripheral.BlueFalconPeripheral
 import dev.bluefalcon.peripheral.CharacteristicProperty
 import dev.bluefalcon.peripheral.GattCharacteristicConfig
@@ -19,7 +20,6 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -146,24 +146,27 @@ class MeshNode(
         meshScope = scope
 
         // Start peripheral role with mesh service
-        val peripheralConfig = PeripheralConfig(
+        val advertiseConfig = AdvertiseConfig(
             localName = config.advertisedName,
+            serviceUuids = listOf(config.meshServiceUuid.toString()),
             services = listOf(
                 GattServiceConfig(
-                    uuid = config.meshServiceUuid,
+                    uuid = config.meshServiceUuid.toString(),
                     characteristics = listOf(
                         GattCharacteristicConfig(
-                            uuid = config.meshCharacteristicUuid,
+                            uuid = config.meshCharacteristicUuid.toString(),
                             properties = setOf(
-                                CharacteristicProperty.Write,
-                                CharacteristicProperty.WriteWithoutResponse,
-                                CharacteristicProperty.Notify,
+                                CharacteristicProperty.WRITE,
+                                CharacteristicProperty.WRITE_NO_RESPONSE,
+                                CharacteristicProperty.NOTIFY,
                             ),
                         )
                     )
                 )
             ),
-            includeDeviceName = config.advertisedName != null,
+        )
+        val peripheralConfig = PeripheralConfig(
+            advertiseConfig = advertiseConfig,
         )
         peripheral.start(peripheralConfig)
 
