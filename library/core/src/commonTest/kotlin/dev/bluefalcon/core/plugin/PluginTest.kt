@@ -231,6 +231,110 @@ class PluginTest {
         )
     }
     
+    @Test
+    fun `retry capable plugin causes connect to be re-invoked on failure`() = runTest {
+        // Given
+        val engine = FakeBlueFalconEngine().apply {
+            failConnectTimes = 2 // fails twice, succeeds on the 3rd attempt
+        }
+        val peripheral = engine.createFakePeripheral("Device")
+        val blueFalcon = BlueFalcon(engine)
+        blueFalcon.plugins.install(alwaysRetryPlugin(maxAttempts = 3))
+
+        // When
+        blueFalcon.connect(peripheral)
+
+        // Then
+        assertEquals(3, engine.connectCallCount)
+    }
+
+    @Test
+    fun `retry capable plugin gives up once its retry budget is exhausted`() = runTest {
+        // Given
+        val engine = FakeBlueFalconEngine().apply {
+            failConnectTimes = Int.MAX_VALUE // always fails
+        }
+        val peripheral = engine.createFakePeripheral("Device")
+        val blueFalcon = BlueFalcon(engine)
+        blueFalcon.plugins.install(alwaysRetryPlugin(maxAttempts = 3))
+
+        // When
+        blueFalcon.connect(peripheral)
+
+        // Then - initial attempt + 2 retries = 3 total attempts, then it gives up
+        assertEquals(3, engine.connectCallCount)
+    }
+
+    @Test
+    fun `retry capable plugin causes read to be re-invoked until it succeeds`() = runTest {
+        // Given
+        val engine = FakeBlueFalconEngine().apply {
+            failReadTimes = 1
+        }
+        val peripheral = engine.createFakePeripheral("Device")
+        val characteristic = FakeCharacteristic(uuid = "00002a37-0000-1000-8000-00805f9b34fb".toUuid())
+        val blueFalcon = BlueFalcon(engine)
+        blueFalcon.plugins.install(alwaysRetryPlugin(maxAttempts = 3))
+
+        // When
+        blueFalcon.readCharacteristic(peripheral, characteristic)
+
+        // Then
+        assertEquals(2, engine.readCallCount)
+    }
+
+    @Test
+    fun `retry capable plugin causes write to be re-invoked until it succeeds`() = runTest {
+        // Given
+        val engine = FakeBlueFalconEngine().apply {
+            failWriteTimes = 1
+        }
+        val peripheral = engine.createFakePeripheral("Device")
+        val characteristic = FakeCharacteristic(uuid = "00002a37-0000-1000-8000-00805f9b34fb".toUuid())
+        val blueFalcon = BlueFalcon(engine)
+        blueFalcon.plugins.install(alwaysRetryPlugin(maxAttempts = 3))
+
+        // When
+        blueFalcon.writeCharacteristic(peripheral, characteristic, byteArrayOf(1), null)
+
+        // Then
+        assertEquals(2, engine.writeCallCount)
+    }
+
+    @Test
+    fun `without a retry capable plugin failures are not retried`() = runTest {
+        // Given
+        val engine = FakeBlueFalconEngine().apply {
+            failConnectTimes = 1
+        }
+        val peripheral = engine.createFakePeripheral("Device")
+        val blueFalcon = BlueFalcon(engine)
+        // No plugins installed at all
+
+        // When
+        blueFalcon.connect(peripheral)
+
+        // Then - only the single, failed attempt was made
+        assertEquals(1, engine.connectCallCount)
+    }
+
+    /**
+     * A minimal [RetryCapable] plugin used purely to exercise [PluginRegistry]'s retry loop
+     * without depending on the real `blue-falcon-plugin-retry` module from core tests.
+     */
+    private fun alwaysRetryPlugin(maxAttempts: Int) = object : BlueFalconPlugin, RetryCapable {
+        override fun install(client: BlueFalconClient, config: PluginConfig) {}
+
+        override suspend fun retryDelay(
+            operation: RetryableOperation,
+            attempt: Int,
+            error: Throwable
+        ): kotlin.time.Duration? {
+            if (attempt >= maxAttempts - 1) return null
+            return kotlin.time.Duration.ZERO
+        }
+    }
+
     private fun createTestPlugin(name: String, order: MutableList<String>) = 
         object : BlueFalconPlugin {
             override fun install(client: BlueFalconClient, config: PluginConfig) {}
