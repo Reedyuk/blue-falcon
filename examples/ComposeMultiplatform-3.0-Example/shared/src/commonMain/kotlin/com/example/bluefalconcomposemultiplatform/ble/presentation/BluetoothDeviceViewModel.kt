@@ -630,14 +630,23 @@ class BluetoothDeviceViewModel(
             updatedDevices[peripheral.uuid] = EnhancedBluetoothPeripheral(
                 connected = existingDevice?.connected ?: false,
                 peripheral = peripheral,
+                connecting = existingDevice?.connecting ?: false,
+                updateCount = existingDevice?.updateCount ?: 0,
                 mtuStatus = existingDevice?.mtuStatus,
                 notificationData = existingDevice?.notificationData ?: emptyMap(),
                 fotaState = existingDevice?.fotaState ?: FotaState.Idle,
+                cloneInProgress = existingDevice?.cloneInProgress ?: false,
                 rssi = peripheral.rssi ?: existingDevice?.rssi,
+                // Preserve proximity data across rebuilds; it's only ever updated by the
+                // ProximityPlugin collector below, not derived from the raw peripheral here.
+                proximityZone = existingDevice?.proximityZone ?: ProximityZone.Unknown,
+                estimatedDistanceMeters = existingDevice?.estimatedDistanceMeters,
                 manufacturerData = mfData.ifEmpty { existingDevice?.manufacturerData ?: emptyMap() },
                 connectionError = existingDevice?.connectionError,
                 bondState = existingDevice?.bondState ?: dev.bluefalcon.core.BlueFalconBondState.None,
                 bondCapability = existingDevice?.bondCapability ?: blueFalcon.centralCapabilities.bondCapability,
+                bondInProgress = existingDevice?.bondInProgress ?: false,
+                bondStatus = existingDevice?.bondStatus,
             )
         }
         return updatedDevices
