@@ -53,6 +53,14 @@ enum class BlueFalconBondState {
 }
 
 /**
+ * Reactive bond state change event emitted by [BlueFalconEngine.bondStateUpdates].
+ */
+data class BondStateUpdate(
+    val peripheralUuid: String,
+    val state: BlueFalconBondState
+)
+
+/**
  * Phases of GATT service/characteristic discovery emitted by
  * [BlueFalconEngine.serviceDiscoveryUpdates].
  */

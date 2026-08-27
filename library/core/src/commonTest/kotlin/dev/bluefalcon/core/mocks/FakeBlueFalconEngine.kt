@@ -30,6 +30,20 @@ class FakeBlueFalconEngine : BlueFalconEngine {
 
     private val _serviceDiscoveryUpdates = MutableSharedFlow<ServiceDiscoveryUpdate>(extraBufferCapacity = 64)
     override val serviceDiscoveryUpdates: SharedFlow<ServiceDiscoveryUpdate> = _serviceDiscoveryUpdates
+
+    private val _bondStateUpdates = MutableSharedFlow<BondStateUpdate>(extraBufferCapacity = 64)
+    override val bondStateUpdates: SharedFlow<BondStateUpdate> = _bondStateUpdates
+
+    var fakeBondCapability: BondCapability = BondCapability.Unsupported
+    override val centralCapabilities: CentralCapabilities
+        get() = CentralCapabilities(
+            reliableWriteResults = false,
+            writeWithoutResponseReadiness = false,
+            perConnectionMaximumWriteLength = false,
+            notificationSubscriptionResults = false,
+            restoration = false,
+            bondCapability = fakeBondCapability,
+        )
     
     override var isScanning: Boolean = false
         private set
@@ -283,5 +297,9 @@ class FakeBlueFalconEngine : BlueFalconEngine {
 
     suspend fun emitServiceDiscoveryUpdate(update: ServiceDiscoveryUpdate) {
         _serviceDiscoveryUpdates.emit(update)
+    }
+
+    suspend fun emitBondStateUpdate(update: BondStateUpdate) {
+        _bondStateUpdates.emit(update)
     }
 }

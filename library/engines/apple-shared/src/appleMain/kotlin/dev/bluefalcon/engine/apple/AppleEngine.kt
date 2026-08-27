@@ -51,6 +51,7 @@ class AppleEngine : BlueFalconEngine, CBCentralManagerCallback, CBPeripheralCall
         perConnectionMaximumWriteLength = true,
         notificationSubscriptionResults = true,
         restoration = false,
+        bondCapability = BondCapability.Implicit,
     )
     override val characteristicWriteCapabilities = centralWriteController.capabilities
     override val characteristicWriteReady = centralWriteController.ready
