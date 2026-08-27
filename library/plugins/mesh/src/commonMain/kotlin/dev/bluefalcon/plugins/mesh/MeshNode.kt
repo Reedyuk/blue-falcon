@@ -20,6 +20,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -322,6 +323,25 @@ class MeshNode(
         central.scan(listOf(ServiceFilter(config.meshServiceUuid)))
     }
 
+    /**
+     * Waits (with a bounded timeout) for [BlueFalcon.characteristicWriteCapabilities]
+     * to reflect a negotiated write size sufficient for at least one mesh frame
+     * ([MeshFramer.HEADER_SIZE] + 1 byte of payload). MTU negotiation is asynchronous
+     * on Android (and may simply not occur, e.g. if the remote side rejects it), so
+     * frames must not be sent using the stale pre-negotiation default (20 bytes).
+     */
+    private suspend fun awaitSufficientWriteCapability(neighbor: BluetoothPeripheral) {
+        val requiredLength = MeshFramer.HEADER_SIZE + 1
+        withTimeoutOrNull(5.seconds) {
+            while (
+                (central.maximumWriteValueLength(neighbor, CharacteristicWriteType.WithResponse) ?: 0) <
+                requiredLength
+            ) {
+                delay(100)
+            }
+        }
+    }
+
     private suspend fun shouldConnectToNeighbor(): Boolean {
         return centralNeighborsMutex.withLock {
             centralNeighbors.size < config.maxNeighborConnections
@@ -335,12 +355,16 @@ class MeshNode(
             try {
                 central.connect(neighbor)
 
-                // The mesh frame header alone is larger than the default BLE ATT
-                // payload (20 bytes on Android before MTU negotiation), so request a
-                // larger MTU up front. If negotiation fails or is capped lower by the
-                // remote device, maximumWriteValueLength() still reflects whatever was
-                // actually negotiated and MeshFramer is created with that value.
+                // The mesh frame header alone (81 bytes) is larger than the default BLE
+                // ATT payload (20 bytes on Android before MTU negotiation), so a larger
+                // MTU must actually be negotiated *and confirmed* before any frame is
+                // sent. changeMTU() only enqueues the platform's MTU request — it does
+                // not wait for the result — so await characteristicWriteCapabilities
+                // until it reflects a large-enough negotiated size, falling back to
+                // whatever was actually negotiated (which may be smaller, e.g. if the
+                // remote peer or platform caps it) after a short timeout.
                 runCatching { central.changeMTU(neighbor, config.preferredMtu) }
+                awaitSufficientWriteCapability(neighbor)
 
                 // Wait for connection and add to neighbors
                 centralNeighborsMutex.withLock {
@@ -437,6 +461,11 @@ class MeshNode(
 
     private suspend fun relayToPeripheralSession(session: PeripheralSession, message: MeshMessage) {
         val mtu = session.maximumUpdateValueLength.value ?: 512
+        if (mtu < MeshFramer.HEADER_SIZE + 1) {
+            // Peripheral-side MTU not yet negotiated large enough for a mesh frame -
+            // skip this neighbor for now rather than failing the whole broadcast.
+            return
+        }
         val framer = MeshFramer(maxFrameSize = mtu)
         val frames = framer.frame(message)
 
@@ -456,6 +485,12 @@ class MeshNode(
         }
 
         val mtu = central.maximumWriteValueLength(neighbor, CharacteristicWriteType.WithResponse) ?: 512
+        if (mtu < MeshFramer.HEADER_SIZE + 1) {
+            // MTU negotiation for this neighbor hasn't completed with a sufficient
+            // size yet - skip for now rather than failing the whole broadcast; it
+            // will be retried on the next message once negotiation catches up.
+            return
+        }
         val framer = MeshFramer(maxFrameSize = mtu)
         val frames = framer.frame(message)
 
