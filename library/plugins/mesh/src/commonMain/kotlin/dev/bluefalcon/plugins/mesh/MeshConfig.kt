@@ -87,6 +87,19 @@ class MeshConfig : PluginConfig() {
      */
     var maxNeighborConnections: Int = 6
 
+    /**
+     * MTU (in bytes) requested when connecting to a neighbor node.
+     *
+     * The mesh frame header alone is [MeshFramer.HEADER_SIZE] bytes (81), which
+     * exceeds the default BLE ATT payload of 20 bytes used before MTU negotiation.
+     * A larger MTU must be negotiated so frames can carry a non-empty payload.
+     *
+     * Default: 185 (yields a ~182 byte ATT payload on most stacks, comfortably
+     * above the 81-byte header with room for the payload; still low enough to be
+     * negotiated reliably across Android/iOS/macOS without hitting platform caps).
+     */
+    var preferredMtu: Int = 185
+
     companion object {
         /**
          * Default mesh service UUID.

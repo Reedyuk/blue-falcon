@@ -306,6 +306,13 @@ class MeshNode(
             try {
                 central.connect(neighbor)
 
+                // The mesh frame header alone is larger than the default BLE ATT
+                // payload (20 bytes on Android before MTU negotiation), so request a
+                // larger MTU up front. If negotiation fails or is capped lower by the
+                // remote device, maximumWriteValueLength() still reflects whatever was
+                // actually negotiated and MeshFramer is created with that value.
+                runCatching { central.changeMTU(neighbor, config.preferredMtu) }
+
                 // Wait for connection and add to neighbors
                 centralNeighborsMutex.withLock {
                     centralNeighbors[neighbor.uuid] = neighbor
