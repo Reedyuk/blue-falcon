@@ -9,6 +9,8 @@ import dev.bluefalcon.peripheral.apple.createBlueFalconPeripheral
 import dev.bluefalcon.plugins.logging.LogLevel
 import dev.bluefalcon.plugins.logging.LoggingPlugin
 import dev.bluefalcon.plugins.nordicfota.NordicFotaPlugin
+import dev.bluefalcon.plugins.proximity.ProximityPlugin
+import dev.bluefalcon.plugins.proximity.SmoothingStrategy
 import dev.bluefalcon.plugins.queue.QueuePlugin
 import dev.bluefalcon.plugins.retry.RetryPlugin
 import dev.bluefalcon.plugins.bonding.BondingPlugin
@@ -21,6 +23,12 @@ actual class AppModule {
     }
 
     actual val bondingPlugin: BondingPlugin = BondingPlugin.create()
+
+    actual val proximityPlugin: ProximityPlugin = ProximityPlugin.create {
+        smoothing = SmoothingStrategy.Kalman()
+        immediateThreshold = -50f
+        nearThreshold = -75f
+    }
 
     private val engine = MacosEngine()
     actual val advertiser: BluetoothAdvertiser = createBluetoothAdvertiser()
@@ -53,5 +61,8 @@ actual class AppModule {
         // Install bonding plugin and bind to this BlueFalcon instance
         plugins.install(bondingPlugin) { }
         bondingPlugin.bind(this)
+
+        // Install Proximity plugin for RSSI smoothing and distance estimation
+        plugins.install(proximityPlugin) { }
     }
 }

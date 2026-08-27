@@ -66,6 +66,7 @@ kotlin {
                 implementation("dev.bluefalcon:blue-falcon-plugin-clone:$pluginVersion")
                 implementation("dev.bluefalcon:blue-falcon-plugin-broadcast:$pluginVersion")
                 implementation("dev.bluefalcon:blue-falcon-plugin-bonding:$pluginVersion")
+                implementation("dev.bluefalcon:blue-falcon-plugin-proximity:$pluginVersion")
             }
         }
         val commonTest by getting {

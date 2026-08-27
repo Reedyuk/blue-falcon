@@ -228,6 +228,8 @@ fun DeviceScanView(
                             deviceName = device.peripheral.name,
                             macId = device.peripheral.uuid,
                             rssi = device.rssi ?: device.peripheral.rssi,
+                            proximityZone = device.proximityZone,
+                            estimatedDistanceMeters = device.estimatedDistanceMeters,
                             serviceUuids = device.peripheral.services.map { it.uuid.toString() },
                             manufacturerData = device.manufacturerData,
                             connected = device.connected,

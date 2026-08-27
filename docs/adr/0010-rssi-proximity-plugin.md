@@ -1,6 +1,6 @@
 # ADR 0010: RSSI/Proximity Plugin
 
-**Status:** Proposed
+**Status:** Accepted
 
 **Date:** 2026-08-27
 

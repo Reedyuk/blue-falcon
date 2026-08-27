@@ -5,17 +5,27 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 
 /**
- * Registry for managing installed plugins
+ * Registry for managing installed plugins.
+ *
+ * @param client The owning client, passed to each plugin's [BlueFalconPlugin.install] callback.
+ *   May be `null` only for legacy/test call sites that construct a bare [PluginRegistry]; in that
+ *   case [install] will skip invoking [BlueFalconPlugin.install] since there is no client to pass.
  */
-class PluginRegistry {
+class PluginRegistry(private val client: BlueFalconClient? = null) {
     @PublishedApi
     internal val plugins = mutableListOf<BlueFalconPlugin>()
     
     /**
-     * Install a plugin
+     * Install a plugin.
+     *
+     * Invokes [BlueFalconPlugin.install] with the owning client so plugins that need to subscribe
+     * to client state/flows (e.g. RSSI updates, peripheral sets) are wired up immediately,
+     * regardless of whether the plugin was installed via the `BlueFalcon { install(...) }` DSL or
+     * by calling `blueFalcon.plugins.install(...)` directly.
      */
     fun <T : BlueFalconPlugin> install(plugin: T, configure: PluginConfig.() -> Unit = {}) {
         val config = PluginConfig().apply(configure)
+        client?.let { plugin.install(it, config) }
         plugins.add(plugin)
     }
     

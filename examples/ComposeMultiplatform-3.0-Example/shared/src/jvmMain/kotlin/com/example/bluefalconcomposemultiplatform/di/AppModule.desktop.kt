@@ -11,6 +11,8 @@ import dev.bluefalcon.peripheral.NoOpBluetoothAdvertiser
 import dev.bluefalcon.plugins.logging.LogLevel
 import dev.bluefalcon.plugins.logging.LoggingPlugin
 import dev.bluefalcon.plugins.nordicfota.NordicFotaPlugin
+import dev.bluefalcon.plugins.proximity.ProximityPlugin
+import dev.bluefalcon.plugins.proximity.SmoothingStrategy
 import dev.bluefalcon.plugins.retry.RetryPlugin
 import dev.bluefalcon.plugins.bonding.BondingPlugin
 
@@ -22,6 +24,12 @@ actual class AppModule {
     }
 
     actual val bondingPlugin: BondingPlugin = BondingPlugin.create()
+
+    actual val proximityPlugin: ProximityPlugin = ProximityPlugin.create {
+        smoothing = SmoothingStrategy.Kalman()
+        immediateThreshold = -50f
+        nearThreshold = -75f
+    }
 
     // Desktop JVM engines do not support the peripheral/advertising role
     actual val advertiser: BluetoothAdvertiser = NoOpBluetoothAdvertiser()
@@ -47,6 +55,9 @@ actual class AppModule {
         // Install bonding plugin and bind to this BlueFalcon instance
         plugins.install(bondingPlugin) { }
         bondingPlugin.bind(this)
+
+        // Install Proximity plugin for RSSI smoothing and distance estimation
+        plugins.install(proximityPlugin) { }
     }
 }
 

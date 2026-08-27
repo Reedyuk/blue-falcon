@@ -14,6 +14,8 @@ import dev.bluefalcon.plugins.clone.CloneConfig
 import dev.bluefalcon.plugins.clone.DeviceClonePlugin
 import dev.bluefalcon.plugins.nordicfota.FotaState
 import dev.bluefalcon.plugins.nordicfota.NordicFotaPlugin
+import dev.bluefalcon.plugins.proximity.ProximityPlugin
+import dev.bluefalcon.plugins.proximity.ProximityZone
 import dev.icerock.moko.mvvm.viewmodel.ViewModel
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -29,6 +31,7 @@ class BluetoothDeviceViewModel(
     private val blueFalcon: BlueFalcon,
     private val fotaPlugin: NordicFotaPlugin,
     private val bondingPlugin: BondingPlugin,
+    private val proximityPlugin: ProximityPlugin,
     private val advertiser: BluetoothAdvertiser
 ): ViewModel() {
 
@@ -82,15 +85,26 @@ class BluetoothDeviceViewModel(
             }
         }
 
-        // Collect RSSI updates so the scan list stays current without a full peripherals re-emission
+        // Collect smoothed RSSI and proximity zone from ProximityPlugin instead of raw rssiUpdates
         viewModelScope.launch(Dispatchers.IO) {
-            blueFalcon.rssiUpdates.collect { (uuid, rssi) ->
+            proximityPlugin.proximityReadings.collect { readings ->
                 _deviceState.update { state ->
                     val updatedDevices = state.devices.toMutableMap()
-                    updatedDevices[uuid]?.let { device ->
-                        updatedDevices[uuid] = device.copy(rssi = rssi)
+                    var changed = false
+                    readings.forEach { (uuid, reading) ->
+                        updatedDevices[uuid]?.let { device ->
+                            val updated = device.copy(
+                                rssi = reading.smoothedRssi,
+                                proximityZone = reading.zone,
+                                estimatedDistanceMeters = reading.estimatedDistanceMeters
+                            )
+                            if (updated != device) {
+                                updatedDevices[uuid] = updated
+                                changed = true
+                            }
+                        }
                     }
-                    state.copy(devices = HashMap(updatedDevices))
+                    if (changed) state.copy(devices = HashMap(updatedDevices)) else state
                 }
             }
         }
@@ -616,14 +630,23 @@ class BluetoothDeviceViewModel(
             updatedDevices[peripheral.uuid] = EnhancedBluetoothPeripheral(
                 connected = existingDevice?.connected ?: false,
                 peripheral = peripheral,
+                connecting = existingDevice?.connecting ?: false,
+                updateCount = existingDevice?.updateCount ?: 0,
                 mtuStatus = existingDevice?.mtuStatus,
                 notificationData = existingDevice?.notificationData ?: emptyMap(),
                 fotaState = existingDevice?.fotaState ?: FotaState.Idle,
+                cloneInProgress = existingDevice?.cloneInProgress ?: false,
                 rssi = peripheral.rssi ?: existingDevice?.rssi,
+                // Preserve proximity data across rebuilds; it's only ever updated by the
+                // ProximityPlugin collector below, not derived from the raw peripheral here.
+                proximityZone = existingDevice?.proximityZone ?: ProximityZone.Unknown,
+                estimatedDistanceMeters = existingDevice?.estimatedDistanceMeters,
                 manufacturerData = mfData.ifEmpty { existingDevice?.manufacturerData ?: emptyMap() },
                 connectionError = existingDevice?.connectionError,
                 bondState = existingDevice?.bondState ?: dev.bluefalcon.core.BlueFalconBondState.None,
                 bondCapability = existingDevice?.bondCapability ?: blueFalcon.centralCapabilities.bondCapability,
+                bondInProgress = existingDevice?.bondInProgress ?: false,
+                bondStatus = existingDevice?.bondStatus,
             )
         }
         return updatedDevices
