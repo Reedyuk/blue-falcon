@@ -63,6 +63,7 @@ kotlin {
                 implementation("dev.bluefalcon:blue-falcon-plugin-nordic-fota:$falconVersion")
                 implementation("dev.bluefalcon:blue-falcon-plugin-clone:$falconVersion")
                 implementation("dev.bluefalcon:blue-falcon-plugin-broadcast:$falconVersion")
+                implementation("dev.bluefalcon:blue-falcon-plugin-proximity:$falconVersion")
             }
         }
         val commonTest by getting {

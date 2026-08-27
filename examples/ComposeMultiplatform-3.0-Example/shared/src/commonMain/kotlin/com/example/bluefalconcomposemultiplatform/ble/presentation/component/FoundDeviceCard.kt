@@ -43,13 +43,15 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.bluefalconcomposemultiplatform.ble.util.BleDeviceType
-import com.example.bluefalconcomposemultiplatform.ble.util.rssiToProximityLabel
+import dev.bluefalcon.plugins.proximity.ProximityZone
 
 @Composable
 fun ScanResultCard(
     deviceName: String?,
     macId: String,
     rssi: Float?,
+    proximityZone: ProximityZone = ProximityZone.Unknown,
+    estimatedDistanceMeters: Double? = null,
     serviceUuids: List<String> = emptyList(),
     manufacturerData: Map<Int, String> = emptyMap(),
     connected: Boolean,
@@ -136,14 +138,14 @@ fun ScanResultCard(
                 }
             }
 
-            // Signal strength + proximity column
+            // Signal strength + proximity column (using ProximityPlugin's smoothed/filtered data)
             rssi?.let {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    val (signalIcon, signalColor) = when {
-                        it > -50 -> Icons.Default.SignalCellular4Bar to MaterialTheme.colorScheme.primary
-                        it > -65 -> Icons.Default.SignalCellularAlt to MaterialTheme.colorScheme.tertiary
-                        it > -75 -> Icons.Default.SignalCellularAlt2Bar to MaterialTheme.colorScheme.secondary
-                        else     -> Icons.Default.SignalCellularAlt1Bar to MaterialTheme.colorScheme.error
+                    val (signalIcon, signalColor) = when (proximityZone) {
+                        ProximityZone.Immediate -> Icons.Default.SignalCellular4Bar to MaterialTheme.colorScheme.primary
+                        ProximityZone.Near -> Icons.Default.SignalCellularAlt to MaterialTheme.colorScheme.tertiary
+                        ProximityZone.Far -> Icons.Default.SignalCellularAlt1Bar to MaterialTheme.colorScheme.error
+                        ProximityZone.Unknown -> Icons.Default.SignalCellularAlt2Bar to MaterialTheme.colorScheme.secondary
                     }
                     Icon(
                         imageVector = signalIcon,
@@ -152,7 +154,7 @@ fun ScanResultCard(
                         tint = signalColor
                     )
                     Text(
-                        text = rssiToProximityLabel(it),
+                        text = proximityZone.toLabel(),
                         fontSize = 9.sp,
                         color = signalColor,
                         fontWeight = FontWeight.Medium
@@ -162,6 +164,14 @@ fun ScanResultCard(
                         fontSize = 9.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
+                    // Show estimated distance if available
+                    estimatedDistanceMeters?.let { distance ->
+                        Text(
+                            text = "~${String.format("%.1f", distance)}m",
+                            fontSize = 8.sp,
+                            color = MaterialTheme.colorScheme.outline
+                        )
+                    }
                 }
                 Spacer(modifier = Modifier.width(8.dp))
             }
@@ -232,3 +242,12 @@ private fun BleDeviceType.toLabel(): String = when (this) {
     BleDeviceType.UNKNOWN            -> "BLE Device"
 }
 
+/**
+ * Converts ProximityZone from the ProximityPlugin to a human-readable label.
+ */
+private fun ProximityZone.toLabel(): String = when (this) {
+    ProximityZone.Immediate -> "Immediate"
+    ProximityZone.Near      -> "Near"
+    ProximityZone.Far       -> "Far"
+    ProximityZone.Unknown   -> "Unknown"
+}

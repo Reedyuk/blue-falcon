@@ -2,6 +2,7 @@ package com.example.bluefalconcomposemultiplatform.ble.presentation
 
 import dev.bluefalcon.core.BluetoothPeripheral
 import dev.bluefalcon.plugins.nordicfota.FotaState
+import dev.bluefalcon.plugins.proximity.ProximityZone
 
 data class EnhancedBluetoothPeripheral(
     val connected: Boolean,
@@ -15,8 +16,12 @@ data class EnhancedBluetoothPeripheral(
     val notificationData: Map<String, String> = emptyMap(),
     /** Whether a clone operation is in progress. */
     val cloneInProgress: Boolean = false,
-    /** Cached RSSI, kept fresh by rssiUpdates flow (falls back to peripheral.rssi on first discovery). */
+    /** Smoothed RSSI from ProximityPlugin (Kalman-filtered), falls back to peripheral.rssi on first discovery. */
     val rssi: Float? = null,
+    /** Proximity zone classification from ProximityPlugin (Immediate, Near, Far, Unknown). */
+    val proximityZone: ProximityZone = ProximityZone.Unknown,
+    /** Estimated distance in meters from ProximityPlugin (using log-distance path-loss model). */
+    val estimatedDistanceMeters: Double? = null,
     /** Manufacturer-specific data from scan advertisement: company ID → hex payload string. */
     val manufacturerData: Map<Int, String> = emptyMap(),
     /**

@@ -12,6 +12,8 @@ import dev.bluefalcon.plugins.clone.CloneConfig
 import dev.bluefalcon.plugins.clone.DeviceClonePlugin
 import dev.bluefalcon.plugins.nordicfota.FotaState
 import dev.bluefalcon.plugins.nordicfota.NordicFotaPlugin
+import dev.bluefalcon.plugins.proximity.ProximityPlugin
+import dev.bluefalcon.plugins.proximity.ProximityZone
 import dev.icerock.moko.mvvm.viewmodel.ViewModel
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -26,6 +28,7 @@ import kotlin.uuid.ExperimentalUuidApi
 class BluetoothDeviceViewModel(
     private val blueFalcon: BlueFalcon,
     private val fotaPlugin: NordicFotaPlugin,
+    private val proximityPlugin: ProximityPlugin,
     private val advertiser: BluetoothAdvertiser
 ): ViewModel() {
 
@@ -79,15 +82,26 @@ class BluetoothDeviceViewModel(
             }
         }
 
-        // Collect RSSI updates so the scan list stays current without a full peripherals re-emission
+        // Collect smoothed RSSI and proximity zone from ProximityPlugin instead of raw rssiUpdates
         viewModelScope.launch(Dispatchers.IO) {
-            blueFalcon.rssiUpdates.collect { (uuid, rssi) ->
+            proximityPlugin.proximityReadings.collect { readings ->
                 _deviceState.update { state ->
                     val updatedDevices = state.devices.toMutableMap()
-                    updatedDevices[uuid]?.let { device ->
-                        updatedDevices[uuid] = device.copy(rssi = rssi)
+                    var changed = false
+                    readings.forEach { (uuid, reading) ->
+                        updatedDevices[uuid]?.let { device ->
+                            val updated = device.copy(
+                                rssi = reading.smoothedRssi,
+                                proximityZone = reading.zone,
+                                estimatedDistanceMeters = reading.estimatedDistanceMeters
+                            )
+                            if (updated != device) {
+                                updatedDevices[uuid] = updated
+                                changed = true
+                            }
+                        }
                     }
-                    state.copy(devices = HashMap(updatedDevices))
+                    if (changed) state.copy(devices = HashMap(updatedDevices)) else state
                 }
             }
         }

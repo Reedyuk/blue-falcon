@@ -10,6 +10,8 @@ import dev.bluefalcon.plugins.logging.LoggingPlugin
 import dev.bluefalcon.plugins.logging.LogLevel
 import dev.bluefalcon.plugins.retry.RetryPlugin
 import dev.bluefalcon.plugins.nordicfota.NordicFotaPlugin
+import dev.bluefalcon.plugins.proximity.ProximityPlugin
+import dev.bluefalcon.plugins.proximity.SmoothingStrategy
 import dev.bluefalcon.plugins.queue.QueuePlugin
 
 actual class AppModule {
@@ -17,6 +19,12 @@ actual class AppModule {
         chunkSize = 256
         autoConfirm = true
         autoReset = true
+    }
+
+    actual val proximityPlugin: ProximityPlugin = ProximityPlugin.create {
+        smoothing = SmoothingStrategy.Kalman()
+        immediateThreshold = -50f
+        nearThreshold = -75f
     }
 
     private val engine = IosEngine()
@@ -50,5 +58,8 @@ actual class AppModule {
 
         // Install Nordic FOTA plugin
         plugins.install(fotaPlugin) { }
+
+        // Install Proximity plugin for RSSI smoothing and distance estimation
+        plugins.install(proximityPlugin) { }
     }
 }
