@@ -58,6 +58,9 @@ class AndroidEngine(
     override val notificationSubscriptionUpdates: SharedFlow<NotificationSubscriptionUpdate> =
         _notificationSubscriptionUpdates
 
+    private val _bondStateUpdates = MutableSharedFlow<BondStateUpdate>(extraBufferCapacity = 64)
+    override val bondStateUpdates: SharedFlow<BondStateUpdate> = _bondStateUpdates
+
     private val centralWriteState = AndroidCentralWriteState()
     override val centralCapabilities = CentralCapabilities(
         reliableWriteResults = true,
@@ -65,6 +68,7 @@ class AndroidEngine(
         perConnectionMaximumWriteLength = true,
         notificationSubscriptionResults = true,
         restoration = false,
+        bondCapability = BondCapability.Supported,
     )
     override val characteristicWriteCapabilities = centralWriteState.capabilities
     override val characteristicWriteReady = centralWriteState.writeReady
@@ -96,7 +100,14 @@ class AndroidEngine(
                     intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE)
                 } ?: return
                 
-                logger?.debug("Bond state changed for ${device.address}")
+                val bondState = intent.getIntExtra(BluetoothDevice.EXTRA_BOND_STATE, BluetoothDevice.BOND_NONE)
+                val mappedState = when (bondState) {
+                    BluetoothDevice.BOND_BONDED -> BlueFalconBondState.Bonded
+                    BluetoothDevice.BOND_BONDING -> BlueFalconBondState.Bonding
+                    else -> BlueFalconBondState.None
+                }
+                logger?.debug("Bond state changed for ${device.address}: $mappedState")
+                _bondStateUpdates.tryEmit(BondStateUpdate(device.address, mappedState))
             }
         }
     }

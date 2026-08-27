@@ -74,6 +74,8 @@ import com.example.bluefalconcomposemultiplatform.ble.presentation.UiEvent
 import com.example.bluefalconcomposemultiplatform.ble.util.BleServiceNames
 import dev.bluefalcon.core.BluetoothCharacteristic
 import dev.bluefalcon.core.BluetoothService
+import dev.bluefalcon.core.BlueFalconBondState
+import dev.bluefalcon.core.BondCapability
 import dev.bluefalcon.plugins.nordicfota.FotaState
 import dev.bluefalcon.plugins.nordicfota.NordicFotaPlugin
 import kotlinx.coroutines.delay
@@ -260,6 +262,12 @@ fun DeviceDetailScreen(
                     }
                     item {
                         CloneCard(
+                            device = device,
+                            onEvent = onEvent
+                        )
+                    }
+                    item {
+                        BondCard(
                             device = device,
                             onEvent = onEvent
                         )
@@ -1084,6 +1092,134 @@ fun CloneCard(
                     )
                     Spacer(modifier = Modifier.width(6.dp))
                     Text("CLONE DEVICE", fontSize = 12.sp)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun BondCard(
+    device: EnhancedBluetoothPeripheral,
+    onEvent: (UiEvent) -> Unit
+) {
+    val macId = device.peripheral.uuid
+
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 4.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surface
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Bluetooth,
+                    contentDescription = "Bond Device",
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(20.dp)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = "Bonding / Pairing",
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 14.sp
+                )
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            // Bond state
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "State: ",
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.outline
+                )
+                Text(
+                    text = when (device.bondState) {
+                        BlueFalconBondState.Bonded -> "Bonded ✅"
+                        BlueFalconBondState.Bonding -> "Bonding..."
+                        BlueFalconBondState.None -> "Not bonded"
+                    },
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = when (device.bondState) {
+                        BlueFalconBondState.Bonded -> MaterialTheme.colorScheme.primary
+                        BlueFalconBondState.Bonding -> MaterialTheme.colorScheme.tertiary
+                        BlueFalconBondState.None -> MaterialTheme.colorScheme.outline
+                    }
+                )
+            }
+
+            // Capability
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "Capability: ",
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.outline
+                )
+                Text(
+                    text = when (device.bondCapability) {
+                        BondCapability.Supported -> "Supported"
+                        BondCapability.Implicit -> "Implicit (auto-pairs on encrypted access)"
+                        BondCapability.Unsupported -> "Unsupported on this platform"
+                    },
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.outline
+                )
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            if (device.bondInProgress) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Bond operation in progress...", fontSize = 12.sp)
+                }
+            } else {
+                device.bondStatus?.let { status ->
+                    Text(
+                        text = status,
+                        fontSize = 11.sp,
+                        color = MaterialTheme.colorScheme.outline,
+                        modifier = Modifier.padding(bottom = 8.dp)
+                    )
+                }
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Button(
+                        onClick = { onEvent(UiEvent.OnRequestBond(macId)) },
+                        enabled = device.bondState != BlueFalconBondState.Bonded,
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = MaterialTheme.colorScheme.primary
+                        ),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Text("BOND", fontSize = 12.sp)
+                    }
+                    OutlinedButton(
+                        onClick = { onEvent(UiEvent.OnRequestUnbond(macId)) },
+                        enabled = device.bondState == BlueFalconBondState.Bonded,
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Text("UNBOND", fontSize = 12.sp)
+                    }
                 }
             }
         }

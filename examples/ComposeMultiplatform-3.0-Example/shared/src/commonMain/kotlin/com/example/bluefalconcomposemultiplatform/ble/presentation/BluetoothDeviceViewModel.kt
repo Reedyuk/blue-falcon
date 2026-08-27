@@ -7,6 +7,8 @@ import dev.bluefalcon.core.ServiceDiscoveryPhase
 import dev.bluefalcon.core.ServiceFilter
 import dev.bluefalcon.core.toUuid
 import dev.bluefalcon.peripheral.BluetoothAdvertiser
+import dev.bluefalcon.plugins.bonding.BondResult
+import dev.bluefalcon.plugins.bonding.BondingPlugin
 import dev.bluefalcon.plugins.broadcast.DeviceBroadcastPlugin
 import dev.bluefalcon.plugins.clone.CloneConfig
 import dev.bluefalcon.plugins.clone.DeviceClonePlugin
@@ -28,7 +30,11 @@ import kotlin.uuid.ExperimentalUuidApi
 class BluetoothDeviceViewModel(
     private val blueFalcon: BlueFalcon,
     private val fotaPlugin: NordicFotaPlugin,
+<<<<<<< HEAD
     private val proximityPlugin: ProximityPlugin,
+=======
+    private val bondingPlugin: BondingPlugin,
+>>>>>>> origin/master
     private val advertiser: BluetoothAdvertiser
 ): ViewModel() {
 
@@ -123,6 +129,29 @@ class BluetoothDeviceViewModel(
         viewModelScope.launch(Dispatchers.IO) {
             broadcastPlugin.broadcastState.collect { broadcastState ->
                 _deviceState.update { it.copy(broadcastState = broadcastState) }
+            }
+        }
+
+        // Collect bond state updates from the bonding plugin
+        viewModelScope.launch(Dispatchers.IO) {
+            bondingPlugin.bondStates.collect { bondStates ->
+                _deviceState.update { state ->
+                    val updatedDevices = state.devices.toMutableMap()
+                    var changed = false
+                    bondStates.forEach { (peripheralId, bondState) ->
+                        updatedDevices[peripheralId]?.let { device ->
+                            val updated = device.copy(
+                                bondState = bondState.state,
+                                bondCapability = bondState.capability,
+                            )
+                            if (updated != device) {
+                                updatedDevices[peripheralId] = updated
+                                changed = true
+                            }
+                        }
+                    }
+                    if (changed) state.copy(devices = HashMap(updatedDevices)) else state
+                }
             }
         }
 
@@ -527,6 +556,66 @@ class BluetoothDeviceViewModel(
                     broadcastPlugin.stopBroadcast()
                 }
             }
+
+            is UiEvent.OnRequestBond -> {
+                _deviceState.value.devices[event.macId]?.let { device ->
+                    _deviceState.update { state ->
+                        val updatedDevices = state.devices.toMutableMap()
+                        updatedDevices[event.macId] = device.copy(bondInProgress = true)
+                        state.copy(devices = HashMap(updatedDevices))
+                    }
+                    viewModelScope.launch(Dispatchers.IO) {
+                        val result = bondingPlugin.requestBond(device.peripheral)
+                        val message = when (result) {
+                            is BondResult.Bonded -> "Bonded successfully"
+                            is BondResult.Failed -> "Bond failed: ${result.cause.message}"
+                            is BondResult.Unsupported -> "Bonding not supported on this platform"
+                            is BondResult.TimedOut -> "Bond request timed out"
+                            is BondResult.Unbonded -> null
+                        }
+                        _deviceState.update { state ->
+                            val updatedDevices = state.devices.toMutableMap()
+                            updatedDevices[event.macId]?.let { current ->
+                                updatedDevices[event.macId] = current.copy(
+                                    bondInProgress = false,
+                                    bondStatus = message
+                                )
+                            }
+                            state.copy(devices = HashMap(updatedDevices))
+                        }
+                    }
+                }
+            }
+
+            is UiEvent.OnRequestUnbond -> {
+                _deviceState.value.devices[event.macId]?.let { device ->
+                    _deviceState.update { state ->
+                        val updatedDevices = state.devices.toMutableMap()
+                        updatedDevices[event.macId] = device.copy(bondInProgress = true)
+                        state.copy(devices = HashMap(updatedDevices))
+                    }
+                    viewModelScope.launch(Dispatchers.IO) {
+                        val result = bondingPlugin.requestUnbond(device.peripheral)
+                        val message = when (result) {
+                            is BondResult.Unbonded -> "Unbonded successfully"
+                            is BondResult.Failed -> "Unbond failed: ${result.cause.message}"
+                            is BondResult.Unsupported -> "Unbonding not supported on this platform"
+                            is BondResult.TimedOut -> "Unbond request timed out"
+                            is BondResult.Bonded -> null
+                        }
+                        _deviceState.update { state ->
+                            val updatedDevices = state.devices.toMutableMap()
+                            updatedDevices[event.macId]?.let { current ->
+                                updatedDevices[event.macId] = current.copy(
+                                    bondInProgress = false,
+                                    bondStatus = message
+                                )
+                            }
+                            state.copy(devices = HashMap(updatedDevices))
+                        }
+                    }
+                }
+            }
         }
     }
 
@@ -549,7 +638,9 @@ class BluetoothDeviceViewModel(
                 fotaState = existingDevice?.fotaState ?: FotaState.Idle,
                 rssi = peripheral.rssi ?: existingDevice?.rssi,
                 manufacturerData = mfData.ifEmpty { existingDevice?.manufacturerData ?: emptyMap() },
-                connectionError = existingDevice?.connectionError
+                connectionError = existingDevice?.connectionError,
+                bondState = existingDevice?.bondState ?: dev.bluefalcon.core.BlueFalconBondState.None,
+                bondCapability = existingDevice?.bondCapability ?: blueFalcon.centralCapabilities.bondCapability,
             )
         }
         return updatedDevices

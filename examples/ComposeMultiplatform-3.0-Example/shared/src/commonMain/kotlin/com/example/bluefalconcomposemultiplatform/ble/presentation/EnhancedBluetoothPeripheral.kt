@@ -1,6 +1,8 @@
 package com.example.bluefalconcomposemultiplatform.ble.presentation
 
 import dev.bluefalcon.core.BluetoothPeripheral
+import dev.bluefalcon.core.BlueFalconBondState
+import dev.bluefalcon.core.BondCapability
 import dev.bluefalcon.plugins.nordicfota.FotaState
 import dev.bluefalcon.plugins.proximity.ProximityZone
 
@@ -30,5 +32,13 @@ data class EnhancedBluetoothPeripheral(
      * [dev.bluefalcon.core.BlueFalcon.connectionStates]. `null` while connected/connecting or if
      * the peripheral has never failed/dropped.
      */
-    val connectionError: String? = null
+    val connectionError: String? = null,
+    /** Current bond state of this peripheral, if observed by the bonding plugin. */
+    val bondState: BlueFalconBondState = BlueFalconBondState.None,
+    /** Platform bond capability for this peripheral. */
+    val bondCapability: BondCapability = BondCapability.Unsupported,
+    /** True while a bond/unbond operation is in flight. */
+    val bondInProgress: Boolean = false,
+    /** Human-readable result of the last bond/unbond operation. */
+    val bondStatus: String? = null,
 )

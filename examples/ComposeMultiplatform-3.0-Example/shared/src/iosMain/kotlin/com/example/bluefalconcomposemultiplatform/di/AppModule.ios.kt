@@ -13,6 +13,7 @@ import dev.bluefalcon.plugins.nordicfota.NordicFotaPlugin
 import dev.bluefalcon.plugins.proximity.ProximityPlugin
 import dev.bluefalcon.plugins.proximity.SmoothingStrategy
 import dev.bluefalcon.plugins.queue.QueuePlugin
+import dev.bluefalcon.plugins.bonding.BondingPlugin
 
 actual class AppModule {
     actual val fotaPlugin: NordicFotaPlugin = NordicFotaPlugin.create {
@@ -21,11 +22,15 @@ actual class AppModule {
         autoReset = true
     }
 
+<<<<<<< HEAD
     actual val proximityPlugin: ProximityPlugin = ProximityPlugin.create {
         smoothing = SmoothingStrategy.Kalman()
         immediateThreshold = -50f
         nearThreshold = -75f
     }
+=======
+    actual val bondingPlugin: BondingPlugin = BondingPlugin.create()
+>>>>>>> origin/master
 
     private val engine = IosEngine()
     private val peripheralLogger: dev.bluefalcon.core.Logger = dev.bluefalcon.core.PrintLnLogger
@@ -59,7 +64,13 @@ actual class AppModule {
         // Install Nordic FOTA plugin
         plugins.install(fotaPlugin) { }
 
+<<<<<<< HEAD
         // Install Proximity plugin for RSSI smoothing and distance estimation
         plugins.install(proximityPlugin) { }
+=======
+        // Install bonding plugin and bind to this BlueFalcon instance
+        plugins.install(bondingPlugin) { }
+        bondingPlugin.bind(this)
+>>>>>>> origin/master
     }
 }

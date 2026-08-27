@@ -84,6 +84,16 @@ interface BlueFalconEngine {
 
     val notificationSubscriptionUpdates: SharedFlow<NotificationSubscriptionUpdate>
         get() = EmptyNotificationSubscriptionUpdates
+
+    /**
+     * Reactive stream of bond/pairing state changes.
+     *
+     * Engines that support bonding (e.g. Android) emit [BondStateUpdate] events when
+     * the bond state of a peripheral changes. Engines that don't support bonding leave
+     * the default no-op implementation.
+     */
+    val bondStateUpdates: SharedFlow<BondStateUpdate>
+        get() = EmptyBondStateUpdates
     
     /**
      * Check if currently scanning
