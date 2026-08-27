@@ -158,13 +158,13 @@ class BondingPlugin(private val config: Config) : BlueFalconPlugin {
         bf: BlueFalcon,
         peripheralUuid: String,
     ): BondResult {
-        val result = withTimeoutOrNull(config.bondTimeout) {
+        val completed = withTimeoutOrNull(config.bondTimeout) {
             bf.bondStateUpdates.first { update ->
                 update.peripheralUuid == peripheralUuid && update.state == BlueFalconBondState.None
             }
-        } ?: return BondResult.TimedOut
+        }
 
-        return BondResult.Unbonded(peripheralUuid)
+        return if (completed != null) BondResult.Unbonded(peripheralUuid) else BondResult.TimedOut
     }
 
     companion object {

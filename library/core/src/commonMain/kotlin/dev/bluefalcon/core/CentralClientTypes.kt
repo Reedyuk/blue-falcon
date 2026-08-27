@@ -104,3 +104,6 @@ internal val EmptyCharacteristicWriteReady: SharedFlow<CharacteristicWriteReady>
 
 internal val EmptyNotificationSubscriptionUpdates: SharedFlow<NotificationSubscriptionUpdate> =
     MutableSharedFlow()
+
+internal val EmptyBondStateUpdates: SharedFlow<BondStateUpdate> =
+    MutableSharedFlow()

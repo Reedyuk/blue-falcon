@@ -93,7 +93,7 @@ interface BlueFalconEngine {
      * the default no-op implementation.
      */
     val bondStateUpdates: SharedFlow<BondStateUpdate>
-        get() = MutableSharedFlow()
+        get() = EmptyBondStateUpdates
     
     /**
      * Check if currently scanning

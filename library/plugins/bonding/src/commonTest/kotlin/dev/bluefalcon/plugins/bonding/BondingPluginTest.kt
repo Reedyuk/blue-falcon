@@ -8,7 +8,9 @@ import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -83,6 +85,7 @@ private class FakePeripheral(val id: String) : BluetoothPeripheral {
     override val characteristics: List<BluetoothCharacteristic> = emptyList()
 }
 
+@OptIn(ExperimentalCoroutinesApi::class)
 class BondingPluginTest {
 
     @Test
@@ -178,7 +181,7 @@ class BondingPluginTest {
         assertTrue(plugin.bondStates.value.isEmpty())
 
         engine.emitBondState(BondStateUpdate("device-1", BlueFalconBondState.Bonded))
-        // Allow collection to process
+        advanceUntilIdle()
         val states = plugin.bondStates.value
         assertEquals(1, states.size)
         assertEquals(BlueFalconBondState.Bonded, states["device-1"]?.state)
