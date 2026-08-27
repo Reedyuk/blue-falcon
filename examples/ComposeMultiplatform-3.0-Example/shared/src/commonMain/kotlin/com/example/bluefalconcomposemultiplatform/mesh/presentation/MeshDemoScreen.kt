@@ -73,6 +73,7 @@ fun MeshDemoScreen(
             MeshStatusHeader(
                 nodeState = state.nodeState,
                 nodeUuid = state.nodeUuid,
+                neighborCount = state.neighborCount,
             )
 
             Spacer(modifier = Modifier.height(16.dp))
@@ -159,6 +160,7 @@ fun MeshDemoScreen(
 private fun MeshStatusHeader(
     nodeState: MeshNodeState,
     nodeUuid: String,
+    neighborCount: Int,
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -216,6 +218,18 @@ private fun MeshStatusHeader(
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+                if (nodeState == MeshNodeState.Running) {
+                    Text(
+                        text = if (neighborCount == 1) {
+                            "1 device connected"
+                        } else {
+                            "$neighborCount devices connected"
+                        },
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.Medium,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                }
                 if (nodeUuid.isNotEmpty()) {
                     Text(
                         text = "ID: ${nodeUuid.take(8)}...",

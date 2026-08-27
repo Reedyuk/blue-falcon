@@ -108,6 +108,13 @@ class MeshDemoViewModel(
                     }
                 }
 
+                // Observe neighbor count (devices currently connected to the mesh)
+                launch {
+                    node.neighborCount.collect { count ->
+                        _state.update { it.copy(neighborCount = count) }
+                    }
+                }
+
                 // Observe inbound messages
                 launch {
                     node.inboundMessages.collect { message ->
@@ -128,7 +135,7 @@ class MeshDemoViewModel(
             try {
                 meshNode?.stop()
                 meshNode = null
-                _state.update { it.copy(nodeState = MeshNodeState.Idle) }
+                _state.update { it.copy(nodeState = MeshNodeState.Idle, neighborCount = 0) }
             } catch (e: Exception) {
                 _state.update { it.copy(error = "Failed to stop mesh: ${e.message}") }
             }

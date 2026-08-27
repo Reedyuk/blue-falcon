@@ -120,8 +120,22 @@ class MeshNode(
     private val centralNeighbors = mutableMapOf<String, BluetoothPeripheral>()
     private val centralNeighborsMutex = Mutex()
 
+    private val _neighborCount = MutableStateFlow(0)
+
+    /**
+     * Number of currently connected neighbors, counting both directions:
+     * - Neighbors this node connected to as a central (outbound).
+     * - Neighbors connected to this node as a peripheral (inbound), i.e.
+     *   [BlueFalconPeripheral.sessions].
+     *
+     * Updated automatically whenever a neighbor connects or disconnects in either
+     * direction. Useful for displaying mesh size in UI.
+     */
+    val neighborCount: StateFlow<Int> = _neighborCount.asStateFlow()
+
     private var meshScope: CoroutineScope? = null
     private var scanJob: Job? = null
+    private var neighborCountJob: Job? = null
     private var requestHandlerJob: Job? = null
     private var pruneJob: Job? = null
 
@@ -198,6 +212,14 @@ class MeshNode(
             }
         }
 
+        // Keep neighborCount in sync with both inbound (peripheral sessions) and
+        // outbound (central) neighbor connections.
+        neighborCountJob = scope.launch {
+            peripheral.sessions.collect {
+                updateNeighborCount()
+            }
+        }
+
         // Periodic dedup cache pruning
         pruneJob = scope.launch {
             while (isActive) {
@@ -205,6 +227,11 @@ class MeshNode(
                 dedupCache.prune()
             }
         }
+    }
+
+    private suspend fun updateNeighborCount() {
+        val outboundCount = centralNeighborsMutex.withLock { centralNeighbors.size }
+        _neighborCount.value = outboundCount + peripheral.sessions.value.size
     }
 
     /**
@@ -219,6 +246,7 @@ class MeshNode(
 
         // Cancel all jobs
         scanJob?.cancel()
+        neighborCountJob?.cancel()
         requestHandlerJob?.cancel()
         pruneJob?.cancel()
 
@@ -239,6 +267,7 @@ class MeshNode(
         // Clear state
         framersMutex.withLock { framers.clear() }
         dedupCache.clear()
+        _neighborCount.value = 0
 
         meshScope?.cancel()
         meshScope = null
@@ -317,6 +346,7 @@ class MeshNode(
                 centralNeighborsMutex.withLock {
                     centralNeighbors[neighbor.uuid] = neighbor
                 }
+                updateNeighborCount()
 
                 // Monitor connection state and remove on disconnect
                 central.connectionStateFlow(neighbor).collect { state ->
@@ -327,6 +357,7 @@ class MeshNode(
                         framersMutex.withLock {
                             framers.remove(neighbor.uuid)
                         }
+                        updateNeighborCount()
                     }
                 }
             } catch (e: Exception) {
