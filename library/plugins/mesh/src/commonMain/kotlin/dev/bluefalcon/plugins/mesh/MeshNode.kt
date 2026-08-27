@@ -122,6 +122,17 @@ class MeshNode(
     private val centralNeighbors = mutableMapOf<String, BluetoothPeripheral>()
     private val centralNeighborsMutex = Mutex()
 
+    // Peripherals with a connect attempt currently in flight. Needed in addition to
+    // centralNeighbors because central.peripherals is a StateFlow that re-emits on
+    // every scan/RSSI update — without this guard, a peripheral discovered while its
+    // own connect()/MTU/discovery/subscribe sequence is still in flight (which can
+    // take multiple seconds) would trigger a second, concurrent connectToNeighbor()
+    // call for the same peripheral before it's added to centralNeighbors, racing two
+    // connect attempts against each other and causing flapping/incorrect neighbor
+    // counts (most visible on iOS/CoreBluetooth, which does not tolerate a second
+    // connect() call on an already-connecting peripheral).
+    private val pendingConnections = mutableSetOf<String>()
+
     private val _neighborCount = MutableStateFlow(0)
 
     /**
@@ -258,6 +269,7 @@ class MeshNode(
                 runCatching { central.disconnect(neighbor) }
             }
             centralNeighbors.clear()
+            pendingConnections.clear()
         }
 
         // Stop scanning
@@ -309,11 +321,18 @@ class MeshNode(
                 // Filter for mesh service and connect to new neighbors
                 peripherals.forEach { peripheral ->
                     val uuid = peripheral.uuid
-                    val alreadyConnected = centralNeighborsMutex.withLock {
-                        centralNeighbors.containsKey(uuid)
+                    val shouldConnect = centralNeighborsMutex.withLock {
+                        if (centralNeighbors.containsKey(uuid) || pendingConnections.contains(uuid)) {
+                            false
+                        } else if (centralNeighbors.size < config.maxNeighborConnections) {
+                            pendingConnections.add(uuid)
+                            true
+                        } else {
+                            false
+                        }
                     }
 
-                    if (!alreadyConnected && shouldConnectToNeighbor()) {
+                    if (shouldConnect) {
                         connectToNeighbor(peripheral)
                     }
                 }
@@ -340,12 +359,6 @@ class MeshNode(
             ) {
                 delay(100)
             }
-        }
-    }
-
-    private suspend fun shouldConnectToNeighbor(): Boolean {
-        return centralNeighborsMutex.withLock {
-            centralNeighbors.size < config.maxNeighborConnections
         }
     }
 
@@ -377,6 +390,7 @@ class MeshNode(
                 // Wait for connection and add to neighbors
                 centralNeighborsMutex.withLock {
                     centralNeighbors[neighbor.uuid] = neighbor
+                    pendingConnections.remove(neighbor.uuid)
                 }
                 updateNeighborCount()
 
@@ -385,6 +399,7 @@ class MeshNode(
                     if (state is PeripheralConnectionState.Disconnected) {
                         centralNeighborsMutex.withLock {
                             centralNeighbors.remove(neighbor.uuid)
+                            pendingConnections.remove(neighbor.uuid)
                         }
                         framersMutex.withLock {
                             framers.remove(neighbor.uuid)
@@ -393,7 +408,11 @@ class MeshNode(
                     }
                 }
             } catch (e: Exception) {
-                // Connection failed - neighbor will be retried on next scan discovery
+                // Connection failed - neighbor will be retried on next scan discovery.
+                // Clear the pending marker so a future scan re-discovery can retry.
+                centralNeighborsMutex.withLock {
+                    pendingConnections.remove(neighbor.uuid)
+                }
             }
         }
     }
