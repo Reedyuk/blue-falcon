@@ -97,8 +97,7 @@ class BlueFalcon(
     val peripherals: StateFlow<Set<BluetoothPeripheral>> get() = engine.peripherals
     val managerState: StateFlow<BluetoothManagerState> get() = engine.managerState
     val isScanning: Boolean get() = engine.isScanning
-    val rssiUpdates: SharedFlow<Pair<String, Float>> get() = engine.rssiUpdates
-    val centralCapabilities: CentralCapabilities get() = engine.centralCapabilities
+    val rssiUpdates: SharedFlow<Pair<String, Float>> get() = engine.rssiUpdates    val centralCapabilities: CentralCapabilities get() = engine.centralCapabilities
     val characteristicWriteCapabilities:
         StateFlow<Map<CharacteristicWriteKey, CharacteristicWriteCapability>>
         get() = engine.characteristicWriteCapabilities
@@ -201,6 +200,39 @@ class BlueFalcon(
             .map { it[peripheral.uuid] ?: PeripheralConnectionState.Disconnected() }
             .stateIn(engine.scope, SharingStarted.Eagerly, peripheralState(peripheral))
     
+    /**
+     * Whether the underlying platform can enumerate Bluetooth adapters and switch between them.
+     */
+    val supportsAdapterSelection: Boolean get() = engine.supportsAdapterSelection
+
+    /**
+     * The adapter currently used by the engine, or null when the platform does not expose
+     * adapter selection.
+     */
+    val selectedAdapter: BluetoothAdapter? get() = engine.selectedAdapter
+
+    /**
+     * Enumerate the Bluetooth adapters available on the host.
+     *
+     * Returns an empty list on platforms without adapter enumeration support.
+     *
+     * ```kotlin
+     * val adapters = blueFalcon.adapters()
+     * adapters.firstOrNull { it.name.contains("USB") }?.let {
+     *     blueFalcon.selectAdapter(it.identifier)
+     * }
+     * ```
+     */
+    suspend fun adapters(): List<BluetoothAdapter> = engine.adapters()
+
+    /**
+     * Select the adapter that subsequent Bluetooth operations should use.
+     *
+     * @param identifier The [BluetoothAdapter.identifier] of an adapter returned by [adapters]
+     */
+    suspend fun selectAdapter(identifier: String): AdapterSelectionResult =
+        engine.selectAdapter(identifier)
+
     /**
      * Scan for BLE devices
      */
