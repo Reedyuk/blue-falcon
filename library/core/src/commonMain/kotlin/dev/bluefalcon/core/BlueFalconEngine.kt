@@ -99,6 +99,40 @@ interface BlueFalconEngine {
      * Check if currently scanning
      */
     val isScanning: Boolean
+
+    /**
+     * Whether the platform can enumerate Bluetooth adapters and switch between them.
+     *
+     * Only desktop platforms (currently Windows) expose more than one radio; mobile
+     * platforms leave the default `false` implementation.
+     */
+    val supportsAdapterSelection: Boolean
+        get() = false
+
+    /**
+     * The adapter currently used by this engine, or null when the platform does not expose
+     * adapter selection.
+     */
+    val selectedAdapter: BluetoothAdapter?
+        get() = null
+
+    /**
+     * Enumerate the Bluetooth adapters available on the host.
+     *
+     * Returns an empty list on platforms that do not support adapter enumeration
+     * (see [supportsAdapterSelection]).
+     */
+    suspend fun adapters(): List<BluetoothAdapter> = emptyList()
+
+    /**
+     * Select the adapter that subsequent Bluetooth operations should use.
+     *
+     * @param identifier The [BluetoothAdapter.identifier] of an adapter returned by [adapters]
+     * @return the outcome of the request; [AdapterSelectionResult.Unsupported] on platforms
+     *   without adapter selection support
+     */
+    suspend fun selectAdapter(identifier: String): AdapterSelectionResult =
+        AdapterSelectionResult.Unsupported
     
     /**
      * Start scanning for BLE devices

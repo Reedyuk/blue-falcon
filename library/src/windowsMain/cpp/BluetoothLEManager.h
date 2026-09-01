@@ -14,7 +14,9 @@
 #include <map>
 #include <memory>
 #include <mutex>
+#include <vector>
 class SRWLockGuard { SRWLOCK* l; public: SRWLockGuard(SRWLOCK* lock) : l(lock) { AcquireSRWLockExclusive(l); } ~SRWLockGuard() { ReleaseSRWLockExclusive(l); } };
+class SRWSharedLockGuard { SRWLOCK* l; public: SRWSharedLockGuard(SRWLOCK* lock) : l(lock) { AcquireSRWLockShared(l); } ~SRWSharedLockGuard() { ReleaseSRWLockShared(l); } };
 
 using namespace winrt;
 using namespace Windows::Foundation;
@@ -27,6 +29,14 @@ using namespace Windows::Devices::Radios;
 
 // Forward declarations
 class BluetoothLEManager;
+
+struct RadioInfo {
+    std::wstring id;
+    std::wstring name;
+    std::wstring address;
+    bool isDefault;
+    bool isLowEnergySupported;
+};
 
 // Structure to hold device connection state
 struct DeviceConnection {
@@ -44,6 +54,9 @@ public:
     static BluetoothLEManager& getInstance();
     
     void initialize(JavaVM* jvm, jobject javaObject);
+    jobjectArray enumerateAdapters(JNIEnv* env);
+    int selectAdapter(JNIEnv* env, const std::string& adapterId);
+    RadioInfo getSelectedAdapter() const;
     void startScan(JNIEnv* env, jobjectArray serviceUuids);
     void stopScan();
     void connect(uint64_t address);
@@ -94,4 +107,7 @@ private:
     Radio m_bluetoothRadio{nullptr};
     event_token m_radioStateChangedToken;
     bool m_lastReportedRadioReady = false;
+    std::vector<RadioInfo> m_radios;
+    mutable SRWLOCK m_radiosMutex = SRWLOCK_INIT;
+    int m_selectedRadioIndex = -1;
 };

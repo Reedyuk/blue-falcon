@@ -10,6 +10,15 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
+
+internal data class BluetoothAdapterData(
+    val identifier: String,
+    val name: String,
+    val address: String?,
+    val isDefault: Boolean,
+    val isLowEnergySupported: Boolean,
+)
+
 /**
  * Windows implementation of BlueFalconEngine using JNI bridge to WinRT Bluetooth API
  */
@@ -33,6 +42,16 @@ class WindowsEngine : BlueFalconEngine {
     
     override var isScanning: Boolean = false
         private set
+
+    override val supportsAdapterSelection: Boolean = true
+
+    private val _selectedAdapter = MutableStateFlow<BluetoothAdapter?>(null)
+    override val selectedAdapter: BluetoothAdapter?
+        get() = _selectedAdapter.value
+    
+    // Cache last enumerated adapters to avoid redundant native calls
+    private var _adapterCache: List<BluetoothAdapter> = emptyList()
+    private val _adapterCacheMutex = Object()
     
     // Store active connections
     private val connections = mutableMapOf<Long, WindowsBluetoothPeripheral>()
@@ -42,11 +61,13 @@ class WindowsEngine : BlueFalconEngine {
         try {
             System.loadLibrary("bluefalcon-windows")
             nativeInitialize()
+            refreshSelectedAdapter()
             _managerState.value = BluetoothManagerState.Ready
         } catch (e: UnsatisfiedLinkError) {
             try {
                 NativeLibLoader.load("natives/bluefalcon-windows.dll")
                 nativeInitialize()
+                refreshSelectedAdapter()
                 _managerState.value = BluetoothManagerState.Ready
             } catch (ex: Throwable) {
                 _managerState.value = BluetoothManagerState.NotReady
@@ -56,6 +77,57 @@ class WindowsEngine : BlueFalconEngine {
         }
     }
     
+    override suspend fun adapters(): List<BluetoothAdapter> {
+        return try {
+            nativeEnumerateAdapters().map { it.toBluetoothAdapter() }.also { adapters ->
+                synchronized(_adapterCacheMutex) {
+                    _adapterCache = adapters
+                }
+                val currentAdapter = _selectedAdapter.value
+                if (currentAdapter == null) {
+                    _selectedAdapter.value = adapters.firstOrNull { it.isDefault } ?: adapters.firstOrNull()
+                } else {
+                    _selectedAdapter.value = adapters.firstOrNull { it.identifier == currentAdapter.identifier }
+                        ?: adapters.firstOrNull { it.isDefault }
+                        ?: adapters.firstOrNull()
+                }
+            }
+        } catch (e: Throwable) {
+            emptyList()
+        }
+    }
+
+    override suspend fun selectAdapter(identifier: String): AdapterSelectionResult {
+        return try {
+            when (nativeSelectAdapter(identifier)) {
+                0 -> {
+                    // Use cached adapters instead of re-enumerating
+                    val adapter = synchronized(_adapterCacheMutex) {
+                        _adapterCache.firstOrNull { it.identifier == identifier }
+                    }
+                    if (adapter != null) {
+                        _selectedAdapter.value = adapter
+                        AdapterSelectionResult.Selected(adapter)
+                    } else {
+                        // Cache miss, fall back to full enumeration
+                        val freshAdapter = adapters().firstOrNull { it.identifier == identifier }
+                        if (freshAdapter != null) {
+                            _selectedAdapter.value = freshAdapter
+                            AdapterSelectionResult.Selected(freshAdapter)
+                        } else {
+                            AdapterSelectionResult.Failed(IllegalStateException("Selected adapter is no longer available"))
+                        }
+                    }
+                }
+                1 -> AdapterSelectionResult.NotFound
+                2 -> AdapterSelectionResult.Failed(null)
+                else -> AdapterSelectionResult.Failed(null)
+            }
+        } catch (e: Throwable) {
+            AdapterSelectionResult.Failed(e)
+        }
+    }
+
     override suspend fun scan(filters: List<ServiceFilter>) {
         isScanning = true
         
@@ -372,6 +444,25 @@ class WindowsEngine : BlueFalconEngine {
         }
     }
 
+    private fun BluetoothAdapterData.toBluetoothAdapter(): BluetoothAdapter = BluetoothAdapter(
+        identifier = identifier,
+        name = name.ifBlank { identifier },
+        address = address?.takeUnless { it.isBlank() },
+        isDefault = isDefault,
+        isLowEnergySupported = isLowEnergySupported,
+    )
+
+    private fun refreshSelectedAdapter() {
+        runCatching { nativeEnumerateAdapters().map { it.toBluetoothAdapter() } }
+            .getOrNull()
+            ?.let { adapters ->
+                synchronized(_adapterCacheMutex) {
+                    _adapterCache = adapters
+                }
+                _selectedAdapter.value = adapters.firstOrNull { it.isDefault } ?: adapters.firstOrNull()
+            }
+    }
+
     private fun parseManufacturerData(raw: ByteArray?): Map<Int, ByteArray> {
         if (raw == null || raw.size < 2) return emptyMap()
         val companyId = (raw[0].toInt() and 0xFF) or ((raw[1].toInt() and 0xFF) shl 8)
@@ -548,6 +639,8 @@ class WindowsEngine : BlueFalconEngine {
     private external fun nativeReadDescriptor(address: Long, descriptorUuid: String)
     private external fun nativeWriteDescriptor(address: Long, descriptorUuid: String, value: ByteArray)
     private external fun nativeChangeMTU(address: Long, mtu: Int)
+    private external fun nativeEnumerateAdapters(): Array<BluetoothAdapterData>
+    private external fun nativeSelectAdapter(adapterId: String): Int
     
     companion object {
         const val WRITE_TYPE_DEFAULT = 0x02
