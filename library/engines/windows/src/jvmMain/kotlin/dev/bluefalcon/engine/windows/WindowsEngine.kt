@@ -83,10 +83,11 @@ class WindowsEngine : BlueFalconEngine {
                 synchronized(_adapterCacheMutex) {
                     _adapterCache = adapters
                 }
-                if (_selectedAdapter.value == null) {
+                val currentAdapter = _selectedAdapter.value
+                if (currentAdapter == null) {
                     _selectedAdapter.value = adapters.firstOrNull { it.isDefault } ?: adapters.firstOrNull()
                 } else {
-                    _selectedAdapter.value = adapters.firstOrNull { it.identifier == _selectedAdapter.value?.identifier }
+                    _selectedAdapter.value = adapters.firstOrNull { it.identifier == currentAdapter.identifier }
                         ?: adapters.firstOrNull { it.isDefault }
                         ?: adapters.firstOrNull()
                 }
