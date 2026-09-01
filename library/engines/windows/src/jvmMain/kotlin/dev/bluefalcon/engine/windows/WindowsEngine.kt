@@ -455,6 +455,9 @@ class WindowsEngine : BlueFalconEngine {
         runCatching { nativeEnumerateAdapters().map { it.toBluetoothAdapter() } }
             .getOrNull()
             ?.let { adapters ->
+                synchronized(_adapterCacheMutex) {
+                    _adapterCache = adapters
+                }
                 _selectedAdapter.value = adapters.firstOrNull { it.isDefault } ?: adapters.firstOrNull()
             }
     }
