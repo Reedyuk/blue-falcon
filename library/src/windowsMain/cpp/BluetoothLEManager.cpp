@@ -868,33 +868,39 @@ int BluetoothLEManager::selectAdapter(JNIEnv* env, const std::string& adapterId)
         for (size_t i = 0; i < m_radios.size(); ++i) {
             m_radios[i].isDefault = static_cast<int>(i) == m_selectedRadioIndex;
         }
+    }
 
-        // Radio state changes must be protected by the lock to avoid data races
-        try {
-            auto radios = Radio::GetRadiosAsync().get();
-            for (auto const& radio : radios) {
-                if (radio.Kind() == RadioKind::Bluetooth && radio.DeviceId() == selectedId) {
+    // Release lock before blocking WinRT call to avoid deadlock
+    try {
+        auto radios = Radio::GetRadiosAsync().get();
+        for (auto const& radio : radios) {
+            if (radio.Kind() == RadioKind::Bluetooth && radio.DeviceId() == selectedId) {
+                {
+                    SRWLockGuard lock(&m_radiosMutex);
                     if (m_radioStateChangedToken.value != 0 && m_bluetoothRadio != nullptr) {
                         m_bluetoothRadio.StateChanged(m_radioStateChangedToken);
                         m_radioStateChangedToken = event_token{};
                     }
                     m_bluetoothRadio = radio;
-                    notifyManagerStateChanged(m_bluetoothRadio.State() == RadioState::On);
+                }
+                notifyManagerStateChanged(m_bluetoothRadio.State() == RadioState::On);
+                {
+                    SRWLockGuard lock(&m_radiosMutex);
                     m_radioStateChangedToken = m_bluetoothRadio.StateChanged([this](Radio radio, auto&& args) {
                         notifyManagerStateChanged(radio.State() == RadioState::On);
                     });
-                    return 0;
                 }
+                return 0;
             }
-        } catch (...) {
-            return 3;
         }
+    } catch (...) {
+        return 3;
     }
     return 2;
 }
 
 RadioInfo BluetoothLEManager::getSelectedAdapter() const {
-    SRWLockGuard lock(&m_radiosMutex);
+    SRWSharedLockGuard lock(&m_radiosMutex);
     if (m_selectedRadioIndex < 0 || m_selectedRadioIndex >= static_cast<int>(m_radios.size())) {
         return RadioInfo{};  // Return default-constructed empty RadioInfo
     }

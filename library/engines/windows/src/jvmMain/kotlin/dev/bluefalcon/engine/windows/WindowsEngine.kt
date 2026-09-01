@@ -49,6 +49,10 @@ class WindowsEngine : BlueFalconEngine {
     override val selectedAdapter: BluetoothAdapter?
         get() = _selectedAdapter.value
     
+    // Cache last enumerated adapters to avoid redundant native calls
+    private var _adapterCache: List<BluetoothAdapter> = emptyList()
+    private val _adapterCacheMutex = Object()
+    
     // Store active connections
     private val connections = mutableMapOf<Long, WindowsBluetoothPeripheral>()
     
@@ -76,6 +80,9 @@ class WindowsEngine : BlueFalconEngine {
     override suspend fun adapters(): List<BluetoothAdapter> {
         return try {
             nativeEnumerateAdapters().map { it.toBluetoothAdapter() }.also { adapters ->
+                synchronized(_adapterCacheMutex) {
+                    _adapterCache = adapters
+                }
                 if (_selectedAdapter.value == null) {
                     _selectedAdapter.value = adapters.firstOrNull { it.isDefault } ?: adapters.firstOrNull()
                 } else {
@@ -93,12 +100,22 @@ class WindowsEngine : BlueFalconEngine {
         return try {
             when (nativeSelectAdapter(identifier)) {
                 0 -> {
-                    val adapter = adapters().firstOrNull { it.identifier == identifier }
+                    // Use cached adapters instead of re-enumerating
+                    val adapter = synchronized(_adapterCacheMutex) {
+                        _adapterCache.firstOrNull { it.identifier == identifier }
+                    }
                     if (adapter != null) {
                         _selectedAdapter.value = adapter
                         AdapterSelectionResult.Selected(adapter)
                     } else {
-                        AdapterSelectionResult.Failed(IllegalStateException("Selected adapter is no longer available"))
+                        // Cache miss, fall back to full enumeration
+                        val freshAdapter = adapters().firstOrNull { it.identifier == identifier }
+                        if (freshAdapter != null) {
+                            _selectedAdapter.value = freshAdapter
+                            AdapterSelectionResult.Selected(freshAdapter)
+                        } else {
+                            AdapterSelectionResult.Failed(IllegalStateException("Selected adapter is no longer available"))
+                        }
                     }
                 }
                 1 -> AdapterSelectionResult.NotFound

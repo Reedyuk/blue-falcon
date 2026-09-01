@@ -16,6 +16,7 @@
 #include <mutex>
 #include <vector>
 class SRWLockGuard { SRWLOCK* l; public: SRWLockGuard(SRWLOCK* lock) : l(lock) { AcquireSRWLockExclusive(l); } ~SRWLockGuard() { ReleaseSRWLockExclusive(l); } };
+class SRWSharedLockGuard { SRWLOCK* l; public: SRWSharedLockGuard(SRWLOCK* lock) : l(lock) { AcquireSRWLockShared(l); } ~SRWSharedLockGuard() { ReleaseSRWLockShared(l); } };
 
 using namespace winrt;
 using namespace Windows::Foundation;
