@@ -43,6 +43,7 @@ jobs:
         VERSION="${{ steps.version.outputs.version }}"
         sed -i "s/^version=.*/version=$VERSION/" library/gradle.properties
         sed -i "s/^versionCore=.*/versionCore=$VERSION/" library/gradle.properties
+        sed -i "s/^versionPeripheral=.*/versionPeripheral=$VERSION/" library/gradle.properties
         sed -i "s/^versionEngines=.*/versionEngines=$VERSION/" library/gradle.properties
         sed -i "s/^versionPlugins=.*/versionPlugins=$VERSION/" library/gradle.properties
         sed -i "s/^versionLegacy=.*/versionLegacy=$VERSION/" library/gradle.properties
@@ -133,13 +134,21 @@ jobs:
       run: |
         echo "✅ Published Blue Falcon 3.0 modules:"
         echo "  • blue-falcon-core"
+        echo "  • blue-falcon-peripheral"
         echo "  • blue-falcon-engine-android"
         echo "  • blue-falcon-engine-ios"
         echo "  • blue-falcon-engine-macos"
+        echo "  • blue-falcon-engine-macos-jvm"
         echo "  • blue-falcon-engine-js"
         echo "  • blue-falcon-engine-windows"
         echo "  • blue-falcon-engine-rpi"
         echo "  • blue-falcon-plugin-logging"
         echo "  • blue-falcon-plugin-retry"
         echo "  • blue-falcon-plugin-caching"
+        echo "  • blue-falcon-plugin-nordic-fota"
+        echo "  • blue-falcon-plugin-clone"
+        echo "  • blue-falcon-plugin-broadcast"
+        echo "  • blue-falcon-plugin-queue"
+        echo "  • blue-falcon-plugin-proximity"
+        echo "  • blue-falcon-plugin-bonding"
         echo "  • blue-falcon (legacy compatibility)"
