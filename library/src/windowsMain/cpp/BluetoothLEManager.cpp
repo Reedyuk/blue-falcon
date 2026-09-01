@@ -68,11 +68,15 @@ void BluetoothLEManager::initializeRadioMonitoring() {
                     }
                 }
             } catch (...) {
-                // Fall through to generic radio lookup
+                // Selected adapter lookup failed - report not ready rather than silently
+                // selecting a different adapter
             }
+            // Selected adapter was specified but couldn't be found/initialized
+            notifyManagerStateChanged(false);
+            return;
         }
         
-        // Fallback: Find any Bluetooth radio if no specific adapter selected or lookup failed
+        // No specific adapter selected - find first available Bluetooth radio
         auto radiosOp = Radio::GetRadiosAsync();
         radiosOp.Completed([this](auto&& asyncInfo, AsyncStatus status) {
             if (status != AsyncStatus::Completed) return;
