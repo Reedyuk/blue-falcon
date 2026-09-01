@@ -97,7 +97,8 @@ class BlueFalcon(
     val peripherals: StateFlow<Set<BluetoothPeripheral>> get() = engine.peripherals
     val managerState: StateFlow<BluetoothManagerState> get() = engine.managerState
     val isScanning: Boolean get() = engine.isScanning
-    val rssiUpdates: SharedFlow<Pair<String, Float>> get() = engine.rssiUpdates    val centralCapabilities: CentralCapabilities get() = engine.centralCapabilities
+    val rssiUpdates: SharedFlow<Pair<String, Float>> get() = engine.rssiUpdates
+    val centralCapabilities: CentralCapabilities get() = engine.centralCapabilities
     val characteristicWriteCapabilities:
         StateFlow<Map<CharacteristicWriteKey, CharacteristicWriteCapability>>
         get() = engine.characteristicWriteCapabilities

@@ -68,3 +68,4 @@ ADRs can have the following statuses:
 - [ADR 0010: RSSI/Proximity Plugin](0010-rssi-proximity-plugin.md) - **Proposed** - 2026-08-27
 - [ADR 0011: Mesh/Multi-Hop Relay Plugin](0011-mesh-multi-hop-relay-plugin.md) - **Proposed** - 2026-08-27
 - [ADR 0012: Metrics/Observability Plugin](0012-metrics-observability-plugin.md) - **Proposed** - 2026-08-27
+- [ADR 0013: Add Windows Bluetooth Adapter Enumeration and Selection](0013-add-windows-adapter-selection.md) - **Accepted** - 2026-09-01

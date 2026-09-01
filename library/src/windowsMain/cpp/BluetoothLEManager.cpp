@@ -37,6 +37,10 @@ void BluetoothLEManager::initialize(JavaVM* jvm, jobject javaObject) {
     init_apartment();
 
     initializeRadioMonitoring();
+    JNIEnv* initEnv = nullptr;
+    if (jvm->GetEnv((void**)&initEnv, JNI_VERSION_1_6) == JNI_OK && initEnv != nullptr) {
+        enumerateAdapters(initEnv);
+    }
 }
 
 void BluetoothLEManager::initializeRadioMonitoring() {
@@ -49,10 +53,15 @@ void BluetoothLEManager::initializeRadioMonitoring() {
             if (status != AsyncStatus::Completed) return;
             try {
                 auto radios = asyncInfo.GetResults();
+                RadioInfo* selected = getSelectedAdapter();
                 for (auto radio : radios) {
-                    if (radio.Kind() == RadioKind::Bluetooth) {
+                    if (radio.Kind() != RadioKind::Bluetooth) continue;
+                    if (selected != nullptr && radio.DeviceId() == selected->id) {
                         m_bluetoothRadio = radio;
                         break;
+                    }
+                    if (m_bluetoothRadio == nullptr) {
+                        m_bluetoothRadio = radio;
                     }
                 }
                 if (m_bluetoothRadio == nullptr) {
@@ -758,6 +767,132 @@ void BluetoothLEManager::changeMTU(uint64_t address, int mtu) {
         env->DeleteLocalRef(cls);
         m_jvm->DetachCurrentThread();
     }
+}
+
+
+jobjectArray BluetoothLEManager::enumerateAdapters(JNIEnv* env) {
+    std::vector<RadioInfo> radiosInfo;
+    try {
+        auto radios = Radio::GetRadiosAsync().get();
+        bool defaultAssigned = false;
+        for (auto const& radio : radios) {
+            if (radio.Kind() != RadioKind::Bluetooth) continue;
+
+            RadioInfo info;
+            info.id = radio.DeviceId().c_str();
+            info.name = radio.Name().c_str();
+            info.address = L"";
+            info.isLowEnergySupported = true;
+            info.isDefault = !defaultAssigned;
+            defaultAssigned = true;
+
+            try {
+                auto adapter = BluetoothAdapter::FromIdAsync(radio.DeviceId()).get();
+                if (adapter != nullptr) {
+                    auto addressValue = adapter.BluetoothAddress();
+                    if (addressValue != 0) {
+                        std::wstringstream ss;
+                        ss << std::uppercase << std::hex << std::setfill(L'0');
+                        for (int i = 5; i >= 0; --i) {
+                            ss << std::setw(2) << ((addressValue >> (i * 8)) & 0xFF);
+                            if (i > 0) ss << L":";
+                        }
+                        info.address = ss.str();
+                    }
+                    info.isLowEnergySupported = adapter.IsLowEnergySupported();
+                }
+            } catch (...) {
+            }
+
+            radiosInfo.push_back(info);
+        }
+    } catch (...) {
+    }
+
+    {
+        SRWLockGuard lock(&m_radiosMutex);
+        m_radios = radiosInfo;
+        if (m_radios.empty()) {
+            m_selectedRadioIndex = -1;
+            m_bluetoothRadio = nullptr;
+        } else if (m_selectedRadioIndex < 0 || m_selectedRadioIndex >= static_cast<int>(m_radios.size())) {
+            auto selectedIt = std::find_if(m_radios.begin(), m_radios.end(), [](const RadioInfo& info) { return info.isDefault; });
+            m_selectedRadioIndex = selectedIt != m_radios.end() ? static_cast<int>(selectedIt - m_radios.begin()) : 0;
+        }
+    }
+
+    jclass adapterClass = env->FindClass("dev/bluefalcon/engine/windows/BluetoothAdapterData");
+    if (adapterClass == nullptr) return nullptr;
+
+    jmethodID ctor = env->GetMethodID(adapterClass, "<init>", "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ZZ)V");
+    if (ctor == nullptr) {
+        env->DeleteLocalRef(adapterClass);
+        return nullptr;
+    }
+
+    jobjectArray result = env->NewObjectArray(static_cast<jsize>(radiosInfo.size()), adapterClass, nullptr);
+    for (jsize i = 0; i < static_cast<jsize>(radiosInfo.size()); ++i) {
+        const auto& info = radiosInfo[i];
+        jstring id = env->NewStringUTF(wstringToString(info.id).c_str());
+        jstring name = env->NewStringUTF(wstringToString(info.name).c_str());
+        jstring address = info.address.empty() ? nullptr : env->NewStringUTF(wstringToString(info.address).c_str());
+        jobject adapter = env->NewObject(adapterClass, ctor, id, name, address, static_cast<jboolean>(info.isDefault), static_cast<jboolean>(info.isLowEnergySupported));
+        env->SetObjectArrayElement(result, i, adapter);
+        env->DeleteLocalRef(id);
+        env->DeleteLocalRef(name);
+        if (address) env->DeleteLocalRef(address);
+        env->DeleteLocalRef(adapter);
+    }
+    env->DeleteLocalRef(adapterClass);
+    return result;
+}
+
+int BluetoothLEManager::selectAdapter(JNIEnv* env, const std::string& adapterId) {
+    auto requestedId = stringToWString(adapterId);
+    jobjectArray refreshed = enumerateAdapters(env);
+    if (refreshed != nullptr) {
+        env->DeleteLocalRef(refreshed);
+    }
+
+    std::wstring selectedId;
+    {
+        SRWLockGuard lock(&m_radiosMutex);
+        auto it = std::find_if(m_radios.begin(), m_radios.end(), [&](const RadioInfo& info) { return info.id == requestedId; });
+        if (it == m_radios.end()) return 1;
+
+        m_selectedRadioIndex = static_cast<int>(it - m_radios.begin());
+        selectedId = it->id;
+        for (size_t i = 0; i < m_radios.size(); ++i) {
+            m_radios[i].isDefault = static_cast<int>(i) == m_selectedRadioIndex;
+        }
+    }
+
+    try {
+        auto radios = Radio::GetRadiosAsync().get();
+        for (auto const& radio : radios) {
+            if (radio.Kind() == RadioKind::Bluetooth && radio.DeviceId() == selectedId) {
+                if (m_radioStateChangedToken.value != 0 && m_bluetoothRadio != nullptr) {
+                    m_bluetoothRadio.StateChanged(m_radioStateChangedToken);
+                    m_radioStateChangedToken = event_token{};
+                }
+                m_bluetoothRadio = radio;
+                notifyManagerStateChanged(m_bluetoothRadio.State() == RadioState::On);
+                m_radioStateChangedToken = m_bluetoothRadio.StateChanged([this](Radio radio, auto&& args) {
+                    notifyManagerStateChanged(radio.State() == RadioState::On);
+                });
+                return 0;
+            }
+        }
+    } catch (...) {
+        return 3;
+    }
+    return 2;
+}
+
+RadioInfo* BluetoothLEManager::getSelectedAdapter() const {
+    SRWLockGuard lock(&m_radiosMutex);
+    if (m_selectedRadioIndex < 0 || m_selectedRadioIndex >= static_cast<int>(m_radios.size())) return nullptr;
+    return const_cast<RadioInfo*>(&m_radios[m_selectedRadioIndex]);
 }
 
 // Helper methods

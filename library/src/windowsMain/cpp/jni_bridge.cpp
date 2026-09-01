@@ -136,4 +136,17 @@ Java_dev_bluefalcon_engine_windows_WindowsEngine_nativeChangeMTU(JNIEnv* env, jo
     BluetoothLEManager::getInstance().changeMTU(static_cast<uint64_t>(address), mtu);
 }
 
+JNIEXPORT jobjectArray JNICALL
+Java_dev_bluefalcon_engine_windows_WindowsEngine_nativeEnumerateAdapters(JNIEnv* env, jobject thiz) {
+    return BluetoothLEManager::getInstance().enumerateAdapters(env);
+}
+
+JNIEXPORT jint JNICALL
+Java_dev_bluefalcon_engine_windows_WindowsEngine_nativeSelectAdapter(JNIEnv* env, jobject thiz, jstring adapterId) {
+    const char* adapterIdStr = env->GetStringUTFChars(adapterId, nullptr);
+    jint result = BluetoothLEManager::getInstance().selectAdapter(env, std::string(adapterIdStr));
+    env->ReleaseStringUTFChars(adapterId, adapterIdStr);
+    return result;
+}
+
 } // extern "C"

@@ -104,6 +104,7 @@ blueFalcon.scan()
 - **[Testing Guide](docs/TESTING_GUIDE.md)** - Testing your BLE code
 - **[Publishing Guide](docs/PUBLISHING.md)** - Release and publishing process
 - **[Windows Setup](library/src/windowsMain/WINDOWS.md)** - Windows support details, including native DLL build steps
+- **Windows adapter selection** - `WindowsEngine` supports `adapters()` and `selectAdapter(identifier)` for multi-radio hosts
 
 ### Architecture
 
