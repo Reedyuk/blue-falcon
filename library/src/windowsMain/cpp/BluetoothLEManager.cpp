@@ -907,7 +907,7 @@ int BluetoothLEManager::selectAdapter(JNIEnv* env, const std::string& adapterId)
         auto radio = adapter.GetRadioAsync().get();
         if (radio == nullptr) return 2;
         
-        Radio capturedRadio;
+        Radio capturedRadio{nullptr};
         {
             SRWLockGuard lock(&m_radiosMutex);
             if (m_radioStateChangedToken.value != 0 && m_bluetoothRadio != nullptr) {
