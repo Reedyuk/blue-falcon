@@ -55,7 +55,7 @@ public:
     void initialize(JavaVM* jvm, jobject javaObject);
     jobjectArray enumerateAdapters(JNIEnv* env);
     int selectAdapter(JNIEnv* env, const std::string& adapterId);
-    RadioInfo* getSelectedAdapter() const;
+    RadioInfo getSelectedAdapter() const;
     void startScan(JNIEnv* env, jobjectArray serviceUuids);
     void stopScan();
     void connect(uint64_t address);

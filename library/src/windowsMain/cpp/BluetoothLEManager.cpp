@@ -53,14 +53,17 @@ void BluetoothLEManager::initializeRadioMonitoring() {
             if (status != AsyncStatus::Completed) return;
             try {
                 auto radios = asyncInfo.GetResults();
-                RadioInfo* selected = getSelectedAdapter();
+                RadioInfo selected = getSelectedAdapter();
+                bool hasSelectedAdapter = !selected.id.empty();
                 for (auto radio : radios) {
                     if (radio.Kind() != RadioKind::Bluetooth) continue;
-                    if (selected != nullptr && radio.DeviceId() == selected->id) {
+                    if (hasSelectedAdapter && radio.DeviceId() == selected.id) {
+                        SRWLockGuard lock(&m_radiosMutex);
                         m_bluetoothRadio = radio;
                         break;
                     }
                     if (m_bluetoothRadio == nullptr) {
+                        SRWLockGuard lock(&m_radiosMutex);
                         m_bluetoothRadio = radio;
                     }
                 }
@@ -865,34 +868,37 @@ int BluetoothLEManager::selectAdapter(JNIEnv* env, const std::string& adapterId)
         for (size_t i = 0; i < m_radios.size(); ++i) {
             m_radios[i].isDefault = static_cast<int>(i) == m_selectedRadioIndex;
         }
-    }
 
-    try {
-        auto radios = Radio::GetRadiosAsync().get();
-        for (auto const& radio : radios) {
-            if (radio.Kind() == RadioKind::Bluetooth && radio.DeviceId() == selectedId) {
-                if (m_radioStateChangedToken.value != 0 && m_bluetoothRadio != nullptr) {
-                    m_bluetoothRadio.StateChanged(m_radioStateChangedToken);
-                    m_radioStateChangedToken = event_token{};
+        // Radio state changes must be protected by the lock to avoid data races
+        try {
+            auto radios = Radio::GetRadiosAsync().get();
+            for (auto const& radio : radios) {
+                if (radio.Kind() == RadioKind::Bluetooth && radio.DeviceId() == selectedId) {
+                    if (m_radioStateChangedToken.value != 0 && m_bluetoothRadio != nullptr) {
+                        m_bluetoothRadio.StateChanged(m_radioStateChangedToken);
+                        m_radioStateChangedToken = event_token{};
+                    }
+                    m_bluetoothRadio = radio;
+                    notifyManagerStateChanged(m_bluetoothRadio.State() == RadioState::On);
+                    m_radioStateChangedToken = m_bluetoothRadio.StateChanged([this](Radio radio, auto&& args) {
+                        notifyManagerStateChanged(radio.State() == RadioState::On);
+                    });
+                    return 0;
                 }
-                m_bluetoothRadio = radio;
-                notifyManagerStateChanged(m_bluetoothRadio.State() == RadioState::On);
-                m_radioStateChangedToken = m_bluetoothRadio.StateChanged([this](Radio radio, auto&& args) {
-                    notifyManagerStateChanged(radio.State() == RadioState::On);
-                });
-                return 0;
             }
+        } catch (...) {
+            return 3;
         }
-    } catch (...) {
-        return 3;
     }
     return 2;
 }
 
-RadioInfo* BluetoothLEManager::getSelectedAdapter() const {
+RadioInfo BluetoothLEManager::getSelectedAdapter() const {
     SRWLockGuard lock(&m_radiosMutex);
-    if (m_selectedRadioIndex < 0 || m_selectedRadioIndex >= static_cast<int>(m_radios.size())) return nullptr;
-    return const_cast<RadioInfo*>(&m_radios[m_selectedRadioIndex]);
+    if (m_selectedRadioIndex < 0 || m_selectedRadioIndex >= static_cast<int>(m_radios.size())) {
+        return RadioInfo{};  // Return default-constructed empty RadioInfo
+    }
+    return m_radios[m_selectedRadioIndex];  // Return a copy, not a pointer
 }
 
 // Helper methods
