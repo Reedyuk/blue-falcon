@@ -60,7 +60,8 @@ void BluetoothLEManager::initializeRadioMonitoring() {
                     SRWLockGuard lock(&m_radiosMutex);
                     for (auto radio : radios) {
                         if (radio.Kind() != RadioKind::Bluetooth) continue;
-                        if (hasSelectedAdapter && radio.DeviceId() == selected.id) {
+                        // Match by name since Radio doesn't have DeviceId
+                        if (hasSelectedAdapter && radio.Name() == selected.name) {
                             m_bluetoothRadio = radio;
                             break;
                         }
@@ -779,21 +780,22 @@ void BluetoothLEManager::changeMTU(uint64_t address, int mtu) {
 jobjectArray BluetoothLEManager::enumerateAdapters(JNIEnv* env) {
     std::vector<RadioInfo> radiosInfo;
     try {
-        auto radios = Radio::GetRadiosAsync().get();
+        // Enumerate Bluetooth adapters using DeviceInformation API
+        auto selector = BluetoothAdapter::GetDeviceSelector();
+        auto devices = DeviceInformation::FindAllAsync(selector).get();
         bool defaultAssigned = false;
-        for (auto const& radio : radios) {
-            if (radio.Kind() != RadioKind::Bluetooth) continue;
-
+        
+        for (auto const& deviceInfo : devices) {
             RadioInfo info;
-            info.id = radio.DeviceId().c_str();
-            info.name = radio.Name().c_str();
+            info.id = deviceInfo.Id().c_str();
+            info.name = deviceInfo.Name().c_str();
             info.address = L"";
             info.isLowEnergySupported = true;
             info.isDefault = !defaultAssigned;
             defaultAssigned = true;
 
             try {
-                auto adapter = BluetoothAdapter::FromIdAsync(radio.DeviceId()).get();
+                auto adapter = BluetoothAdapter::FromIdAsync(deviceInfo.Id()).get();
                 if (adapter != nullptr) {
                     auto addressValue = adapter.BluetoothAddress();
                     if (addressValue != 0) {
@@ -860,24 +862,25 @@ int BluetoothLEManager::selectAdapter(JNIEnv* env, const std::string& adapterId)
         env->DeleteLocalRef(refreshed);
     }
 
-    std::wstring selectedId;
+    std::wstring selectedName;
     {
         SRWLockGuard lock(&m_radiosMutex);
         auto it = std::find_if(m_radios.begin(), m_radios.end(), [&](const RadioInfo& info) { return info.id == requestedId; });
         if (it == m_radios.end()) return 1;
 
         m_selectedRadioIndex = static_cast<int>(it - m_radios.begin());
-        selectedId = it->id;
+        selectedName = it->name;
         for (size_t i = 0; i < m_radios.size(); ++i) {
             m_radios[i].isDefault = static_cast<int>(i) == m_selectedRadioIndex;
         }
     }
 
     // Release lock before blocking WinRT call to avoid deadlock
+    // Match radio by name since Radio doesn't have DeviceId property
     try {
         auto radios = Radio::GetRadiosAsync().get();
         for (auto const& radio : radios) {
-            if (radio.Kind() == RadioKind::Bluetooth && radio.DeviceId() == selectedId) {
+            if (radio.Kind() == RadioKind::Bluetooth && radio.Name() == selectedName) {
                 Radio capturedRadio;
                 {
                     SRWLockGuard lock(&m_radiosMutex);
