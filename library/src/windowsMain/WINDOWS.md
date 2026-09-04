@@ -180,6 +180,12 @@ The Windows implementation supports all standard Blue Falcon APIs:
 
 ## Windows-Specific Details
 
+
+### Adapter Enumeration and Selection
+- `supportsAdapterSelection` returns `true` on Windows
+- `adapters()` enumerates host Bluetooth radios and exposes identifier, name, address, default status, and BLE support
+- `selectAdapter(identifier)` switches the radio Blue Falcon monitors and uses for subsequent adapter-scoped operations
+
 ### Device Identifiers
 - Windows uses Bluetooth addresses (uint64) internally
 - Peripherals are identified by MAC address format: `XX:XX:XX:XX:XX:XX`
@@ -209,7 +215,7 @@ Windows 10 version 1803+ requires the following capabilities in your application
 1. **Descriptor Operations**: Full descriptor read/write support is partially implemented
 2. **Background Operation**: Continuous background scanning may be limited by Windows power management
 3. **Pairing**: Explicit pairing is handled by Windows, not directly by this library
-4. **Multiple Adapters**: Currently supports single Bluetooth adapter
+4. **Multiple Adapters**: Supports adapter enumeration and selection through `adapters()` and `selectAdapter()` on Windows.
 
 ## Troubleshooting
 

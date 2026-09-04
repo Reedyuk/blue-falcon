@@ -35,16 +35,16 @@ Blue Falcon provides a unified API for Bluetooth LE operations across all platfo
 
 ```kotlin
 commonMain.dependencies {
-    implementation("dev.bluefalcon:blue-falcon-core:3.7.3")
+    implementation("dev.bluefalcon:blue-falcon-core:3.7.4")
 }
 
 // Add platform-specific engines
 androidMain.dependencies {
-    implementation("dev.bluefalcon:blue-falcon-engine-android:3.7.3")
+    implementation("dev.bluefalcon:blue-falcon-engine-android:3.7.4")
 }
 
 iosMain.dependencies {
-    implementation("dev.bluefalcon:blue-falcon-engine-ios:3.7.3")
+    implementation("dev.bluefalcon:blue-falcon-engine-ios:3.7.4")
 }
 ```
 
@@ -53,13 +53,13 @@ iosMain.dependencies {
 ```kotlin
 commonMain.dependencies {
     // Logging support
-    implementation("dev.bluefalcon:blue-falcon-plugin-logging:3.7.3")
+    implementation("dev.bluefalcon:blue-falcon-plugin-logging:3.7.4")
     
     // Automatic retry with exponential backoff
-    implementation("dev.bluefalcon:blue-falcon-plugin-retry:3.7.3")
+    implementation("dev.bluefalcon:blue-falcon-plugin-retry:3.7.4")
     
     // Service/characteristic caching
-    implementation("dev.bluefalcon:blue-falcon-plugin-caching:3.7.3")
+    implementation("dev.bluefalcon:blue-falcon-plugin-caching:3.7.4")
 }
 ```
 
@@ -104,6 +104,7 @@ blueFalcon.scan()
 - **[Testing Guide](docs/TESTING_GUIDE.md)** - Testing your BLE code
 - **[Publishing Guide](docs/PUBLISHING.md)** - Release and publishing process
 - **[Windows Setup](library/src/windowsMain/WINDOWS.md)** - Windows support details, including native DLL build steps
+- **Windows adapter selection** - `WindowsEngine` supports `adapters()` and `selectAdapter(identifier)` for multi-radio hosts
 
 ### Architecture
 
