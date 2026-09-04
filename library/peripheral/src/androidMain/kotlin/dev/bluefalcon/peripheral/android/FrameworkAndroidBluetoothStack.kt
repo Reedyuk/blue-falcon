@@ -195,9 +195,16 @@ internal class FrameworkAndroidBluetoothStack(
         }
 
         try {
+            // Legacy Android BLE advertising caps each packet at 31 bytes. A 128-bit
+            // service UUID alone consumes 18 of those, so putting the device name in the
+            // *same* packet (as done previously) easily overflows the budget and fails
+            // with ADVERTISE_FAILED_DATA_TOO_LARGE (error code 1). Splitting the device
+            // name into a separate scan response packet gives each its own 31-byte
+            // budget, which is the standard technique for this limitation.
             advertiser.startAdvertising(
                 config.toAdvertiseSettings(),
                 config.toAdvertiseData(),
+                config.toScanResponseData(),
                 callback,
             )
             completion.await()
@@ -675,7 +682,10 @@ internal class FrameworkAndroidBluetoothStack(
 
     private fun AdvertiseConfig.toAdvertiseData(): AdvertiseData =
         AdvertiseData.Builder().apply {
-            setIncludeDeviceName(localName != null)
+            // Device name is carried in the scan response packet instead (see
+            // toScanResponseData) so it doesn't compete with the service UUID and
+            // manufacturer data for the primary packet's 31-byte legacy budget.
+            setIncludeDeviceName(false)
             setIncludeTxPowerLevel(includeTxPower)
             serviceUuids.forEach { uuid ->
                 addServiceUuid(ParcelUuid(Uuid.parse(uuid).toJavaUuid()))
@@ -684,6 +694,11 @@ internal class FrameworkAndroidBluetoothStack(
                 addManufacturerData(id, data.copyOf())
             }
         }.build()
+
+    private fun AdvertiseConfig.toScanResponseData(): AdvertiseData =
+        AdvertiseData.Builder()
+            .setIncludeDeviceName(localName != null)
+            .build()
 
     private fun BluetoothDevice.toSessionId(): PeripheralSessionId =
         PeripheralSessionId(address)

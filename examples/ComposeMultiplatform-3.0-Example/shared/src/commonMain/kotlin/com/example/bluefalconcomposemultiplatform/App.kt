@@ -47,6 +47,8 @@ import com.example.bluefalconcomposemultiplatform.ble.presentation.component.Dev
 import com.example.bluefalconcomposemultiplatform.ble.presentation.component.DeviceScanView
 import com.example.bluefalconcomposemultiplatform.core.presentation.BlueFalconTheme
 import com.example.bluefalconcomposemultiplatform.di.AppModule
+import com.example.bluefalconcomposemultiplatform.mesh.presentation.MeshDemoScreen
+import com.example.bluefalconcomposemultiplatform.mesh.presentation.MeshDemoViewModel
 import com.example.bluefalconcomposemultiplatform.peripheral.presentation.PeripheralServerView
 import com.example.bluefalconcomposemultiplatform.peripheral.presentation.PeripheralServerViewModel
 import dev.bluefalcon.plugins.broadcast.BroadcastState
@@ -58,6 +60,7 @@ private enum class ExampleMode(
 ) {
     Central("Central"),
     Peripheral("Peripheral"),
+    Mesh("Mesh"),
 }
 
 @Composable
@@ -79,11 +82,25 @@ fun App(
 
         var selectedMode by remember { mutableStateOf(ExampleMode.Central) }
         var peripheralViewModelInitialized by remember { mutableStateOf(false) }
+        var meshViewModelInitialized by remember { mutableStateOf(false) }
         val peripheralViewModel = if (peripheralViewModelInitialized) {
             getViewModel(
                 key = "peripheral-server-screen",
                 factory = viewModelFactory {
                     PeripheralServerViewModel(appModule.peripheralRuntime)
+                },
+            )
+        } else {
+            null
+        }
+        val meshViewModel = if (meshViewModelInitialized) {
+            getViewModel(
+                key = "mesh-demo-screen",
+                factory = viewModelFactory {
+                    MeshDemoViewModel(
+                        blueFalcon = appModule.blueFalcon,
+                        peripheral = appModule.peripheralRuntime?.manager,
+                    )
                 },
             )
         } else {
@@ -102,6 +119,9 @@ fun App(
                         onClick = {
                             if (mode == ExampleMode.Peripheral) {
                                 peripheralViewModelInitialized = true
+                            }
+                            if (mode == ExampleMode.Mesh) {
+                                meshViewModelInitialized = true
                             }
                             selectedMode = mode
                         },
@@ -133,6 +153,15 @@ fun App(
                         PeripheralServerView(
                             viewModel = checkNotNull(peripheralViewModel) {
                                 "Peripheral mode must initialize its ViewModel"
+                            },
+                            modifier = Modifier.fillMaxSize(),
+                        )
+                    }
+
+                    ExampleMode.Mesh -> {
+                        MeshDemoScreen(
+                            viewModel = checkNotNull(meshViewModel) {
+                                "Mesh mode must initialize its ViewModel"
                             },
                             modifier = Modifier.fillMaxSize(),
                         )
