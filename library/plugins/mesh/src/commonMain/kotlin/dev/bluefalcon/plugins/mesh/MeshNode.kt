@@ -362,12 +362,60 @@ class MeshNode(
         }
     }
 
+    /**
+     * Waits (with a bounded timeout) for [neighbor]'s connection state to reach
+     * [PeripheralConnectionState.Connected] or [PeripheralConnectionState.Ready].
+     *
+     * [BlueFalcon.connect] only awaits the platform *request* being issued — on Apple
+     * platforms in particular, the actual link establishment is confirmed
+     * asynchronously via `CBCentralManagerDelegate.didConnectPeripheral`, which can
+     * arrive well after `connect()` returns. Proceeding straight into MTU
+     * negotiation/service discovery before the link is actually up causes those calls
+     * to silently no-op (both guard on `CBPeripheralStateConnected`), leaving the
+     * neighbor stuck with no services/characteristics and never counted.
+     *
+     * @return true once connected, false if the timeout elapsed or the peripheral
+     * disconnected/failed to connect first.
+     */
+    private object ConnectedSignal : Throwable()
+    private object DisconnectedSignal : Throwable()
+
+    private suspend fun awaitConnectedOrFail(neighbor: BluetoothPeripheral): Boolean {
+        return try {
+            withTimeoutOrNull(10.seconds) {
+                central.connectionStateFlow(neighbor).collect { state ->
+                    when (state) {
+                        is PeripheralConnectionState.Connected,
+                        is PeripheralConnectionState.Ready -> throw ConnectedSignal
+                        is PeripheralConnectionState.Disconnected -> throw DisconnectedSignal
+                        else -> Unit
+                    }
+                }
+            }
+            false // timed out without reaching Connected/Ready or Disconnected
+        } catch (c: ConnectedSignal) {
+            true
+        } catch (d: DisconnectedSignal) {
+            false
+        }
+    }
+
     private suspend fun connectToNeighbor(neighbor: BluetoothPeripheral) {
         val scope = meshScope ?: return
 
         scope.launch {
             try {
                 central.connect(neighbor)
+
+                // Wait for the link to actually be established before proceeding -
+                // connect() only awaits the request being issued, not the platform's
+                // asynchronous confirmation (see awaitConnectedOrFail's KDoc).
+                if (!awaitConnectedOrFail(neighbor)) {
+                    centralNeighborsMutex.withLock {
+                        pendingConnections.remove(neighbor.uuid)
+                    }
+                    return@launch
+                }
 
                 // The mesh frame header alone (81 bytes) is larger than the default BLE
                 // ATT payload (20 bytes on Android before MTU negotiation), so a larger
