@@ -443,14 +443,13 @@ class MeshNode(
                         "${central.maximumWriteValueLength(neighbor, CharacteristicWriteType.WithResponse)}"
                 )
 
-                // Subscribe to the mesh characteristic's notifications so this node
-                // actually receives messages relayed by the neighbor. Without this,
-                // the connection is write-only: this node can send to the neighbor
-                // but the neighbor's notify() calls have no subscriber and are never
-                // delivered here.
-                subscribeToNeighborNotifications(neighbor, scope)
-
-                // Wait for connection and add to neighbors
+                // Register the neighbor as soon as it's write-capable so outbound
+                // relays can reach it immediately - subscribing to notifications
+                // (needed only for *receiving* from this neighbor) can take several
+                // seconds to be confirmed by the platform (e.g. CoreBluetooth's
+                // subscription ack), and previously the neighbor wasn't added to
+                // centralNeighbors until that finished, silently dropping any
+                // messages broadcast during that window.
                 centralNeighborsMutex.withLock {
                     centralNeighbors[neighbor.uuid] = neighbor
                     pendingConnections.remove(neighbor.uuid)
@@ -460,6 +459,13 @@ class MeshNode(
                         "(size=${centralNeighborsMutex.withLock { centralNeighbors.size }})"
                 )
                 updateNeighborCount()
+
+                // Subscribe to the mesh characteristic's notifications so this node
+                // actually receives messages relayed by the neighbor. Without this,
+                // the connection is write-only: this node can send to the neighbor
+                // but the neighbor's notify() calls have no subscriber and are never
+                // delivered here.
+                subscribeToNeighborNotifications(neighbor, scope)
 
                 // Monitor connection state and remove on disconnect
                 central.connectionStateFlow(neighbor).collect { state ->
