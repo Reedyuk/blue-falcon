@@ -3,6 +3,7 @@ package dev.bluefalcon.plugins.mesh
 import dev.bluefalcon.core.BlueFalcon
 import dev.bluefalcon.core.BluetoothCharacteristic
 import dev.bluefalcon.core.BluetoothPeripheral
+import dev.bluefalcon.core.CharacteristicWriteResult
 import dev.bluefalcon.core.CharacteristicWriteType
 import dev.bluefalcon.core.Logger
 import dev.bluefalcon.core.PeripheralConnectionState
@@ -683,19 +684,44 @@ class MeshNode(
         val frames = framer.frame(message)
 
         frames.forEach { frame ->
-            val result = central.writeCharacteristic(
+            // Apple's central write path only allows one in-flight "with response"
+            // write per connection; a second concurrent write (e.g. this node's own
+            // broadcast racing with relaying an inbound message to the same
+            // neighbor) is rejected immediately as Backpressured rather than being
+            // queued. Retry a few times with a short backoff so a message isn't
+            // silently dropped just because it collided with another in-flight
+            // write to the same neighbor.
+            var result = central.writeCharacteristic(
                 neighbor,
                 characteristic,
                 frame,
                 CharacteristicWriteType.WithResponse,
             )
+            var attempt = 0
+            while (result == CharacteristicWriteResult.Backpressured && attempt < BACKPRESSURE_RETRY_LIMIT) {
+                attempt++
+                delay(BACKPRESSURE_RETRY_DELAY_MS)
+                result = central.writeCharacteristic(
+                    neighbor,
+                    characteristic,
+                    frame,
+                    CharacteristicWriteType.WithResponse,
+                )
+            }
             logger?.debug(
-                "relayToCentralNeighbor: wrote to ${neighbor.uuid} (${frame.size} bytes) -> $result"
+                "relayToCentralNeighbor: wrote to ${neighbor.uuid} (${frame.size} bytes) -> " +
+                    "$result${if (attempt > 0) " (after $attempt retries)" else ""}"
             )
         }
     }
 
     companion object {
+        /** Max retries when a central write is rejected as [CharacteristicWriteResult.Backpressured]. */
+        private const val BACKPRESSURE_RETRY_LIMIT = 5
+
+        /** Delay between backpressure retries. */
+        private const val BACKPRESSURE_RETRY_DELAY_MS = 50L
+
         /**
          * Create a MeshNode with the given configuration.
          */
