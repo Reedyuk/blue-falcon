@@ -455,6 +455,10 @@ class MeshNode(
                     centralNeighbors[neighbor.uuid] = neighbor
                     pendingConnections.remove(neighbor.uuid)
                 }
+                logger?.debug(
+                    "connectToNeighbor: ${neighbor.uuid} added to centralNeighbors " +
+                        "(size=${centralNeighborsMutex.withLock { centralNeighbors.size }})"
+                )
                 updateNeighborCount()
 
                 // Monitor connection state and remove on disconnect
@@ -602,14 +606,19 @@ class MeshNode(
 
     private suspend fun relayToAllNeighbors(message: MeshMessage, excludeSourceId: String?) {
         // Relay to peripheral sessions (other centrals connected to us)
-        peripheral.sessions.value.forEach { session ->
+        val sessions = peripheral.sessions.value
+        val neighbors = centralNeighborsMutex.withLock { centralNeighbors.toMap() }
+        logger?.debug(
+            "relayToAllNeighbors: sessions=${sessions.map { it.id.value }} " +
+                "centralNeighbors=${neighbors.keys} excludeSourceId=$excludeSourceId"
+        )
+        sessions.forEach { session ->
             if (session.id.value != excludeSourceId) {
                 relayToPeripheralSession(session, message)
             }
         }
 
         // Relay to central neighbors (peripherals we're connected to)
-        val neighbors = centralNeighborsMutex.withLock { centralNeighbors.toMap() }
         neighbors.forEach { (uuid, neighbor) ->
             if (uuid != excludeSourceId) {
                 relayToCentralNeighbor(neighbor, message)
