@@ -4,6 +4,7 @@ import dev.bluefalcon.core.BlueFalcon
 import dev.bluefalcon.core.BluetoothCharacteristic
 import dev.bluefalcon.core.BluetoothPeripheral
 import dev.bluefalcon.core.CharacteristicWriteType
+import dev.bluefalcon.core.Logger
 import dev.bluefalcon.core.PeripheralConnectionState
 import dev.bluefalcon.core.ServiceFilter
 import dev.bluefalcon.peripheral.AdvertiseConfig
@@ -85,12 +86,14 @@ import kotlin.time.Duration.Companion.seconds
  * @param peripheral The BlueFalconPeripheral instance for peripheral role (accepting connections)
  * @param config Configuration for mesh behavior
  * @param nodeUuid Unique identifier for this node. Defaults to a random UUID.
+ * @param logger Optional logger for diagnosing connection/relay issues. Defaults to none.
  */
 class MeshNode(
     private val central: BlueFalcon,
     private val peripheral: BlueFalconPeripheral,
     private val config: MeshConfig = MeshConfig(),
     val nodeUuid: String = kotlin.uuid.Uuid.random().toString(),
+    private val logger: Logger? = null,
 ) {
     private val _state = MutableStateFlow(MeshNodeState.Idle)
 
@@ -200,9 +203,14 @@ class MeshNode(
         // Handle GATT write requests (inbound mesh messages from other centrals)
         requestHandlerJob = scope.launch {
             peripheral.requests.collect { request ->
+                logger?.debug("peripheral.requests: received $request")
                 if (request is GattCharacteristicWriteRequest &&
                     request.characteristicId == meshCharacteristicId
                 ) {
+                    logger?.debug(
+                        "peripheral.requests: mesh write from session=${request.sessionId.value} " +
+                            "(${request.value.size} bytes)"
+                    )
                     handleInboundFrame(
                         sourceId = request.sessionId.value,
                         sourceSession = request.session,
@@ -406,16 +414,19 @@ class MeshNode(
         scope.launch {
             try {
                 central.connect(neighbor)
+                logger?.debug("connectToNeighbor: connect() requested for ${neighbor.uuid}")
 
                 // Wait for the link to actually be established before proceeding -
                 // connect() only awaits the request being issued, not the platform's
                 // asynchronous confirmation (see awaitConnectedOrFail's KDoc).
                 if (!awaitConnectedOrFail(neighbor)) {
+                    logger?.debug("connectToNeighbor: ${neighbor.uuid} failed to reach Connected/Ready")
                     centralNeighborsMutex.withLock {
                         pendingConnections.remove(neighbor.uuid)
                     }
                     return@launch
                 }
+                logger?.debug("connectToNeighbor: ${neighbor.uuid} is Connected/Ready")
 
                 // The mesh frame header alone (81 bytes) is larger than the default BLE
                 // ATT payload (20 bytes on Android before MTU negotiation), so a larger
@@ -427,6 +438,10 @@ class MeshNode(
                 // remote peer or platform caps it) after a short timeout.
                 runCatching { central.changeMTU(neighbor, config.preferredMtu) }
                 awaitSufficientWriteCapability(neighbor)
+                logger?.debug(
+                    "connectToNeighbor: ${neighbor.uuid} write capability=" +
+                        "${central.maximumWriteValueLength(neighbor, CharacteristicWriteType.WithResponse)}"
+                )
 
                 // Subscribe to the mesh characteristic's notifications so this node
                 // actually receives messages relayed by the neighbor. Without this,
@@ -487,7 +502,11 @@ class MeshNode(
                 if (found == null) delay(100)
             }
             found
-        } ?: return
+        }
+        if (service == null) {
+            logger?.debug("subscribeToNeighborNotifications: ${neighbor.uuid} mesh service never discovered")
+            return
+        }
 
         runCatching {
             central.discoverCharacteristics(neighbor, service, listOf(config.meshCharacteristicUuid))
@@ -503,10 +522,20 @@ class MeshNode(
                 if (found == null) delay(100)
             }
             found
-        } ?: return
+        }
+        if (characteristic == null) {
+            logger?.debug(
+                "subscribeToNeighborNotifications: ${neighbor.uuid} mesh characteristic never discovered"
+            )
+            return
+        }
+        logger?.debug("subscribeToNeighborNotifications: ${neighbor.uuid} characteristic discovered, subscribing")
 
         scope.launch {
             characteristic.notifications.collect { frame ->
+                logger?.debug(
+                    "subscribeToNeighborNotifications: notification from ${neighbor.uuid} (${frame.size} bytes)"
+                )
                 handleInboundFrame(
                     sourceId = neighbor.uuid,
                     sourceSession = null,
@@ -593,13 +622,21 @@ class MeshNode(
         if (mtu < MeshFramer.HEADER_SIZE + 1) {
             // Peripheral-side MTU not yet negotiated large enough for a mesh frame -
             // skip this neighbor for now rather than failing the whole broadcast.
+            logger?.debug(
+                "relayToPeripheralSession: skipping session ${session.id.value}, " +
+                    "mtu=$mtu too small for a mesh frame"
+            )
             return
         }
         val framer = MeshFramer(maxFrameSize = mtu)
         val frames = framer.frame(message)
 
         frames.forEach { frame ->
-            session.notify(meshCharacteristicId, frame)
+            val result = session.notify(meshCharacteristicId, frame)
+            logger?.debug(
+                "relayToPeripheralSession: notified session ${session.id.value} " +
+                    "(${frame.size} bytes) -> $result"
+            )
         }
     }
 
@@ -610,6 +647,10 @@ class MeshNode(
 
         if (characteristic == null) {
             // Neighbor doesn't have mesh service discovered yet - skip
+            logger?.debug(
+                "relayToCentralNeighbor: skipping ${neighbor.uuid}, mesh characteristic not " +
+                    "discovered yet (services=${neighbor.services.map { it.uuid }})"
+            )
             return
         }
 
@@ -618,17 +659,23 @@ class MeshNode(
             // MTU negotiation for this neighbor hasn't completed with a sufficient
             // size yet - skip for now rather than failing the whole broadcast; it
             // will be retried on the next message once negotiation catches up.
+            logger?.debug(
+                "relayToCentralNeighbor: skipping ${neighbor.uuid}, mtu=$mtu too small for a mesh frame"
+            )
             return
         }
         val framer = MeshFramer(maxFrameSize = mtu)
         val frames = framer.frame(message)
 
         frames.forEach { frame ->
-            central.writeCharacteristic(
+            val result = central.writeCharacteristic(
                 neighbor,
                 characteristic,
                 frame,
                 CharacteristicWriteType.WithResponse,
+            )
+            logger?.debug(
+                "relayToCentralNeighbor: wrote to ${neighbor.uuid} (${frame.size} bytes) -> $result"
             )
         }
     }

@@ -91,6 +91,7 @@ class MeshDemoViewModel(
                         autoConnectToNeighbors = true
                         maxNeighborConnections = 4
                     },
+                    logger = dev.bluefalcon.core.PrintLnLogger,
                 )
                 meshNode = node
 
