@@ -101,7 +101,7 @@ fun MeshDemoScreen(
 
             // Messages list
             Text(
-                text = "Received Messages (${state.messages.size})",
+                text = "Messages (${state.messages.size})",
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.SemiBold,
             )
@@ -117,9 +117,9 @@ fun MeshDemoScreen(
                 ) {
                     Text(
                         text = if (state.nodeState == MeshNodeState.Running) {
-                            "Waiting for messages from the mesh..."
+                            "No messages yet - send one to start chatting"
                         } else {
-                            "Start the mesh to receive messages"
+                            "Start the mesh to send and receive messages"
                         },
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -130,9 +130,10 @@ fun MeshDemoScreen(
                     modifier = Modifier.weight(1f),
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                     contentPadding = PaddingValues(vertical = 4.dp),
+                    reverseLayout = true,
                 ) {
                     items(state.messages, key = { it.id }) { message ->
-                        MessageCard(message = message)
+                        ChatMessageBubble(message = message)
                     }
                 }
             }
@@ -333,40 +334,64 @@ private fun MessageInput(
 }
 
 @Composable
-private fun MessageCard(message: ReceivedMessage) {
-    Surface(
+private fun ChatMessageBubble(message: ChatMessage) {
+    Row(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(12.dp),
-        color = MaterialTheme.colorScheme.surfaceVariant,
+        horizontalArrangement = if (message.isOwnMessage) Arrangement.End else Arrangement.Start,
     ) {
-        Column(
-            modifier = Modifier.padding(12.dp),
+        Surface(
+            modifier = Modifier.fillMaxWidth(0.8f),
+            shape = RoundedCornerShape(12.dp),
+            color = if (message.isOwnMessage) {
+                MaterialTheme.colorScheme.primaryContainer
+            } else {
+                MaterialTheme.colorScheme.surfaceVariant
+            },
         ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
+            Column(
+                modifier = Modifier.padding(12.dp),
             ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                ) {
+                    Text(
+                        text = if (message.isOwnMessage) {
+                            "You"
+                        } else {
+                            "From: ${message.originUuid.take(8)}..."
+                        },
+                        style = MaterialTheme.typography.labelSmall,
+                        fontFamily = FontFamily.Monospace,
+                        color = if (message.isOwnMessage) {
+                            MaterialTheme.colorScheme.onPrimaryContainer
+                        } else {
+                            MaterialTheme.colorScheme.onSurfaceVariant
+                        },
+                    )
+                    if (!message.isOwnMessage) {
+                        Text(
+                            text = "${message.hopCount} hop(s)",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.tertiary,
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(4.dp))
+
                 Text(
-                    text = "From: ${message.originUuid.take(8)}...",
-                    style = MaterialTheme.typography.labelSmall,
-                    fontFamily = FontFamily.Monospace,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                Text(
-                    text = "${message.hopCount} hop(s)",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.tertiary,
+                    text = message.payload,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = if (message.isOwnMessage) {
+                        MaterialTheme.colorScheme.onPrimaryContainer
+                    } else {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    },
+                    maxLines = 3,
+                    overflow = TextOverflow.Ellipsis,
                 )
             }
-
-            Spacer(modifier = Modifier.height(4.dp))
-
-            Text(
-                text = message.payload,
-                style = MaterialTheme.typography.bodyMedium,
-                maxLines = 3,
-                overflow = TextOverflow.Ellipsis,
-            )
         }
     }
 }

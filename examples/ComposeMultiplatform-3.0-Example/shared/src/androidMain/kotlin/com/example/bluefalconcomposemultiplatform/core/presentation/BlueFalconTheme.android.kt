@@ -2,11 +2,14 @@ package com.example.bluefalconcomposemultiplatform.core.presentation
 
 import android.app.Activity
 import android.os.Build
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.dynamicDarkColorScheme
 import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.SideEffect
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
@@ -45,6 +48,20 @@ actual fun BlueFalconTheme(
     MaterialTheme(
         colorScheme = colorScheme,
         typography = Typography,
-        content = content
-    )
+    ) {
+        // MaterialTheme alone only publishes the color scheme via composition
+        // locals - it paints nothing and leaves LocalContentColor at its
+        // hardcoded default (black), regardless of the scheme's onBackground.
+        // A Surface is what actually paints colorScheme.background and sets
+        // the default text/icon color to colorScheme.onBackground, which is
+        // why dark mode previously showed a light system background with
+        // unreadable dark-on-dark (or invisible) text.
+        Surface(
+            modifier = Modifier.fillMaxSize(),
+            color = colorScheme.background,
+            contentColor = colorScheme.onBackground,
+        ) {
+            content()
+        }
+    }
 }

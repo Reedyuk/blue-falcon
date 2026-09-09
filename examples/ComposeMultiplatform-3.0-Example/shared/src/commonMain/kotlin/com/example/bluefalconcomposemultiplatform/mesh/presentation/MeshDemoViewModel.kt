@@ -19,21 +19,23 @@ import kotlinx.coroutines.launch
 data class MeshDemoState(
     val nodeState: MeshNodeState = MeshNodeState.Idle,
     val nodeUuid: String = "",
-    val messages: List<ReceivedMessage> = emptyList(),
+    val messages: List<ChatMessage> = emptyList(),
     val neighborCount: Int = 0,
     val messageToSend: String = "",
     val error: String? = null,
 )
 
 /**
- * Represents a message received from the mesh.
+ * A message shown in the mesh chat, whether it originated from this node (sent) or
+ * was received from another node in the mesh.
  */
-data class ReceivedMessage(
+data class ChatMessage(
     val id: String,
     val originUuid: String,
     val hopCount: Int,
     val payload: String,
-    val receivedAt: Long = currentTimeMillis(),
+    val isOwnMessage: Boolean,
+    val timestamp: Long = currentTimeMillis(),
 )
 
 internal expect fun currentTimeMillis(): Long
@@ -149,8 +151,19 @@ class MeshDemoViewModel(
 
         viewModelScope.launch {
             try {
-                meshNode?.broadcast(text.encodeToByteArray())
-                _state.update { it.copy(messageToSend = "") }
+                val message = meshNode?.broadcast(text.encodeToByteArray()) ?: return@launch
+                val sent = ChatMessage(
+                    id = message.id.value,
+                    originUuid = message.originUuid,
+                    hopCount = message.hopCount,
+                    payload = text,
+                    isOwnMessage = true,
+                )
+                _state.update { current ->
+                    // Keep last 50 messages
+                    val messages = (listOf(sent) + current.messages).take(50)
+                    current.copy(messageToSend = "", messages = messages)
+                }
             } catch (e: Exception) {
                 _state.update { it.copy(error = "Failed to send message: ${e.message}") }
             }
@@ -162,11 +175,12 @@ class MeshDemoViewModel(
     }
 
     private fun handleInboundMessage(message: MeshMessage) {
-        val received = ReceivedMessage(
+        val received = ChatMessage(
             id = message.id.value,
             originUuid = message.originUuid,
             hopCount = message.hopCount,
             payload = message.payload.decodeToString(),
+            isOwnMessage = false,
         )
 
         _state.update { current ->
