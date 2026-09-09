@@ -1,6 +1,6 @@
 # ADR 0014: Suspend `readCharacteristic` Until the Value Is Actually Received
 
-**Status:** Proposed
+**Status:** Accepted (partially implemented)
 
 **Date:** 2026-09-09
 
@@ -207,6 +207,16 @@ concurrency code (deferred resolution, disambiguating reads from notifications, 
 belongs in the library, not duplicated in every app.
 
 ## Implementation Notes
+
+**Progress (2026-09-09):** Core (`CharacteristicReadResult`, `BlueFalcon.readCharacteristic`
+signature, `PluginRegistry` wiring unchanged) has landed, along with the JS engine (already
+correct - now returns the value it awaits) and the RPi engine (previously mis-assumed to be
+synchronous; actually fixed with a `CompletableDeferred` keyed by peripheral+characteristic,
+resolved from `BluetoothPeripheralCallback.onCharacteristicUpdate`, with a 10s timeout). Android,
+Apple, Windows, and macOS-JVM currently implement the new `ByteArray?`-returning engine signature
+by returning `characteristic.value` immediately after firing the native read - functionally
+unchanged (same race condition as before) but source-compatible, each marked with a `TODO(ADR
+0014)` pointing at its real fix, to be landed in the order below.
 
 - Land core changes first (`CharacteristicReadResult`, `BlueFalcon.readCharacteristic` signature,
   `PluginRegistry` wiring) behind the new return type, with the JS and RPi engines updated

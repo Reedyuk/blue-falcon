@@ -73,6 +73,7 @@ class FakeBlueFalconEngine : BlueFalconEngine {
     var typedWriteFailure: Throwable? = null
     var lastTypedWriteValue: ByteArray? = null
     var lastTypedWriteType: CharacteristicWriteType? = null
+    var fakeReadValue: ByteArray? = null
     var subscriptionResult: NotificationSubscriptionResult =
         NotificationSubscriptionResult.Unsupported
     var onConnect: () -> Unit = {}
@@ -135,12 +136,13 @@ class FakeBlueFalconEngine : BlueFalconEngine {
     override suspend fun readCharacteristic(
         peripheral: BluetoothPeripheral,
         characteristic: BluetoothCharacteristic
-    ) {
+    ): ByteArray? {
         readCallCount++
         if (shouldFailRead || failReadTimes > 0) {
             if (failReadTimes > 0) failReadTimes--
             throw BluetoothUnknownException()
         }
+        return fakeReadValue
     }
     
     override suspend fun writeCharacteristic(

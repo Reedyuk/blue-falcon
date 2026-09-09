@@ -221,8 +221,10 @@ class DeviceClonePlugin(
         characteristic: BluetoothCharacteristic
     ): ByteArray? {
         return try {
+            // ADR 0014: engine.readCharacteristic() now suspends until the platform has actually
+            // delivered the value and returns it directly - use that instead of racing
+            // characteristic.value's live getter.
             engine.readCharacteristic(peripheral, characteristic)
-            characteristic.value
         } catch (_: Exception) {
             // Some characteristics may not be readable (write-only, require auth, etc.)
             characteristic.value

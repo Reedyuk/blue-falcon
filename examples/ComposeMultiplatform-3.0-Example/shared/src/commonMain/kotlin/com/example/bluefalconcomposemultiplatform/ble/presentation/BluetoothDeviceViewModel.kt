@@ -1,6 +1,7 @@
 package com.example.bluefalconcomposemultiplatform.ble.presentation
 
 import dev.bluefalcon.core.BlueFalcon
+import dev.bluefalcon.core.CharacteristicReadResult
 import dev.bluefalcon.core.DisconnectReason
 import dev.bluefalcon.core.PeripheralConnectionState
 import dev.bluefalcon.core.ServiceDiscoveryPhase
@@ -368,11 +369,21 @@ class BluetoothDeviceViewModel(
                 _deviceState.value.devices[event.macId]?.let { device ->
                     CoroutineScope(Dispatchers.IO).launch {
                         try {
-                            blueFalcon.readCharacteristic(device.peripheral, event.characteristic)
-                            _deviceState.update { state ->
-                                val updateDevices = state.devices.toMutableMap()
-                                updateDevices[event.macId] = device.copy(updateCount = device.updateCount + 1)
-                                state.copy(devices = HashMap(updateDevices))
+                            val result = blueFalcon.readCharacteristic(device.peripheral, event.characteristic)
+                            when (result) {
+                                is CharacteristicReadResult.Success -> {
+                                    _deviceState.update { state ->
+                                        val updateDevices = state.devices.toMutableMap()
+                                        updateDevices[event.macId] = device.copy(updateCount = device.updateCount + 1)
+                                        state.copy(devices = HashMap(updateDevices))
+                                    }
+                                }
+                                is CharacteristicReadResult.Failed ->
+                                    println("Failed to read characteristic: ${result.cause?.message}")
+                                CharacteristicReadResult.Disconnected ->
+                                    println("Failed to read characteristic: peripheral disconnected")
+                                CharacteristicReadResult.Unsupported ->
+                                    println("Failed to read characteristic: unsupported")
                             }
                         } catch (e: Exception) {
                             println("Failed to read characteristic: ${e.message}")

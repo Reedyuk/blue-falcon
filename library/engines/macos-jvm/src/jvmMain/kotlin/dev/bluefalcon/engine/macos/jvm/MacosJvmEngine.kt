@@ -304,9 +304,13 @@ class MacosJvmEngine : BlueFalconEngine {
     override suspend fun readCharacteristic(
         peripheral: BluetoothPeripheral,
         characteristic: BluetoothCharacteristic
-    ) {
+    ): ByteArray? {
         val c = characteristic.asMacos()
         nativeReadCharacteristic(peripheral.asMacos().uuid, c.serviceUuid.toString(), c.uuid.toString())
+        // TODO(ADR 0014): bridge the native async completion callback to a
+        // CompletableDeferred/suspendCancellableCoroutine in a follow-up commit, analogous to
+        // however the write path already awaits completion, instead of returning immediately.
+        return characteristic.value
     }
 
     override suspend fun writeCharacteristic(

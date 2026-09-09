@@ -270,9 +270,9 @@ class AndroidEngine(
         }
     }
 
-    override suspend fun readCharacteristic(peripheral: BluetoothPeripheral, characteristic: BluetoothCharacteristic) {
-        val device = (peripheral as? AndroidBluetoothPeripheral)?.device ?: return
-        val androidChar = (characteristic as? AndroidBluetoothCharacteristic)?.characteristic ?: return
+    override suspend fun readCharacteristic(peripheral: BluetoothPeripheral, characteristic: BluetoothCharacteristic): ByteArray? {
+        val device = (peripheral as? AndroidBluetoothPeripheral)?.device ?: return null
+        val androidChar = (characteristic as? AndroidBluetoothCharacteristic)?.characteristic ?: return null
         gattCallback.gattsForDevice(device).forEach { gatt ->
             fetchCharacteristic(androidChar, gatt).forEach { char ->
                 gattCallback.enqueueOperation(
@@ -288,6 +288,10 @@ class AndroidEngine(
                 }
             }
         }
+        // TODO(ADR 0014): this still returns before onCharacteristicRead's completeOperation(...)
+        // signal fires - track it in a follow-up commit via CentralGattOperationGate.trySubmitTyped
+        // + suspendCancellableCoroutine, mirroring writeCharacteristic's existing pattern.
+        return characteristic.value
     }
     
     override suspend fun writeCharacteristic(

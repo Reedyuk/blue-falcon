@@ -69,4 +69,4 @@ ADRs can have the following statuses:
 - [ADR 0011: Mesh/Multi-Hop Relay Plugin](0011-mesh-multi-hop-relay-plugin.md) - **Proposed** - 2026-08-27
 - [ADR 0012: Metrics/Observability Plugin](0012-metrics-observability-plugin.md) - **Implemented** - 2026-08-27
 - [ADR 0013: Add Windows Bluetooth Adapter Enumeration and Selection](0013-add-windows-adapter-selection.md) - **Accepted** - 2026-09-01
-- [ADR 0014: Suspend `readCharacteristic` Until the Value Is Actually Received](0014-suspending-characteristic-reads.md) - **Proposed** - 2026-09-09
+- [ADR 0014: Suspend `readCharacteristic` Until the Value Is Actually Received](0014-suspending-characteristic-reads.md) - **Accepted (partially implemented)** - 2026-09-09

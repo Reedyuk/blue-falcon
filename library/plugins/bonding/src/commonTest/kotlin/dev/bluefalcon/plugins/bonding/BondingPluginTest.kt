@@ -57,7 +57,7 @@ private class FakeEngine(
     override fun requestConnectionPriority(peripheral: BluetoothPeripheral, priority: ConnectionPriority) {}
     override suspend fun discoverServices(peripheral: BluetoothPeripheral, serviceUUIDs: List<Uuid>) {}
     override suspend fun discoverCharacteristics(peripheral: BluetoothPeripheral, service: BluetoothService, characteristicUUIDs: List<Uuid>) {}
-    override suspend fun readCharacteristic(peripheral: BluetoothPeripheral, characteristic: BluetoothCharacteristic) {}
+    override suspend fun readCharacteristic(peripheral: BluetoothPeripheral, characteristic: BluetoothCharacteristic): ByteArray? = null
     override suspend fun writeCharacteristic(peripheral: BluetoothPeripheral, characteristic: BluetoothCharacteristic, value: String, writeType: Int?) {}
     override suspend fun writeCharacteristic(peripheral: BluetoothPeripheral, characteristic: BluetoothCharacteristic, value: ByteArray, writeType: Int?) {}
     override suspend fun notifyCharacteristic(peripheral: BluetoothPeripheral, characteristic: BluetoothCharacteristic, notify: Boolean) {}

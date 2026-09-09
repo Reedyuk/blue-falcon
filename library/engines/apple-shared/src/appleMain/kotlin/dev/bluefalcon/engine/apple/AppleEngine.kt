@@ -217,7 +217,7 @@ class AppleEngine : BlueFalconEngine, CBCentralManagerCallback, CBPeripheralCall
     override suspend fun readCharacteristic(
         peripheral: BluetoothPeripheral,
         characteristic: BluetoothCharacteristic
-    ) {
+    ): ByteArray? {
         val applePeripheral = peripheral as? AppleBluetoothPeripheral
             ?: throw IllegalArgumentException("Peripheral must be an AppleBluetoothPeripheral")
         
@@ -230,6 +230,11 @@ class AppleEngine : BlueFalconEngine, CBCentralManagerCallback, CBPeripheralCall
         if (applePeripheral.cbPeripheral.state == CBPeripheralStateConnected) {
             applePeripheral.cbPeripheral.readValueForCharacteristic(appleCharacteristic.cbCharacteristic)
         }
+        // TODO(ADR 0014): this still returns before didUpdateValueForCharacteristic actually
+        // fires - track it in a follow-up commit via a CompletableDeferred<ByteArray?> keyed by
+        // peripheral+characteristic identity, resolved from that delegate callback, carefully
+        // disambiguated from unsolicited notifications for the same characteristic.
+        return characteristic.value
     }
     
     override suspend fun writeCharacteristic(
