@@ -33,7 +33,19 @@ class AndroidEngine(
     private val autoDiscoverAllServicesAndCharacteristics: Boolean = true
 ) : BlueFalconEngine {
     
-    override val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+    /**
+     * Engine work runs off the main thread, consistent with every other platform
+     * engine. Nothing here requires the main looper: the Android BLE APIs are safe to
+     * call from any thread, their callbacks arrive on a binder thread, and the few
+     * places that genuinely need the main looper post to it explicitly via [Handler].
+     *
+     * This scope is shared with core BlueFalcon bookkeeping and plugins (mesh relaying,
+     * framing, proximity smoothing, bonding, ...), so dispatching it on the main thread
+     * made that work contend with rendering and caused dropped frames. UI consumers are
+     * unaffected - they observe StateFlow/SharedFlow and collect on their own
+     * dispatcher.
+     */
+    override val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     
     private val _peripherals = MutableStateFlow<Set<BluetoothPeripheral>>(emptySet())
     override val peripherals: StateFlow<Set<BluetoothPeripheral>> = _peripherals.asStateFlow()
