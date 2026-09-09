@@ -1,6 +1,6 @@
 # ADR 0014: Suspend `readCharacteristic` Until the Value Is Actually Received
 
-**Status:** Accepted (partially implemented)
+**Status:** ✅ Implemented
 
 **Date:** 2026-09-09
 
@@ -233,11 +233,18 @@ resolving a pending read for that exact characteristic if one exists - while lea
 notification emission path (`_characteristicNotifications.tryEmit`) completely untouched, so a
 notification arriving while a read is pending is neither dropped nor mistaken for the read's
 result. Covered by a new `AppleCentralReadTest.kt` (disambiguation, native-error propagation,
-disconnect cleanup, and generation isolation across reconnects). Windows and macOS-JVM still
-implement the new `ByteArray?`-returning engine signature by returning `characteristic.value`
-immediately after firing the native read - functionally unchanged (same race condition as before)
-but source-compatible, each marked with a `TODO(ADR 0014)` pointing at its real fix, to be landed
-in the order below.
+disconnect cleanup, and generation isolation across reconnects). Windows and macOS-JVM are now
+fixed too: both engines' native bridges already fire a dedicated success-only completion callback
+per solicited read (`onCharacteristicRead(address/peripheralUuid, ..., value)` - confirmed against
+`library/src/windowsMain/cpp/BluetoothLEManager.cpp` and
+`library/engines/macos-jvm/native/BlueFalconJNI.m`, the latter already disambiguating reads from
+notifications natively via a `gPendingReads` set), so each engine now tracks a
+`CompletableDeferred<ByteArray>` per pending read (keyed by address/peripheralUuid + characteristic
+identity, mirroring RPi), resolved from that callback and awaited with the same 10s timeout used
+by RPi and Apple; a read that never gets a callback (e.g. a lost native error) fails with
+`BluetoothUnknownException` instead of hanging forever.
+
+**All engines are now fixed for ADR 0014** - core+JS+RPi, Android, Apple, and Windows/macOS-JVM.
 
 - Land core changes first (`CharacteristicReadResult`, `BlueFalcon.readCharacteristic` signature,
   `PluginRegistry` wiring) behind the new return type, with the JS and RPi engines updated

@@ -1,14 +1,17 @@
 package dev.bluefalcon.engine.windows
 
 import dev.bluefalcon.core.*
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeout
 
 
 internal data class BluetoothAdapterData(
@@ -55,7 +58,16 @@ class WindowsEngine : BlueFalconEngine {
     
     // Store active connections
     private val connections = mutableMapOf<Long, WindowsBluetoothPeripheral>()
-    
+
+    // ADR 0014: nativeReadCharacteristic() only fires the WinRT read - the actual value/failure
+    // is delivered later, asynchronously, to onCharacteristicRead(). Track pending reads here,
+    // keyed by peripheral address + characteristic UUID, so readCharacteristic() can suspend
+    // until that callback actually resolves this specific request.
+    private val pendingReads = mutableMapOf<String, CompletableDeferred<ByteArray>>()
+
+    private fun pendingReadKey(address: Long, characteristicUuid: String) =
+        "$address::$characteristicUuid"
+
     init {
         // Load native library
         try {
@@ -260,16 +272,18 @@ class WindowsEngine : BlueFalconEngine {
             ?: throw IllegalArgumentException("Peripheral must be a WindowsBluetoothPeripheral")
         
         val address = windowsPeripheral.address
-        
+        val characteristicUuid = characteristic.uuid.toString()
+        val key = pendingReadKey(address, characteristicUuid)
+        val deferred = CompletableDeferred<ByteArray>()
+        pendingReads[key] = deferred
         try {
-            nativeReadCharacteristic(address, characteristic.uuid.toString())
-        } catch (e: Exception) {
-            throw e
+            nativeReadCharacteristic(address, characteristicUuid)
+            return withTimeout(READ_TIMEOUT_MS) { deferred.await() }
+        } catch (timeout: TimeoutCancellationException) {
+            throw BluetoothUnknownException("Timed out waiting for characteristic read to complete")
+        } finally {
+            pendingReads.remove(key)
         }
-        // TODO(ADR 0014): bridge the native async completion callback to a
-        // CompletableDeferred/suspendCancellableCoroutine in a follow-up commit, analogous to
-        // however the write path already awaits completion, instead of returning immediately.
-        return characteristic.value
     }
     
     override suspend fun writeCharacteristic(
@@ -530,8 +544,13 @@ class WindowsEngine : BlueFalconEngine {
         characteristicUuid: String,
         value: ByteArray
     ) {
+        // Resolve any solicited read awaiting this exact characteristic (ADR 0014) before the
+        // peripheral-lookup guard below, so a read completes even if the connection bookkeeping
+        // races with this callback.
+        pendingReads.remove(pendingReadKey(address, characteristicUuid))?.complete(value)
+
         val peripheral = connections[address] ?: return
-        
+
         peripheral.services.forEach { service ->
             (service as? WindowsBluetoothService)?.characteristics?.forEach { char ->
                 val windowsChar = char as? WindowsBluetoothCharacteristic
@@ -649,5 +668,7 @@ class WindowsEngine : BlueFalconEngine {
     companion object {
         const val WRITE_TYPE_DEFAULT = 0x02
         const val WRITE_TYPE_NO_RESPONSE = 0x01
+        // Matches the timeout used by the other engines' ADR 0014 read fixes (RPi, Apple).
+        const val READ_TIMEOUT_MS = 10_000L
     }
 }
