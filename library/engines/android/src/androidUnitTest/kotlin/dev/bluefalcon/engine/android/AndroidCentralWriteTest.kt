@@ -1,5 +1,6 @@
 package dev.bluefalcon.engine.android
 
+import dev.bluefalcon.core.BluetoothUnknownException
 import dev.bluefalcon.core.CharacteristicWriteKey
 import dev.bluefalcon.core.CharacteristicWriteResult
 import dev.bluefalcon.core.CharacteristicWriteType
@@ -9,6 +10,7 @@ import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -190,5 +192,32 @@ class AndroidCentralWriteTest {
             CharacteristicWriteResult.Disconnected,
             CentralGattOperationOutcome.Disconnected.toWriteResult(),
         )
+    }
+
+    @Test
+    fun `gate outcomes map to read values or throw typed failures (ADR 0014)`() {
+        val value = byteArrayOf(1, 2, 3)
+
+        assertEquals(
+            value,
+            CentralGattOperationOutcome.Success(0).toReadValue(value),
+        )
+
+        assertFailsWith<IllegalStateException> {
+            CentralGattOperationOutcome.StatusFailure(133).toReadValue(null)
+        }
+        val rejectedCause = IllegalStateException("boom")
+        assertEquals(
+            rejectedCause,
+            assertFailsWith<IllegalStateException> {
+                CentralGattOperationOutcome.Rejected(rejectedCause).toReadValue(null)
+            },
+        )
+        assertFailsWith<IllegalStateException> {
+            CentralGattOperationOutcome.TimedOut.toReadValue(null)
+        }
+        assertFailsWith<BluetoothUnknownException> {
+            CentralGattOperationOutcome.Disconnected.toReadValue(null)
+        }
     }
 }

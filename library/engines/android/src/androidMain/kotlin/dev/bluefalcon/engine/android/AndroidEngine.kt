@@ -22,6 +22,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.withContext
 import java.util.concurrent.CopyOnWriteArrayList
 import kotlin.coroutines.resume
+import kotlin.coroutines.resumeWithException
 
 /**
  * Android implementation of BlueFalconEngine using Android BLE APIs.
@@ -270,28 +271,74 @@ class AndroidEngine(
         }
     }
 
-    override suspend fun readCharacteristic(peripheral: BluetoothPeripheral, characteristic: BluetoothCharacteristic): ByteArray? {
-        val device = (peripheral as? AndroidBluetoothPeripheral)?.device ?: return null
-        val androidChar = (characteristic as? AndroidBluetoothCharacteristic)?.characteristic ?: return null
-        gattCallback.gattsForDevice(device).forEach { gatt ->
-            fetchCharacteristic(androidChar, gatt).forEach { char ->
-                gattCallback.enqueueOperation(
-                    gatt,
-                    CentralGattOperationType.ReadCharacteristic,
-                    "readCharacteristic ${char.uuid}",
-                    identity = characteristicOperationIdentity(
-                        char.service?.uuid?.toString(),
-                        char.uuid.toString(),
-                    )
-                ) {
-                    it.readCharacteristic(char)
+    override suspend fun readCharacteristic(
+        peripheral: BluetoothPeripheral,
+        characteristic: BluetoothCharacteristic
+    ): ByteArray? {
+        val androidPeripheral = peripheral as? AndroidBluetoothPeripheral
+            ?: throw IllegalArgumentException("Peripheral must be an AndroidBluetoothPeripheral")
+        val requestedCharacteristic =
+            (characteristic as? AndroidBluetoothCharacteristic)?.characteristic
+                ?: throw IllegalArgumentException(
+                    "Characteristic must be an AndroidBluetoothCharacteristic"
+                )
+        val gatt = gattCallback.activeGattForDevice(androidPeripheral.device)
+            ?: throw BluetoothUnknownException("No active GATT connection for characteristic read")
+        val generation = gattCallback.generationFor(gatt)
+            ?: throw BluetoothUnknownException("No active GATT connection for characteristic read")
+        val targetCharacteristic =
+            fetchCharacteristic(requestedCharacteristic, gatt, exactNativeIdentity = true)
+                .firstOrNull()
+                ?: throw IllegalArgumentException(
+                    "Characteristic ${characteristic.uuid} is not part of the active GATT"
+                )
+        val operationKey = CentralGattOperationKey(
+            generation = generation,
+            type = CentralGattOperationType.ReadCharacteristic,
+            identity = characteristicOperationIdentity(
+                targetCharacteristic.service?.uuid?.toString(),
+                targetCharacteristic.uuid.toString(),
+            ),
+        )
+        val gate = gattCallback.operationGateFor(gatt, generation)
+            ?: throw BluetoothUnknownException("No active GATT connection for characteristic read")
+
+        // ADR 0014: suspend until onCharacteristicRead's completeOperation(...) signal actually
+        // fires (or the operation gate times out/disconnects), mirroring writeCharacteristic's
+        // existing trySubmitTyped + suspendCancellableCoroutine pattern one-for-one, instead of
+        // returning as soon as the read request has been issued.
+        return suspendCancellableCoroutine { continuation ->
+            val accepted = gate.trySubmitTyped(
+                key = operationKey,
+                label = "readCharacteristic ${targetCharacteristic.uuid}",
+                action = {
+                    gatt.readCharacteristic(targetCharacteristic)
+                },
+                onComplete = { outcome ->
+                    if (continuation.isActive) {
+                        val value = gattCallback.takePendingReadValue(operationKey)
+                        try {
+                            continuation.resume(outcome.toReadValue(value))
+                        } catch (failure: Throwable) {
+                            continuation.resumeWithException(failure)
+                        }
+                    }
+                },
+            )
+            if (!accepted) {
+                continuation.resumeWithException(
+                    if (gate.isPoisoned) {
+                        BluetoothUnknownException("GATT connection is poisoned")
+                    } else {
+                        BluetoothUnknownException("Another GATT operation is already in flight")
+                    }
+                )
+            } else {
+                continuation.invokeOnCancellation {
+                    gate.abandon(operationKey)
                 }
             }
         }
-        // TODO(ADR 0014): this still returns before onCharacteristicRead's completeOperation(...)
-        // signal fires - track it in a follow-up commit via CentralGattOperationGate.trySubmitTyped
-        // + suspendCancellableCoroutine, mirroring writeCharacteristic's existing pattern.
-        return characteristic.value
     }
     
     override suspend fun writeCharacteristic(
@@ -887,6 +934,16 @@ class AndroidEngine(
         private val gattGenerations =
             java.util.concurrent.ConcurrentHashMap<BluetoothGatt, Long>()
 
+        // ADR 0014: CentralGattOperationOutcome only carries a status code, not the byte value the
+        // platform delivered - stash the value onCharacteristicRead observed for a given operation
+        // key here so readCharacteristic()'s suspend point can retrieve it once trySubmitTyped's
+        // onComplete callback fires.
+        private val pendingReadValues =
+            java.util.concurrent.ConcurrentHashMap<CentralGattOperationKey, ByteArray?>()
+
+        fun takePendingReadValue(key: CentralGattOperationKey): ByteArray? =
+            pendingReadValues.remove(key)
+
         // Guards every compound read-modify-write over [gatts]/[operationGates] and the "is this the
         // last gatt for the address?" reset decision. These run on three different threads — GATT
         // callbacks on a binder thread, the disconnect watchdog on the main thread, and operation
@@ -1201,13 +1258,19 @@ class AndroidEngine(
         ) {
             logger?.debug("onCharacteristicRead ${characteristic?.uuid} status=$status")
             gatt?.let {
+                val identity = characteristicOperationIdentity(
+                    characteristic?.service?.uuid?.toString(),
+                    characteristic?.uuid?.toString(),
+                )
+                gattGenerations[it]?.let { generation ->
+                    pendingReadValues[
+                        CentralGattOperationKey(generation, CentralGattOperationType.ReadCharacteristic, identity)
+                    ] = characteristic?.value?.copyOf()
+                }
                 completeOperation(
                     it,
                     CentralGattOperationType.ReadCharacteristic,
-                    characteristicOperationIdentity(
-                        characteristic?.service?.uuid?.toString(),
-                        characteristic?.uuid?.toString(),
-                    ),
+                    identity,
                     status,
                 )
             }

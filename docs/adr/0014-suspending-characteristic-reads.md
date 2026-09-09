@@ -212,11 +212,17 @@ belongs in the library, not duplicated in every app.
 signature, `PluginRegistry` wiring unchanged) has landed, along with the JS engine (already
 correct - now returns the value it awaits) and the RPi engine (previously mis-assumed to be
 synchronous; actually fixed with a `CompletableDeferred` keyed by peripheral+characteristic,
-resolved from `BluetoothPeripheralCallback.onCharacteristicUpdate`, with a 10s timeout). Android,
-Apple, Windows, and macOS-JVM currently implement the new `ByteArray?`-returning engine signature
-by returning `characteristic.value` immediately after firing the native read - functionally
-unchanged (same race condition as before) but source-compatible, each marked with a `TODO(ADR
-0014)` pointing at its real fix, to be landed in the order below.
+resolved from `BluetoothPeripheralCallback.onCharacteristicUpdate`, with a 10s timeout). Android
+now suspends for real too: `readCharacteristic` switched from `CentralGattOperationGate
+.enqueueLegacy` to `trySubmitTyped` + `suspendCancellableCoroutine`, mirroring
+`writeCharacteristic`'s existing pattern one-for-one, with the actual byte value captured from
+`onCharacteristicRead` (stashed per operation key, since `CentralGattOperationOutcome` itself only
+carries a status code) and non-success outcomes mapped to typed exceptions instead of a sealed
+result, matching every other engine's "return the value or throw" contract. Apple, Windows, and
+macOS-JVM still implement the new `ByteArray?`-returning engine signature by returning
+`characteristic.value` immediately after firing the native read - functionally unchanged (same
+race condition as before) but source-compatible, each marked with a `TODO(ADR 0014)` pointing at
+its real fix, to be landed in the order below.
 
 - Land core changes first (`CharacteristicReadResult`, `BlueFalcon.readCharacteristic` signature,
   `PluginRegistry` wiring) behind the new return type, with the JS and RPi engines updated

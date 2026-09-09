@@ -1,5 +1,6 @@
 package dev.bluefalcon.engine.android
 
+import dev.bluefalcon.core.BluetoothUnknownException
 import dev.bluefalcon.core.CharacteristicWriteCapability
 import dev.bluefalcon.core.CharacteristicWriteKey
 import dev.bluefalcon.core.CharacteristicWriteReady
@@ -185,4 +186,23 @@ internal fun CentralGattOperationOutcome.toWriteResult(): CharacteristicWriteRes
             )
         CentralGattOperationOutcome.Disconnected ->
             CharacteristicWriteResult.Disconnected
+    }
+
+/**
+ * Maps a completed GATT read operation's outcome to the value onCharacteristicRead observed for
+ * it (ADR 0014), throwing a typed exception for non-success outcomes instead of returning a
+ * sealed result - readCharacteristic()'s engine-level contract is "return the value or throw",
+ * mirroring every other engine.
+ */
+internal fun CentralGattOperationOutcome.toReadValue(value: ByteArray?): ByteArray? =
+    when (this) {
+        is CentralGattOperationOutcome.Success -> value
+        is CentralGattOperationOutcome.StatusFailure ->
+            throw IllegalStateException("GATT read failed with status $status")
+        is CentralGattOperationOutcome.Rejected ->
+            throw (cause ?: IllegalStateException("GATT read was rejected by the local stack"))
+        CentralGattOperationOutcome.TimedOut ->
+            throw IllegalStateException("GATT read callback timed out")
+        CentralGattOperationOutcome.Disconnected ->
+            throw BluetoothUnknownException("Peripheral disconnected during characteristic read")
     }
