@@ -145,6 +145,7 @@ fun App(
                         CentralContent(
                             state = state,
                             onEvent = viewModel::onEvent,
+                            metricsPlugin = appModule.metricsPlugin,
                             modifier = Modifier.fillMaxSize(),
                         )
                     }
@@ -177,6 +178,7 @@ fun App(
 private fun CentralContent(
     state: BluetoothDeviceState,
     onEvent: (UiEvent) -> Unit,
+    metricsPlugin: dev.bluefalcon.plugins.metrics.MetricsPlugin,
     modifier: Modifier = Modifier,
 ) {
     Box(modifier = modifier) {
@@ -240,6 +242,7 @@ private fun CentralContent(
                 if (selectedDevice != null) {
                     DeviceDetailScreen(
                         device = selectedDevice,
+                        metricsPlugin = metricsPlugin,
                         onEvent = onEvent,
                     )
                 } else {

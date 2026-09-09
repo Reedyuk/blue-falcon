@@ -81,6 +81,47 @@ class MetricsPluginTest {
         assertEquals(0, snapshot.writeSuccessCount)
     }
 
+    @Test
+    fun `tracks per-peripheral metrics independently for each connected device`() = runTest {
+        val plugin = MetricsPlugin.create()
+
+        plugin.onOperationCompleted(
+            telemetry(BlueFalconOperationKind.CONNECT, success = true, durationMillis = 40, peripheralUuid = "device-a")
+        )
+        plugin.onOperationCompleted(
+            telemetry(BlueFalconOperationKind.CONNECT, success = false, durationMillis = 10, peripheralUuid = "device-b")
+        )
+        plugin.onOperationCompleted(
+            telemetry(BlueFalconOperationKind.READ, success = true, durationMillis = 5, byteCount = 16, peripheralUuid = "device-a")
+        )
+        plugin.onOperationCompleted(
+            telemetry(BlueFalconOperationKind.WRITE, success = true, durationMillis = 6, byteCount = 40, peripheralUuid = "device-a")
+        )
+
+        val snapshot = plugin.snapshot.value
+        val deviceA = snapshot.metricsFor("device-a")
+        val deviceB = snapshot.metricsFor("device-b")
+        val unknown = snapshot.metricsFor("device-c")
+
+        assertEquals(1, deviceA.connectSuccessCount)
+        assertEquals(0, deviceA.connectFailureCount)
+        assertEquals(40, deviceA.lastConnectLatencyMillis)
+        assertEquals(16, deviceA.bytesRead)
+        assertEquals(40, deviceA.bytesWritten)
+
+        assertEquals(0, deviceB.connectSuccessCount)
+        assertEquals(1, deviceB.connectFailureCount)
+        assertEquals(10, deviceB.lastConnectLatencyMillis)
+
+        // Global aggregate counters still reflect both peripherals combined.
+        assertEquals(1, snapshot.connectSuccessCount)
+        assertEquals(1, snapshot.connectFailureCount)
+
+        // Unrecorded peripherals get a zero-valued default rather than throwing/null.
+        assertEquals(0, unknown.connectSuccessCount)
+        assertEquals(null, unknown.lastConnectLatencyMillis)
+    }
+
     private fun telemetry(
         operation: BlueFalconOperationKind,
         success: Boolean,

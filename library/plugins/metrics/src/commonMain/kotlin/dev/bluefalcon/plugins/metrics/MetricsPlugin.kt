@@ -101,9 +101,27 @@ class MetricsPlugin(private val config: Config) : BlueFalconPlugin {
             writeSuccessCount = writeSuccessCount + if (metric.operation == BlueFalconOperationKind.WRITE && metric.success) 1 else 0,
             writeFailureCount = writeFailureCount + if (metric.operation == BlueFalconOperationKind.WRITE && !metric.success) 1 else 0,
             bytesRead = bytesRead + if (metric.operation == BlueFalconOperationKind.READ && metric.success) (metric.byteCount ?: 0) else 0,
-            bytesWritten = bytesWritten + if (metric.operation == BlueFalconOperationKind.WRITE && metric.success) (metric.byteCount ?: 0) else 0
+            bytesWritten = bytesWritten + if (metric.operation == BlueFalconOperationKind.WRITE && metric.success) (metric.byteCount ?: 0) else 0,
+            perPeripheral = metric.peripheralUuid?.let { uuid ->
+                val existing = perPeripheral[uuid] ?: PeripheralMetrics()
+                perPeripheral + (uuid to existing.updatedWith(metric))
+            } ?: perPeripheral
         )
     }
+
+    private fun PeripheralMetrics.updatedWith(metric: OperationMetric): PeripheralMetrics = copy(
+        connectSuccessCount = connectSuccessCount + if (metric.operation == BlueFalconOperationKind.CONNECT && metric.success) 1 else 0,
+        connectFailureCount = connectFailureCount + if (metric.operation == BlueFalconOperationKind.CONNECT && !metric.success) 1 else 0,
+        disconnectSuccessCount = disconnectSuccessCount + if (metric.operation == BlueFalconOperationKind.DISCONNECT && metric.success) 1 else 0,
+        disconnectFailureCount = disconnectFailureCount + if (metric.operation == BlueFalconOperationKind.DISCONNECT && !metric.success) 1 else 0,
+        readSuccessCount = readSuccessCount + if (metric.operation == BlueFalconOperationKind.READ && metric.success) 1 else 0,
+        readFailureCount = readFailureCount + if (metric.operation == BlueFalconOperationKind.READ && !metric.success) 1 else 0,
+        writeSuccessCount = writeSuccessCount + if (metric.operation == BlueFalconOperationKind.WRITE && metric.success) 1 else 0,
+        writeFailureCount = writeFailureCount + if (metric.operation == BlueFalconOperationKind.WRITE && !metric.success) 1 else 0,
+        bytesRead = bytesRead + if (metric.operation == BlueFalconOperationKind.READ && metric.success) (metric.byteCount ?: 0) else 0,
+        bytesWritten = bytesWritten + if (metric.operation == BlueFalconOperationKind.WRITE && metric.success) (metric.byteCount ?: 0) else 0,
+        lastConnectLatencyMillis = if (metric.operation == BlueFalconOperationKind.CONNECT) metric.durationMillis else lastConnectLatencyMillis
+    )
 
     companion object {
         /** Creates a new [MetricsPlugin] instance with the given configuration. */

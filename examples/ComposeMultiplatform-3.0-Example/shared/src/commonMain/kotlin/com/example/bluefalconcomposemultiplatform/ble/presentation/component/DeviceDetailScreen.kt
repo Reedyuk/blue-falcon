@@ -55,6 +55,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -78,6 +79,8 @@ import dev.bluefalcon.core.BlueFalconBondState
 import dev.bluefalcon.core.BondCapability
 import dev.bluefalcon.plugins.nordicfota.FotaState
 import dev.bluefalcon.plugins.nordicfota.NordicFotaPlugin
+import dev.bluefalcon.plugins.metrics.MetricsPlugin
+import dev.bluefalcon.plugins.metrics.PeripheralMetrics
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -85,9 +88,12 @@ import kotlinx.coroutines.launch
 @Composable
 fun DeviceDetailScreen(
     device: EnhancedBluetoothPeripheral,
+    metricsPlugin: MetricsPlugin,
     onEvent: (UiEvent) -> Unit
 ) {
     val macId = device.peripheral.uuid
+    val metricsSnapshot by metricsPlugin.snapshot.collectAsState()
+    val peripheralMetrics = metricsSnapshot.metricsFor(macId)
     var showMtuDialog by remember { mutableStateOf(false) }
     var isRefreshing by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
@@ -244,6 +250,9 @@ fun DeviceDetailScreen(
                 ) {
                     item {
                         DeviceInfoCard(device = device, onRequestMtu = { showMtuDialog = true })
+                    }
+                    item {
+                        PeripheralMetricsCard(metrics = peripheralMetrics)
                     }
                     // Show FOTA card if device has the SMP service
                     val hasSmpService = services.any { service ->
@@ -444,6 +453,85 @@ fun DeviceInfoCard(
                 Text("REQUEST MTU", fontSize = 12.sp)
             }
         }
+    }
+}
+
+/**
+ * Shows live connect/read/write success-failure counts and byte throughput for this specific
+ * peripheral, sourced from [dev.bluefalcon.plugins.metrics.MetricsPlugin] (ADR 0012). Every BLE
+ * operation performed against this device - whether triggered from this screen, a background
+ * plugin (retry, FOTA, cloning, etc.), or the mesh demo - is reflected here.
+ */
+@Composable
+fun PeripheralMetricsCard(metrics: PeripheralMetrics) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 12.dp, vertical = 8.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+    ) {
+        Column(
+            modifier = Modifier.padding(12.dp)
+        ) {
+            Text(
+                text = "METRICS",
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.primary,
+                letterSpacing = 1.sp
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                MetricStatColumn(
+                    label = "CONNECTS",
+                    value = "${metrics.connectSuccessCount}/${metrics.connectSuccessCount + metrics.connectFailureCount}"
+                )
+                MetricStatColumn(
+                    label = "READS",
+                    value = "${metrics.readSuccessCount}/${metrics.readSuccessCount + metrics.readFailureCount}"
+                )
+                MetricStatColumn(
+                    label = "WRITES",
+                    value = "${metrics.writeSuccessCount}/${metrics.writeSuccessCount + metrics.writeFailureCount}"
+                )
+                MetricStatColumn(label = "BYTES ↓", value = metrics.bytesRead.toString())
+                MetricStatColumn(label = "BYTES ↑", value = metrics.bytesWritten.toString())
+            }
+
+            metrics.lastConnectLatencyMillis?.let { latency ->
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = "Last connect: ${latency}ms",
+                    fontSize = 11.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun MetricStatColumn(label: String, value: String) {
+    Column {
+        Text(
+            text = label,
+            fontSize = 10.sp,
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Text(
+            text = value,
+            fontSize = 14.sp,
+            fontFamily = FontFamily.Monospace,
+            color = MaterialTheme.colorScheme.onSurface
+        )
     }
 }
 
