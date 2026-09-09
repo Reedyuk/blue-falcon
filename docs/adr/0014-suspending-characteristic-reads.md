@@ -218,11 +218,26 @@ now suspends for real too: `readCharacteristic` switched from `CentralGattOperat
 `writeCharacteristic`'s existing pattern one-for-one, with the actual byte value captured from
 `onCharacteristicRead` (stashed per operation key, since `CentralGattOperationOutcome` itself only
 carries a status code) and non-success outcomes mapped to typed exceptions instead of a sealed
-result, matching every other engine's "return the value or throw" contract. Apple, Windows, and
-macOS-JVM still implement the new `ByteArray?`-returning engine signature by returning
-`characteristic.value` immediately after firing the native read - functionally unchanged (same
-race condition as before) but source-compatible, each marked with a `TODO(ADR 0014)` pointing at
-its real fix, to be landed in the order below.
+result, matching every other engine's "return the value or throw" contract. Apple now suspends
+for real too: `AppleCentralOperationRegistry` gained a `registerRead`/`completeRead`/`abandonRead`
+trio (mirroring its existing write/subscription support, keyed by
+`peripheralUuid+generation+characteristicUuid` so it is immune to stale post-reconnect callbacks
+and cleans up any pending read with a `Disconnected` outcome when the connection drops).
+`AppleEngine.readCharacteristic()` registers a pending read via a new
+`AppleCentralWriteController.read(...)` helper, fires `readValueForCharacteristic`, and suspends
+(with a 10s timeout, matching RPi) until it resolves. Since CoreBluetooth funnels both solicited
+reads and unsolicited notifications through the same `didUpdateValueForCharacteristic` delegate
+callback, `onCharacteristicValueUpdated` now also calls
+`AppleCentralWriteController.onCharacteristicValueReceived(...)` for every callback invocation -
+resolving a pending read for that exact characteristic if one exists - while leaving the existing
+notification emission path (`_characteristicNotifications.tryEmit`) completely untouched, so a
+notification arriving while a read is pending is neither dropped nor mistaken for the read's
+result. Covered by a new `AppleCentralReadTest.kt` (disambiguation, native-error propagation,
+disconnect cleanup, and generation isolation across reconnects). Windows and macOS-JVM still
+implement the new `ByteArray?`-returning engine signature by returning `characteristic.value`
+immediately after firing the native read - functionally unchanged (same race condition as before)
+but source-compatible, each marked with a `TODO(ADR 0014)` pointing at its real fix, to be landed
+in the order below.
 
 - Land core changes first (`CharacteristicReadResult`, `BlueFalcon.readCharacteristic` signature,
   `PluginRegistry` wiring) behind the new return type, with the JS and RPi engines updated

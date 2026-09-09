@@ -13,6 +13,8 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.TimeoutCancellationException
+import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -64,6 +66,14 @@ internal interface AppleNotificationTarget {
     val connected: Boolean
 
     suspend fun setNotifyValue(enabled: Boolean)
+}
+
+internal interface AppleCentralReadTarget {
+    val peripheralUuid: String
+    val characteristicUuid: String
+    val connected: Boolean
+
+    fun readValue()
 }
 
 internal class AppleCentralWriteController(
@@ -347,6 +357,71 @@ internal class AppleCentralWriteController(
         )
     }
 
+    suspend fun read(target: AppleCentralReadTarget): AppleReadOutcome {
+        if (!target.connected) return AppleReadOutcome.Disconnected
+        val connection = currentConnection(target.peripheralUuid)
+            ?: return AppleReadOutcome.Disconnected
+        val key = AppleCentralOperationKey(
+            peripheralUuid = target.peripheralUuid,
+            generation = connection.generation,
+            characteristicUuid = target.characteristicUuid,
+        )
+        val result = CompletableDeferred<AppleReadOutcome>()
+        if (!registry.registerRead(key) { outcome -> result.complete(outcome) }) {
+            return AppleReadOutcome.Failed(
+                IllegalStateException(
+                    "A read is already pending for this characteristic"
+                )
+            )
+        }
+        try {
+            target.readValue()
+        } catch (cancellation: CancellationException) {
+            registry.abandonRead(key)
+            throw cancellation
+        } catch (failure: Throwable) {
+            registry.completeRead(key, AppleReadOutcome.Failed(failure))
+        }
+
+        return try {
+            withTimeout(READ_TIMEOUT_MILLIS) { result.await() }
+        } catch (timeout: TimeoutCancellationException) {
+            registry.abandonRead(key)
+            AppleReadOutcome.Failed(
+                IllegalStateException("Characteristic read timed out")
+            )
+        } catch (cancellation: CancellationException) {
+            registry.abandonRead(key)
+            throw cancellation
+        }
+    }
+
+    suspend fun onCharacteristicValueReceived(
+        peripheralUuid: String,
+        characteristicUuid: String,
+        value: ByteArray?,
+        failure: Throwable?,
+    ): Boolean {
+        val connection = currentConnection(peripheralUuid) ?: return false
+        return onCharacteristicValueReceived(connection, characteristicUuid, value, failure)
+    }
+
+    suspend fun onCharacteristicValueReceived(
+        connection: AppleCentralConnectionKey,
+        characteristicUuid: String,
+        value: ByteArray?,
+        failure: Throwable?,
+    ): Boolean {
+        val key = AppleCentralOperationKey(
+            peripheralUuid = connection.peripheralUuid,
+            generation = connection.generation,
+            characteristicUuid = characteristicUuid,
+        )
+        val outcome = failure?.let(AppleReadOutcome::Failed)
+            ?: AppleReadOutcome.Success(value)
+        return registry.completeRead(key, outcome)
+    }
+
     internal fun reportNotificationUpdate(
         peripheralUuid: String,
         characteristicUuid: Uuid,
@@ -438,5 +513,10 @@ internal class AppleCentralWriteController(
             val existing = _capabilities.value[key] ?: return
             _capabilities.value = _capabilities.value + (key to existing.copy(ready = ready))
         }
+    }
+
+    private companion object {
+        // Matches the timeout used by the other engines' ADR 0014 read fixes (RPi).
+        const val READ_TIMEOUT_MILLIS = 10_000L
     }
 }

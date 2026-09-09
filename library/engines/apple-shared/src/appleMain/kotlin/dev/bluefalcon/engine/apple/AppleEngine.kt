@@ -223,18 +223,32 @@ class AppleEngine : BlueFalconEngine, CBCentralManagerCallback, CBPeripheralCall
         
         val appleCharacteristic = characteristic as? AppleBluetoothCharacteristic
             ?: throw IllegalArgumentException("Characteristic must be an AppleBluetoothCharacteristic")
+
+        if (!nativeAttributeBelongsTo(
+                applePeripheral.cbPeripheral,
+                appleCharacteristic.cbCharacteristic.service?.peripheral,
+            )
+        ) {
+            throw IllegalArgumentException(
+                "Characteristic ${characteristic.uuid} is not owned by the target peripheral"
+            )
+        }
         
         // Ensure delegate is set
         applePeripheral.cbPeripheral.delegate = peripheralDelegate
-        
-        if (applePeripheral.cbPeripheral.state == CBPeripheralStateConnected) {
-            applePeripheral.cbPeripheral.readValueForCharacteristic(appleCharacteristic.cbCharacteristic)
+
+        val outcome = centralWriteController.read(
+            CoreBluetoothReadTarget(
+                peripheral = applePeripheral.cbPeripheral,
+                characteristic = appleCharacteristic.cbCharacteristic,
+            )
+        )
+        return when (outcome) {
+            is AppleReadOutcome.Success -> outcome.value
+            is AppleReadOutcome.Disconnected ->
+                throw IllegalStateException("Peripheral disconnected before the read completed")
+            is AppleReadOutcome.Failed -> throw outcome.cause
         }
-        // TODO(ADR 0014): this still returns before didUpdateValueForCharacteristic actually
-        // fires - track it in a follow-up commit via a CompletableDeferred<ByteArray?> keyed by
-        // peripheral+characteristic identity, resolved from that delegate callback, carefully
-        // disambiguated from unsolicited notifications for the same characteristic.
-        return characteristic.value
     }
     
     override suspend fun writeCharacteristic(
@@ -592,7 +606,6 @@ class AppleEngine : BlueFalconEngine, CBCentralManagerCallback, CBPeripheralCall
         characteristic: CBCharacteristic,
         error: NSError?
     ) {
-        if (error != null) return
         // Gate on the UUID-tracked connection (not referential equality of the CBPeripheral
         // instance) to stay consistent with activeConnection(). CoreBluetooth can hand back a
         // different CBPeripheral wrapper for the same underlying device (e.g. after a
@@ -601,19 +614,40 @@ class AppleEngine : BlueFalconEngine, CBCentralManagerCallback, CBPeripheralCall
         if (connectedPeripherals[peripheral.identifier.UUIDString] == null) {
             return
         }
-        val value = snapshotCallbackPayload(
-            characteristic.value?.toByteArray()
-        ) ?: return
+        val peripheralUuid = peripheral.identifier.UUIDString
+        val characteristicIdentity = appleCharacteristicIdentity(
+            characteristic.service?.UUID?.UUIDString,
+            characteristic.UUID.UUIDString,
+        )
+        val value = if (error == null) {
+            snapshotCallbackPayload(characteristic.value?.toByteArray())
+        } else {
+            null
+        }
+        // This callback fires for both solicited reads (readValueForCharacteristic) and
+        // unsolicited notifications - resolve any pending read for this exact characteristic
+        // (ADR 0014) without disturbing the notification flow below, which must keep firing
+        // for genuine subscription updates regardless of whether a read happens to be pending.
+        callbackDispatcher.dispatch {
+            centralWriteController.onCharacteristicValueReceived(
+                peripheralUuid = peripheralUuid,
+                characteristicUuid = characteristicIdentity,
+                value = value,
+                failure = error?.let { IllegalStateException(it.localizedDescription) },
+            )
+        }
+        if (error != null) return
+        val safeValue = value ?: return
         val bluetoothCharacteristic = AppleBluetoothCharacteristic(
             cbCharacteristic = characteristic,
             service = characteristic.service?.let { AppleBluetoothService(it) }
         )
-        bluetoothCharacteristic.emitNotification(value)
+        bluetoothCharacteristic.emitNotification(safeValue)
         _characteristicNotifications.tryEmit(
             CharacteristicNotification(
                 peripheral = AppleBluetoothPeripheral(peripheral, null),
                 characteristic = bluetoothCharacteristic,
-                value = value,
+                value = safeValue,
             )
         )
     }
@@ -757,6 +791,25 @@ private class CoreBluetoothNotificationTarget(
 
     override suspend fun setNotifyValue(enabled: Boolean) {
         peripheral.setNotifyValue(enabled, characteristic)
+    }
+}
+
+private class CoreBluetoothReadTarget(
+    private val peripheral: CBPeripheral,
+    private val characteristic: CBCharacteristic,
+) : AppleCentralReadTarget {
+    override val peripheralUuid: String
+        get() = peripheral.identifier.UUIDString
+    override val characteristicUuid: String
+        get() = appleCharacteristicIdentity(
+            characteristic.service?.UUID?.UUIDString,
+            characteristic.UUID.UUIDString,
+        )
+    override val connected: Boolean
+        get() = peripheral.state == CBPeripheralStateConnected
+
+    override fun readValue() {
+        peripheral.readValueForCharacteristic(characteristic)
     }
 }
 

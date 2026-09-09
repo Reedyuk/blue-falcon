@@ -25,12 +25,24 @@ internal data class AppleCentralOperationKey(
         get() = AppleCentralConnectionKey(peripheralUuid, generation)
 }
 
+/**
+ * Outcome of a pending characteristic read (ADR 0014), resolved from
+ * `didUpdateValueForCharacteristic` once it is correlated to a specific pending
+ * [AppleCentralOperationRegistry.registerRead] request rather than an unrelated notification.
+ */
+internal sealed interface AppleReadOutcome {
+    data class Success(val value: ByteArray?) : AppleReadOutcome
+    data object Disconnected : AppleReadOutcome
+    data class Failed(val cause: Throwable) : AppleReadOutcome
+}
+
 internal class AppleCentralOperationRegistry {
     private val mutex = Mutex()
     private val lastGenerations = mutableMapOf<String, Long>()
     private val activeConnections = mutableMapOf<String, AppleCentralConnectionKey>()
     private val writes = mutableMapOf<AppleCentralConnectionKey, PendingWrite>()
     private val subscriptions = mutableMapOf<AppleCentralOperationKey, PendingSubscription>()
+    private val reads = mutableMapOf<AppleCentralOperationKey, PendingRead>()
 
     private val _readiness =
         MutableStateFlow<Map<AppleCentralConnectionKey, Boolean>>(emptyMap())
@@ -132,6 +144,37 @@ internal class AppleCentralOperationRegistry {
             true
         }
 
+    suspend fun registerRead(
+        key: AppleCentralOperationKey,
+        onComplete: (AppleReadOutcome) -> Unit,
+    ): Boolean = mutex.withLock {
+        if (!isActiveLocked(key.connection) || reads.containsKey(key)) {
+            return@withLock false
+        }
+        reads[key] = PendingRead(onComplete)
+        true
+    }
+
+    suspend fun completeRead(
+        key: AppleCentralOperationKey,
+        outcome: AppleReadOutcome,
+    ): Boolean {
+        val completion = mutex.withLock {
+            if (!isActiveLocked(key.connection)) return false
+            val pending = reads.remove(key) ?: return false
+            pending.onComplete
+        }
+        completion?.invoke(outcome)
+        return true
+    }
+
+    suspend fun abandonRead(key: AppleCentralOperationKey): Boolean =
+        mutex.withLock {
+            val pending = reads[key] ?: return@withLock false
+            pending.onComplete = null
+            true
+        }
+
     suspend fun disconnect(connection: AppleCentralConnectionKey): Boolean {
         val completions = mutex.withLock {
             if (!isActiveLocked(connection)) return false
@@ -179,6 +222,13 @@ internal class AppleCentralOperationRegistry {
                     }
                 }
             }
+        reads.keys
+            .filter { it.connection == connection }
+            .forEach { key ->
+                reads.remove(key)?.onComplete?.let { completion ->
+                    callbacks += { completion(AppleReadOutcome.Disconnected) }
+                }
+            }
         return callbacks
     }
 
@@ -195,5 +245,9 @@ internal class AppleCentralOperationRegistry {
     private data class PendingSubscription(
         val enabled: Boolean,
         var onComplete: ((NotificationSubscriptionResult) -> Unit)?,
+    )
+
+    private data class PendingRead(
+        var onComplete: ((AppleReadOutcome) -> Unit)?,
     )
 }
