@@ -9,6 +9,7 @@ import dev.bluefalcon.peripheral.apple.createBlueFalconPeripheral
 import dev.bluefalcon.plugins.logging.LogLevel
 import dev.bluefalcon.plugins.logging.LoggingPlugin
 import dev.bluefalcon.plugins.nordicfota.NordicFotaPlugin
+import dev.bluefalcon.plugins.metrics.MetricsPlugin
 import dev.bluefalcon.plugins.proximity.ProximityPlugin
 import dev.bluefalcon.plugins.proximity.SmoothingStrategy
 import dev.bluefalcon.plugins.queue.QueuePlugin
@@ -29,6 +30,8 @@ actual class AppModule {
         immediateThreshold = -50f
         nearThreshold = -75f
     }
+
+    actual val metricsPlugin: MetricsPlugin = MetricsPlugin.create()
 
     private val engine = MacosEngine()
     actual val advertiser: BluetoothAdvertiser = createBluetoothAdvertiser()
@@ -64,5 +67,9 @@ actual class AppModule {
 
         // Install Proximity plugin for RSSI smoothing and distance estimation
         plugins.install(proximityPlugin) { }
+
+        // Install metrics plugin to observe connection success rate, operation latency, and
+        // read/write throughput (ADR 0012)
+        plugins.install(metricsPlugin) { }
     }
 }

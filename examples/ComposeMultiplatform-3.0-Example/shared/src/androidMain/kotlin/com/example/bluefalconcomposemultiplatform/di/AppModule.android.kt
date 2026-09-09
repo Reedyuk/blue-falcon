@@ -11,6 +11,7 @@ import dev.bluefalcon.plugins.logging.LoggingPlugin
 import dev.bluefalcon.plugins.logging.LogLevel
 import dev.bluefalcon.plugins.queue.QueuePlugin
 import dev.bluefalcon.plugins.retry.RetryPlugin
+import dev.bluefalcon.plugins.metrics.MetricsPlugin
 import dev.bluefalcon.plugins.nordicfota.NordicFotaPlugin
 import dev.bluefalcon.plugins.bonding.BondingPlugin
 import dev.bluefalcon.plugins.proximity.ProximityPlugin
@@ -32,6 +33,8 @@ actual class AppModule(
         immediateThreshold = -50f
         nearThreshold = -75f
     }
+
+    actual val metricsPlugin: MetricsPlugin = MetricsPlugin.create()
 
     private val engine = AndroidEngine(context)
     actual val advertiser: BluetoothAdvertiser = createBluetoothAdvertiser(context)
@@ -70,5 +73,9 @@ actual class AppModule(
 
         // Install Proximity plugin for RSSI smoothing and distance estimation
         plugins.install(proximityPlugin) { }
+
+        // Install metrics plugin to observe connection success rate, operation latency, and
+        // read/write throughput (ADR 0012)
+        plugins.install(metricsPlugin) { }
     }
 }

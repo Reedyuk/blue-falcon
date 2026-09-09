@@ -10,6 +10,7 @@ import dev.bluefalcon.peripheral.BluetoothAdvertiser
 import dev.bluefalcon.peripheral.NoOpBluetoothAdvertiser
 import dev.bluefalcon.plugins.logging.LogLevel
 import dev.bluefalcon.plugins.logging.LoggingPlugin
+import dev.bluefalcon.plugins.metrics.MetricsPlugin
 import dev.bluefalcon.plugins.nordicfota.NordicFotaPlugin
 import dev.bluefalcon.plugins.proximity.ProximityPlugin
 import dev.bluefalcon.plugins.proximity.SmoothingStrategy
@@ -30,6 +31,8 @@ actual class AppModule {
         immediateThreshold = -50f
         nearThreshold = -75f
     }
+
+    actual val metricsPlugin: MetricsPlugin = MetricsPlugin.create()
 
     // Desktop JVM engines do not support the peripheral/advertising role
     actual val advertiser: BluetoothAdvertiser = NoOpBluetoothAdvertiser()
@@ -58,6 +61,10 @@ actual class AppModule {
 
         // Install Proximity plugin for RSSI smoothing and distance estimation
         plugins.install(proximityPlugin) { }
+
+        // Install metrics plugin to observe connection success rate, operation latency, and
+        // read/write throughput (ADR 0012)
+        plugins.install(metricsPlugin) { }
     }
 }
 

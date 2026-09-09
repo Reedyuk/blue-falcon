@@ -163,6 +163,7 @@ fun App(
                             viewModel = checkNotNull(meshViewModel) {
                                 "Mesh mode must initialize its ViewModel"
                             },
+                            metricsPlugin = appModule.metricsPlugin,
                             modifier = Modifier.fillMaxSize(),
                         )
                     }

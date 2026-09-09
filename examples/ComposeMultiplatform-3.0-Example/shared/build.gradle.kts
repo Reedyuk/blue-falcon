@@ -6,9 +6,9 @@ plugins {
 }
 
 val falconVersion = "3.7.5"
-val pluginVersion = "3.7.4"
+val pluginVersion = "3.7.5"
 
-val peripheralVersion = "3.7.1"
+val peripheralVersion = "3.7.5"
 val coroutinesVersion = "1.11.0"
 
 kotlin {
@@ -68,6 +68,7 @@ kotlin {
                 implementation("dev.bluefalcon:blue-falcon-plugin-bonding:$pluginVersion")
                 implementation("dev.bluefalcon:blue-falcon-plugin-proximity:$pluginVersion")
                 implementation("dev.bluefalcon:blue-falcon-plugin-mesh:$pluginVersion")
+                implementation("dev.bluefalcon:blue-falcon-plugin-metrics:$pluginVersion")
             }
         }
         val commonTest by getting {

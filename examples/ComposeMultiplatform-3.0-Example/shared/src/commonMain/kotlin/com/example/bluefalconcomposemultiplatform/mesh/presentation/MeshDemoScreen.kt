@@ -49,6 +49,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import dev.bluefalcon.plugins.mesh.MeshNodeState
+import dev.bluefalcon.plugins.metrics.MetricsPlugin
+import dev.bluefalcon.plugins.metrics.MetricsSnapshot
 
 /**
  * Composable screen demonstrating the Mesh plugin functionality.
@@ -62,9 +64,11 @@ import dev.bluefalcon.plugins.mesh.MeshNodeState
 @Composable
 fun MeshDemoScreen(
     viewModel: MeshDemoViewModel,
+    metricsPlugin: MetricsPlugin,
     modifier: Modifier = Modifier,
 ) {
     val state by viewModel.state.collectAsState()
+    val metrics by metricsPlugin.snapshot.collectAsState()
 
     Box(modifier = modifier.fillMaxSize()) {
         Column(
@@ -94,6 +98,13 @@ fun MeshDemoScreen(
                 onStop = { viewModel.onEvent(MeshDemoEvent.StopMesh) },
                 onClear = { viewModel.onEvent(MeshDemoEvent.ClearMessages) },
             )
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // Live connection/latency/throughput metrics (blue-falcon-plugin-metrics, ADR 0012).
+            // Every scan/connect/disconnect/read/write the mesh node performs against BlueFalcon
+            // flows through this same plugin, so these counters update live as the mesh runs.
+            MetricsSummaryCard(metrics = metrics)
 
             Spacer(modifier = Modifier.height(16.dp))
 
@@ -318,6 +329,60 @@ private fun MeshControls(
             Spacer(modifier = Modifier.width(8.dp))
             Text("Clear")
         }
+    }
+}
+
+@Composable
+private fun MetricsSummaryCard(metrics: MetricsSnapshot) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Text(
+                text = "Metrics",
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.SemiBold,
+            )
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                MetricStat(
+                    label = "Connects",
+                    value = "${metrics.connectSuccessCount}/${metrics.connectSuccessCount + metrics.connectFailureCount}",
+                )
+                MetricStat(
+                    label = "Reads",
+                    value = "${metrics.readSuccessCount}/${metrics.readSuccessCount + metrics.readFailureCount}",
+                )
+                MetricStat(
+                    label = "Writes",
+                    value = "${metrics.writeSuccessCount}/${metrics.writeSuccessCount + metrics.writeFailureCount}",
+                )
+                MetricStat(label = "Bytes ↓", value = metrics.bytesRead.toString())
+                MetricStat(label = "Bytes ↑", value = metrics.bytesWritten.toString())
+            }
+        }
+    }
+}
+
+@Composable
+private fun MetricStat(label: String, value: String) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Text(
+            text = value,
+            style = MaterialTheme.typography.bodyMedium,
+            fontWeight = FontWeight.SemiBold,
+        )
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
     }
 }
 
