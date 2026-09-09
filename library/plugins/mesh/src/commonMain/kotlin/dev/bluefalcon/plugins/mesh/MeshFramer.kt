@@ -57,6 +57,18 @@ internal class MeshFramer(
         // Flag bits
         const val FLAG_FRAGMENTED: Byte = 0x01
         const val FLAG_LAST_FRAGMENT: Byte = 0x02
+
+        /**
+         * Creates a framer for reassembly only.
+         *
+         * [parse] never consults `maxFrameSize` - it governs outbound fragmentation
+         * only, and senders always build their own framer from the negotiated MTU.
+         * Receivers must therefore not derive it from the peer's MTU, which may
+         * legitimately be smaller than a single frame header (CoreBluetooth reports
+         * `CBCentral.maximumUpdateValueLength` as 20 until notifications have been
+         * negotiated) and would fail this class's constructor check.
+         */
+        fun forReassembly(): MeshFramer = MeshFramer(maxFrameSize = HEADER_SIZE + 1)
     }
 
     private val maxPayloadPerFrame = maxFrameSize - HEADER_SIZE

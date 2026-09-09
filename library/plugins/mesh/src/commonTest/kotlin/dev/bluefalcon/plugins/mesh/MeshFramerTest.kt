@@ -173,4 +173,50 @@ class MeshFramerTest {
             // (would require all fragments to be self-contained, which they're not)
         }
     }
+
+    @Test
+    fun reassemblyFramerParsesRegardlessOfPeerMtu() {
+        // A receiver has no say in how the sender fragmented a message, so a
+        // reassembly framer must never be built from the peer's MTU: CoreBluetooth
+        // reports CBCentral.maximumUpdateValueLength as 20 until notifications are
+        // negotiated, which is smaller than a single frame header and used to fail
+        // MeshFramer's constructor check on the receive path.
+        val sender = MeshFramer(maxFrameSize = 512)
+        val original = MeshMessage(
+            id = MeshMessageId("12345678-1234-1234-1234-123456789012"),
+            originUuid = "abcdefab-abcd-abcd-abcd-abcdefabcdef",
+            hopCount = 0,
+            payload = "Received over a 20 byte MTU link".encodeToByteArray(),
+        )
+
+        val receiver = MeshFramer.forReassembly()
+        val result = receiver.parse(sender.frame(original).single())
+
+        assertIs<MeshFrameResult.Complete>(result)
+        assertTrue(original.payload.contentEquals(result.message.payload))
+    }
+
+    @Test
+    fun reassemblyFramerReassemblesFragmentsLargerThanItsOwnFrameSize() {
+        // The reassembly framer's maxFrameSize is intentionally minimal; it must still
+        // accept fragments produced against a much larger negotiated MTU.
+        val sender = MeshFramer(maxFrameSize = 128)
+        val original = MeshMessage(
+            id = MeshMessageId("12345678-1234-1234-1234-123456789012"),
+            originUuid = "abcdefab-abcd-abcd-abcd-abcdefabcdef",
+            hopCount = 1,
+            payload = ByteArray(400) { (it % 251).toByte() },
+        )
+
+        val frames = sender.frame(original)
+        assertTrue(frames.size > 1, "Payload should fragment")
+
+        val receiver = MeshFramer.forReassembly()
+        val results = frames.map { receiver.parse(it) }
+
+        results.dropLast(1).forEach { assertIs<MeshFrameResult.Incomplete>(it) }
+        val complete = results.last()
+        assertIs<MeshFrameResult.Complete>(complete)
+        assertTrue(original.payload.contentEquals(complete.message.payload))
+    }
 }

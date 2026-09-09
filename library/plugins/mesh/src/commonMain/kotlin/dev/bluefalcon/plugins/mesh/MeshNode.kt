@@ -14,6 +14,8 @@ import dev.bluefalcon.peripheral.CharacteristicProperty
 import dev.bluefalcon.peripheral.GattCharacteristicConfig
 import dev.bluefalcon.peripheral.GattCharacteristicId
 import dev.bluefalcon.peripheral.GattCharacteristicWriteRequest
+import dev.bluefalcon.peripheral.GattResponseStatus
+import dev.bluefalcon.peripheral.GattServerRequest
 import dev.bluefalcon.peripheral.GattServiceConfig
 import dev.bluefalcon.peripheral.GattServiceId
 import dev.bluefalcon.peripheral.PeripheralConfig
@@ -185,7 +187,11 @@ class MeshNode(
 
         _state.value = MeshNodeState.Running
 
-        val scope = CoroutineScope(SupervisorJob() + central.engine.scope.coroutineContext)
+        // Inherit the engine's dispatcher but NOT its Job: `SupervisorJob() + context`
+        // lets the engine's own Job win the Job key, so cancelling this scope in stop()
+        // would tear down the shared engine scope and leave the central unusable for
+        // every subsequent start(). Add the supervisor last so it owns the Job key.
+        val scope = CoroutineScope(central.engine.scope.coroutineContext + SupervisorJob())
         meshScope = scope
 
         // Start peripheral role with mesh service
@@ -216,42 +222,14 @@ class MeshNode(
         // Handle GATT write requests (inbound mesh messages from other centrals)
         requestHandlerJob = scope.launch {
             peripheral.requests.collect { request ->
-                logger?.debug("peripheral.requests: received $request")
-
-                val meshWrite = (request as? GattCharacteristicWriteRequest)
-                    ?.takeIf { it.characteristicId == meshCharacteristicId }
-
-                // Every request carrying a response handle MUST be answered - including
-                // ones the mesh itself has no interest in, most importantly the CCCD
-                // descriptor write a neighbour performs when it subscribes for
-                // notifications. ATT is strictly one outstanding transaction at a time,
-                // so an unanswered request stalls the peer's entire ATT channel: its
-                // subsequent characteristic writes are never transmitted, and the link
-                // is eventually torn down on transaction timeout. Android surfaces the
-                // CCCD write here (and only commits the subscription once it is
-                // answered), whereas CoreBluetooth answers it internally - which is why
-                // leaving it unanswered broke exactly one direction of the mesh.
-                //
-                // Answer before doing any relaying so the peer's ATT channel is released
-                // immediately rather than being held for the duration of a relay (which
-                // itself awaits ATT writes to other neighbours, and would otherwise
-                // deadlock a mesh of three or more nodes).
-                request.response?.respond(
-                    dev.bluefalcon.peripheral.GattResponseStatus.Success
-                )
-
-                if (meshWrite != null) {
-                    logger?.debug(
-                        "peripheral.requests: mesh write from session=${meshWrite.sessionId.value} " +
-                            "(${meshWrite.value.size} bytes)"
-                    )
-                    handleInboundFrame(
-                        sourceId = meshWrite.sessionId.value,
-                        sourceSession = meshWrite.session,
-                        sourcePeripheral = null,
-                        frame = meshWrite.value,
-                    )
-                }
+                // Never let a single malformed/unexpected request escape: an exception
+                // here would cancel this collector, after which nothing drains
+                // peripheral.requests. Inbound writes would then go unanswered, and
+                // because ATT allows only one outstanding transaction per link that
+                // silently wedges every peer's ATT channel - the node stops receiving
+                // entirely and peers stall until their transactions time out.
+                runCatching { handleRequest(request) }
+                    .onFailure { logger?.error("peripheral.requests: failed to handle $request", it) }
             }
         }
 
@@ -276,6 +254,41 @@ class MeshNode(
                 delay(config.dedupTtl / 2)
                 dedupCache.prune()
             }
+        }
+    }
+
+    private suspend fun handleRequest(request: GattServerRequest) {
+        logger?.debug("peripheral.requests: received $request")
+
+        val meshWrite = (request as? GattCharacteristicWriteRequest)
+            ?.takeIf { it.characteristicId == meshCharacteristicId }
+
+        // Every request carrying a response handle MUST be answered - including ones
+        // the mesh itself has no interest in, most importantly the CCCD descriptor
+        // write a neighbour performs when it subscribes for notifications. ATT is
+        // strictly one outstanding transaction at a time, so an unanswered request
+        // stalls the peer's entire ATT channel: its subsequent characteristic writes
+        // are never transmitted, and the link is eventually torn down on transaction
+        // timeout. Android surfaces the CCCD write here (and only commits the
+        // subscription once it is answered), whereas CoreBluetooth answers it
+        // internally - which is why leaving it unanswered broke exactly one direction
+        // of the mesh.
+        //
+        // Answer before doing any relaying so the peer's ATT channel is released
+        // immediately rather than being held for the duration of a relay (which itself
+        // awaits ATT writes to other neighbours, and would otherwise deadlock a mesh of
+        // three or more nodes).
+        request.response?.respond(GattResponseStatus.Success)
+
+        if (meshWrite != null) {
+            logger?.debug(
+                "peripheral.requests: mesh write from session=${meshWrite.sessionId.value} " +
+                    "(${meshWrite.value.size} bytes)"
+            )
+            handleInboundFrame(
+                sourceId = meshWrite.sessionId.value,
+                frame = meshWrite.value,
+            )
         }
     }
 
@@ -581,8 +594,6 @@ class MeshNode(
                 )
                 handleInboundFrame(
                     sourceId = neighbor.uuid,
-                    sourceSession = null,
-                    sourcePeripheral = neighbor,
                     frame = frame,
                 )
             }
@@ -593,17 +604,15 @@ class MeshNode(
 
     private suspend fun handleInboundFrame(
         sourceId: String,
-        sourceSession: PeripheralSession?,
-        sourcePeripheral: BluetoothPeripheral?,
         frame: ByteArray,
     ) {
-        // Get or create framer for this source
+        // Reassembly framer for this source. Deliberately independent of the peer's
+        // MTU: parsing never needs it, and deriving it from the peer's MTU used to
+        // throw whenever that MTU was smaller than one frame header - which aborted
+        // the frame, cancelled the collector it ran on, and silently took down this
+        // node's entire receive path.
         val framer = framersMutex.withLock {
-            framers.getOrPut(sourceId) {
-                // Use maximum update value length if available, otherwise default to 512
-                val mtu = sourceSession?.maximumUpdateValueLength?.value ?: 512
-                MeshFramer(maxFrameSize = mtu)
-            }
+            framers.getOrPut(sourceId) { MeshFramer.forReassembly() }
         }
 
         when (val result = framer.parse(frame)) {
