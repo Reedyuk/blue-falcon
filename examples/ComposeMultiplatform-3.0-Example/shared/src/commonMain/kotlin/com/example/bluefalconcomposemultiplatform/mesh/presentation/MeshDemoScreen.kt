@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -69,6 +70,12 @@ fun MeshDemoScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
+                // Applied on the outer container (rather than just the input row) so
+                // that as the keyboard rises, it eats into the message list's weight(1f)
+                // space rather than being drawn underneath/behind the keyboard - the
+                // list shrinks and the input bar stays pinned directly above the
+                // keyboard, like a normal chat client.
+                .imePadding()
                 .padding(16.dp),
         ) {
             // Header with mesh status
@@ -89,17 +96,6 @@ fun MeshDemoScreen(
             )
 
             Spacer(modifier = Modifier.height(16.dp))
-
-            // Message input
-            if (state.nodeState == MeshNodeState.Running) {
-                MessageInput(
-                    text = state.messageToSend,
-                    onTextChange = { viewModel.onEvent(MeshDemoEvent.UpdateMessageText(it)) },
-                    onSend = { viewModel.onEvent(MeshDemoEvent.SendMessage) },
-                )
-
-                Spacer(modifier = Modifier.height(16.dp))
-            }
 
             // Messages list
             Text(
@@ -153,6 +149,19 @@ fun MeshDemoScreen(
                         ChatMessageBubble(message = message)
                     }
                 }
+            }
+
+            // Message input - pinned to the bottom of the screen, above the keyboard
+            // (via imePadding() on the outer Column) rather than above the message
+            // list, so the layout reads as a normal chat client.
+            if (state.nodeState == MeshNodeState.Running) {
+                Spacer(modifier = Modifier.height(16.dp))
+
+                MessageInput(
+                    text = state.messageToSend,
+                    onTextChange = { viewModel.onEvent(MeshDemoEvent.UpdateMessageText(it)) },
+                    onSend = { viewModel.onEvent(MeshDemoEvent.SendMessage) },
+                )
             }
         }
 
