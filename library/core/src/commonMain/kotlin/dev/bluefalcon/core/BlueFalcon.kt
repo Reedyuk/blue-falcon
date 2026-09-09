@@ -333,15 +333,25 @@ class BlueFalcon(
     }
     
     /**
-     * Read characteristic
+     * Read a characteristic value.
+     *
+     * Suspends until the platform has actually delivered the value (ADR 0014) and returns it
+     * directly - do not rely on [BluetoothCharacteristic.value] immediately after this call
+     * returns, use [CharacteristicReadResult.Success.value] instead.
      */
-    suspend fun readCharacteristic(peripheral: BluetoothPeripheral, characteristic: BluetoothCharacteristic) {
-        plugins.interceptRead(ReadCall(peripheral, characteristic)) { call ->
+    suspend fun readCharacteristic(
+        peripheral: BluetoothPeripheral,
+        characteristic: BluetoothCharacteristic
+    ): CharacteristicReadResult {
+        val result = plugins.interceptRead(ReadCall(peripheral, characteristic)) { call ->
             runCatching {
                 engine.readCharacteristic(call.peripheral, call.characteristic)
-                call.characteristic.value
             }
         }
+        return result.fold(
+            onSuccess = { CharacteristicReadResult.Success(it) },
+            onFailure = { CharacteristicReadResult.Failed(it) }
+        )
     }
     
     /**

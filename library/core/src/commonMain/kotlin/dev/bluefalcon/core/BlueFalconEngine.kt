@@ -199,12 +199,18 @@ interface BlueFalconEngine {
     )
     
     /**
-     * Read a characteristic value
+     * Read a characteristic value.
+     *
+     * ADR 0014: implementations must suspend until the platform has actually delivered the
+     * value (or a definitive failure) and return it directly, rather than returning as soon as
+     * the read request has been issued. [BluetoothCharacteristic.value] remains a valid,
+     * best-effort "last known value" getter, but callers of this function must be able to rely
+     * on the returned [ByteArray] instead of racing that live getter.
      */
     suspend fun readCharacteristic(
         peripheral: BluetoothPeripheral,
         characteristic: BluetoothCharacteristic
-    )
+    ): ByteArray?
     
     /**
      * Write a string value to a characteristic

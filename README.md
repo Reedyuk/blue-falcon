@@ -337,8 +337,13 @@ blueFalcon.discoverCharacteristics(
 #### Reading & Writing Characteristics
 
 ```kotlin
-// Read a characteristic value
-blueFalcon.readCharacteristic(bluetoothPeripheral, bluetoothCharacteristic)
+// Read a characteristic value - suspends until the platform actually delivers a result (ADR 0014)
+when (val result = blueFalcon.readCharacteristic(bluetoothPeripheral, bluetoothCharacteristic)) {
+    is CharacteristicReadResult.Success -> println("Read ${result.value?.size} bytes")
+    is CharacteristicReadResult.Failed -> println("Read failed: ${result.cause?.message}")
+    CharacteristicReadResult.Disconnected -> println("Peripheral disconnected mid-read")
+    CharacteristicReadResult.Unsupported -> println("Read not supported on this platform")
+}
 
 // Compatibility overload: no typed delivery outcome
 blueFalcon.writeCharacteristic(

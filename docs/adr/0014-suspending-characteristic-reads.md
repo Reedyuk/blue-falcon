@@ -1,6 +1,6 @@
 # ADR 0014: Suspend `readCharacteristic` Until the Value Is Actually Received
 
-**Status:** Proposed
+**Status:** ✅ Implemented
 
 **Date:** 2026-09-09
 
@@ -207,6 +207,44 @@ concurrency code (deferred resolution, disambiguating reads from notifications, 
 belongs in the library, not duplicated in every app.
 
 ## Implementation Notes
+
+**Progress (2026-09-09):** Core (`CharacteristicReadResult`, `BlueFalcon.readCharacteristic`
+signature, `PluginRegistry` wiring unchanged) has landed, along with the JS engine (already
+correct - now returns the value it awaits) and the RPi engine (previously mis-assumed to be
+synchronous; actually fixed with a `CompletableDeferred` keyed by peripheral+characteristic,
+resolved from `BluetoothPeripheralCallback.onCharacteristicUpdate`, with a 10s timeout). Android
+now suspends for real too: `readCharacteristic` switched from `CentralGattOperationGate
+.enqueueLegacy` to `trySubmitTyped` + `suspendCancellableCoroutine`, mirroring
+`writeCharacteristic`'s existing pattern one-for-one, with the actual byte value captured from
+`onCharacteristicRead` (stashed per operation key, since `CentralGattOperationOutcome` itself only
+carries a status code) and non-success outcomes mapped to typed exceptions instead of a sealed
+result, matching every other engine's "return the value or throw" contract. Apple now suspends
+for real too: `AppleCentralOperationRegistry` gained a `registerRead`/`completeRead`/`abandonRead`
+trio (mirroring its existing write/subscription support, keyed by
+`peripheralUuid+generation+characteristicUuid` so it is immune to stale post-reconnect callbacks
+and cleans up any pending read with a `Disconnected` outcome when the connection drops).
+`AppleEngine.readCharacteristic()` registers a pending read via a new
+`AppleCentralWriteController.read(...)` helper, fires `readValueForCharacteristic`, and suspends
+(with a 10s timeout, matching RPi) until it resolves. Since CoreBluetooth funnels both solicited
+reads and unsolicited notifications through the same `didUpdateValueForCharacteristic` delegate
+callback, `onCharacteristicValueUpdated` now also calls
+`AppleCentralWriteController.onCharacteristicValueReceived(...)` for every callback invocation -
+resolving a pending read for that exact characteristic if one exists - while leaving the existing
+notification emission path (`_characteristicNotifications.tryEmit`) completely untouched, so a
+notification arriving while a read is pending is neither dropped nor mistaken for the read's
+result. Covered by a new `AppleCentralReadTest.kt` (disambiguation, native-error propagation,
+disconnect cleanup, and generation isolation across reconnects). Windows and macOS-JVM are now
+fixed too: both engines' native bridges already fire a dedicated success-only completion callback
+per solicited read (`onCharacteristicRead(address/peripheralUuid, ..., value)` - confirmed against
+`library/src/windowsMain/cpp/BluetoothLEManager.cpp` and
+`library/engines/macos-jvm/native/BlueFalconJNI.m`, the latter already disambiguating reads from
+notifications natively via a `gPendingReads` set), so each engine now tracks a
+`CompletableDeferred<ByteArray>` per pending read (keyed by address/peripheralUuid + characteristic
+identity, mirroring RPi), resolved from that callback and awaited with the same 10s timeout used
+by RPi and Apple; a read that never gets a callback (e.g. a lost native error) fails with
+`BluetoothUnknownException` instead of hanging forever.
+
+**All engines are now fixed for ADR 0014** - core+JS+RPi, Android, Apple, and Windows/macOS-JVM.
 
 - Land core changes first (`CharacteristicReadResult`, `BlueFalcon.readCharacteristic` signature,
   `PluginRegistry` wiring) behind the new return type, with the JS and RPi engines updated

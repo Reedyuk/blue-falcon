@@ -4,11 +4,13 @@ import dev.bluefalcon.core.*
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.withTimeout
 import java.util.concurrent.ConcurrentHashMap
 
 /**
@@ -38,6 +40,15 @@ class MacosJvmEngine : BlueFalconEngine {
         private set
 
     private val connections = mutableMapOf<String, MacosJvmBluetoothPeripheral>()
+
+    // ADR 0014: nativeReadCharacteristic() only fires the native CoreBluetooth read - the actual
+    // value/failure is delivered later, asynchronously, to onCharacteristicRead(). Track pending
+    // reads here, keyed by peripheral+service+characteristic UUID, so readCharacteristic() can
+    // suspend until that callback actually resolves this specific request.
+    private val pendingReads = ConcurrentHashMap<String, CompletableDeferred<ByteArray>>()
+
+    private fun pendingReadKey(peripheralUuid: String, serviceUuid: String, characteristicUuid: String) =
+        "$peripheralUuid::$serviceUuid::$characteristicUuid"
 
     // L2CAP open is async: native delivers the handle later via onL2capChannelOpened.
     private val l2capOpenDeferreds = ConcurrentHashMap<String, CompletableDeferred<Long>>()
@@ -157,6 +168,8 @@ class MacosJvmEngine : BlueFalconEngine {
         characteristicUuid: String,
         value: ByteArray
     ) {
+        pendingReads.remove(pendingReadKey(peripheralUuid, serviceUuid, characteristicUuid))
+            ?.complete(value)
         findCharacteristic(peripheralUuid, serviceUuid, characteristicUuid)?.updateValue(value)
     }
 
@@ -304,9 +317,22 @@ class MacosJvmEngine : BlueFalconEngine {
     override suspend fun readCharacteristic(
         peripheral: BluetoothPeripheral,
         characteristic: BluetoothCharacteristic
-    ) {
+    ): ByteArray? {
         val c = characteristic.asMacos()
-        nativeReadCharacteristic(peripheral.asMacos().uuid, c.serviceUuid.toString(), c.uuid.toString())
+        val peripheralUuid = peripheral.asMacos().uuid
+        val serviceUuid = c.serviceUuid.toString()
+        val characteristicUuid = c.uuid.toString()
+        val key = pendingReadKey(peripheralUuid, serviceUuid, characteristicUuid)
+        val deferred = CompletableDeferred<ByteArray>()
+        pendingReads[key] = deferred
+        try {
+            nativeReadCharacteristic(peripheralUuid, serviceUuid, characteristicUuid)
+            return withTimeout(READ_TIMEOUT_MS) { deferred.await() }
+        } catch (timeout: TimeoutCancellationException) {
+            throw BluetoothUnknownException("Timed out waiting for characteristic read to complete")
+        } finally {
+            pendingReads.remove(key)
+        }
     }
 
     override suspend fun writeCharacteristic(
@@ -490,5 +516,8 @@ class MacosJvmEngine : BlueFalconEngine {
         init {
             NativeLibLoader.load("natives/libbluefalcon-macos.dylib")
         }
+
+        // Matches the timeout used by the other engines' ADR 0014 read fixes (RPi, Apple, Windows).
+        private const val READ_TIMEOUT_MS = 10_000L
     }
 }

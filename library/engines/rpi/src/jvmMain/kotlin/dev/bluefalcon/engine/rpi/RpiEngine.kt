@@ -4,9 +4,12 @@ import com.welie.blessed.*
 import com.welie.blessed.BluetoothPeripheral as BlessedPeripheral
 import com.welie.blessed.bluez.DbusHelper
 import dev.bluefalcon.core.*
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -37,6 +40,16 @@ class RpiEngine : BlueFalconEngine {
     
     private val peripheralMap = mutableMapOf<String, RpiBluetoothPeripheral>()
     private val peripheralCallbacks = mutableMapOf<String, BluetoothPeripheralCallback>()
+
+    // ADR 0014: BluetoothPeripheral.readCharacteristic() from the Blessed library only returns
+    // whether the read request was successfully *queued* - the actual value/failure is delivered
+    // later, asynchronously, to BluetoothPeripheralCallback.onCharacteristicUpdate(). Track pending
+    // reads here, keyed by peripheral address + characteristic UUID, so readCharacteristic() can
+    // suspend until that callback actually resolves this specific request.
+    private val pendingReads = mutableMapOf<String, CompletableDeferred<ByteArray>>()
+
+    private fun pendingReadKey(peripheralAddress: String, characteristicUuid: String) =
+        "$peripheralAddress::$characteristicUuid"
     
     private val bluetoothManagerCallback = object : BluetoothCentralManagerCallback() {
         override fun onDiscoveredPeripheral(
@@ -156,13 +169,26 @@ class RpiEngine : BlueFalconEngine {
     override suspend fun readCharacteristic(
         peripheral: dev.bluefalcon.core.BluetoothPeripheral,
         characteristic: dev.bluefalcon.core.BluetoothCharacteristic
-    ) {
+    ): ByteArray? {
         val rpiPeripheral = peripheral as? RpiBluetoothPeripheral
             ?: throw IllegalArgumentException("Peripheral must be an RpiBluetoothPeripheral")
         val rpiCharacteristic = characteristic as? RpiBluetoothCharacteristic
             ?: throw IllegalArgumentException("Characteristic must be an RpiBluetoothCharacteristic")
-        
-        rpiPeripheral.nativePeripheral.readCharacteristic(rpiCharacteristic.nativeCharacteristic)
+
+        val key = pendingReadKey(rpiPeripheral.nativePeripheral.address, rpiCharacteristic.nativeCharacteristic.uuid.toString())
+        val deferred = CompletableDeferred<ByteArray>()
+        pendingReads[key] = deferred
+        try {
+            val queued = rpiPeripheral.nativePeripheral.readCharacteristic(rpiCharacteristic.nativeCharacteristic)
+            if (!queued) {
+                throw BluetoothUnknownException("Failed to queue characteristic read")
+            }
+            return withTimeout(READ_TIMEOUT_MS) { deferred.await() }
+        } catch (timeout: TimeoutCancellationException) {
+            throw BluetoothUnknownException("Timed out waiting for characteristic read to complete")
+        } finally {
+            pendingReads.remove(key)
+        }
     }
     
     override suspend fun writeCharacteristic(
@@ -314,6 +340,23 @@ class RpiEngine : BlueFalconEngine {
                 status: BluetoothCommandStatus
             ) {
                 peripheral.updateCharacteristicValue(characteristic.uuid.toString(), value)
+
+                // Resolve any solicited read awaiting this exact characteristic (ADR 0014).
+                // Blessed funnels both solicited reads and unsolicited notifications through this
+                // same callback, so a pending read is completed opportunistically here without
+                // otherwise disturbing the notification emission below.
+                pendingReads.remove(
+                    pendingReadKey(nativePeripheral.address, characteristic.uuid.toString())
+                )?.let { deferred ->
+                    if (status == BluetoothCommandStatus.COMMAND_SUCCESS) {
+                        deferred.complete(value)
+                    } else {
+                        deferred.completeExceptionally(
+                            BluetoothUnknownException("Characteristic read failed with status $status")
+                        )
+                    }
+                }
+
                 peripheral.characteristics
                     .filterIsInstance<RpiBluetoothCharacteristic>()
                     .firstOrNull { it.uuid.toString() == characteristic.uuid.toString() }
@@ -338,5 +381,9 @@ class RpiEngine : BlueFalconEngine {
                 peripheral.updateCharacteristicValue(characteristic.uuid.toString(), value)
             }
         }
+    }
+
+    companion object {
+        private const val READ_TIMEOUT_MS = 10_000L
     }
 }

@@ -43,6 +43,26 @@ sealed interface CharacteristicWriteResult {
     ) : CharacteristicWriteResult
 }
 
+/**
+ * The outcome of a suspending [BlueFalconEngine.readCharacteristic]/`BlueFalcon.readCharacteristic`
+ * call (ADR 0014). Unlike the pre-ADR-0014 API, [Success] carries the value the platform actually
+ * delivered - callers no longer need to separately inspect [BluetoothCharacteristic.value]
+ * immediately after the call returns.
+ */
+sealed interface CharacteristicReadResult {
+    data class Success(
+        val value: ByteArray?,
+    ) : CharacteristicReadResult
+
+    data object Disconnected : CharacteristicReadResult
+
+    data object Unsupported : CharacteristicReadResult
+
+    data class Failed(
+        val cause: Throwable?,
+    ) : CharacteristicReadResult
+}
+
 sealed interface NotificationSubscriptionResult {
     data class Updated(
         val enabled: Boolean,

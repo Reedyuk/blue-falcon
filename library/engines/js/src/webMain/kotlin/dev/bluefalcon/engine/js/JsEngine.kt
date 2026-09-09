@@ -153,11 +153,14 @@ class JsEngine : BlueFalconEngine {
     override suspend fun readCharacteristic(
         peripheral: BluetoothPeripheral,
         characteristic: BluetoothCharacteristic
-    ) {
+    ): ByteArray? {
         val jsCharacteristic = characteristic as? JsBluetoothCharacteristic
             ?: throw IllegalArgumentException("Characteristic must be a JsBluetoothCharacteristic")
 
-        jsCharacteristic.characteristic.readValue()
+        // Web Bluetooth's readValue() is itself a promise that resolves with the value once the
+        // platform has actually delivered it, so this already satisfies ADR 0014 without change -
+        // just return the value it awaits instead of discarding it.
+        return jsCharacteristic.characteristic.readValue()
     }
 
     override suspend fun writeCharacteristic(
