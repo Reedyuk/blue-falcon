@@ -137,6 +137,18 @@ class MeshNode(
     // connect() call on an already-connecting peripheral).
     private val pendingConnections = mutableSetOf<String>()
 
+    // Serialises outbound sends per neighbour (keyed by peripheral uuid / session id).
+    // Two concurrent sends to the same neighbour - e.g. this node's own broadcast()
+    // racing a relay of an inbound message - would otherwise interleave the frames of
+    // multi-frame messages (breaking reassembly), and on Apple platforms the second
+    // write is rejected outright because only one "with response" write may be in
+    // flight per connection.
+    private val sendMutexes = mutableMapOf<String, Mutex>()
+    private val sendMutexesMutex = Mutex()
+
+    private suspend fun sendMutexFor(id: String): Mutex =
+        sendMutexesMutex.withLock { sendMutexes.getOrPut(id) { Mutex() } }
+
     private val _neighborCount = MutableStateFlow(0)
 
     /**
@@ -205,23 +217,39 @@ class MeshNode(
         requestHandlerJob = scope.launch {
             peripheral.requests.collect { request ->
                 logger?.debug("peripheral.requests: received $request")
-                if (request is GattCharacteristicWriteRequest &&
-                    request.characteristicId == meshCharacteristicId
-                ) {
+
+                val meshWrite = (request as? GattCharacteristicWriteRequest)
+                    ?.takeIf { it.characteristicId == meshCharacteristicId }
+
+                // Every request carrying a response handle MUST be answered - including
+                // ones the mesh itself has no interest in, most importantly the CCCD
+                // descriptor write a neighbour performs when it subscribes for
+                // notifications. ATT is strictly one outstanding transaction at a time,
+                // so an unanswered request stalls the peer's entire ATT channel: its
+                // subsequent characteristic writes are never transmitted, and the link
+                // is eventually torn down on transaction timeout. Android surfaces the
+                // CCCD write here (and only commits the subscription once it is
+                // answered), whereas CoreBluetooth answers it internally - which is why
+                // leaving it unanswered broke exactly one direction of the mesh.
+                //
+                // Answer before doing any relaying so the peer's ATT channel is released
+                // immediately rather than being held for the duration of a relay (which
+                // itself awaits ATT writes to other neighbours, and would otherwise
+                // deadlock a mesh of three or more nodes).
+                request.response?.respond(
+                    dev.bluefalcon.peripheral.GattResponseStatus.Success
+                )
+
+                if (meshWrite != null) {
                     logger?.debug(
-                        "peripheral.requests: mesh write from session=${request.sessionId.value} " +
-                            "(${request.value.size} bytes)"
+                        "peripheral.requests: mesh write from session=${meshWrite.sessionId.value} " +
+                            "(${meshWrite.value.size} bytes)"
                     )
                     handleInboundFrame(
-                        sourceId = request.sessionId.value,
-                        sourceSession = request.session,
+                        sourceId = meshWrite.sessionId.value,
+                        sourceSession = meshWrite.session,
                         sourcePeripheral = null,
-                        frame = request.value,
-                    )
-
-                    // Respond success if response required
-                    request.response?.respond(
-                        dev.bluefalcon.peripheral.GattResponseStatus.Success
+                        frame = meshWrite.value,
                     )
                 }
             }
@@ -289,6 +317,7 @@ class MeshNode(
 
         // Clear state
         framersMutex.withLock { framers.clear() }
+        sendMutexesMutex.withLock { sendMutexes.clear() }
         dedupCache.clear()
         _neighborCount.value = 0
 
@@ -478,6 +507,9 @@ class MeshNode(
                         framersMutex.withLock {
                             framers.remove(neighbor.uuid)
                         }
+                        sendMutexesMutex.withLock {
+                            sendMutexes.remove(neighbor.uuid)
+                        }
                         updateNeighborCount()
                     }
                 }
@@ -608,7 +640,15 @@ class MeshNode(
 
         // Relay with incremented hop count
         val relayMessage = message.withIncrementedHopCount()
-        relayToAllNeighbors(relayMessage, excludeSourceId = sourceId)
+        // Relay off the inbound path: relaying awaits ATT writes to other neighbours,
+        // and must not hold up reading/answering further inbound frames (fragments of
+        // a following message, another neighbour's write, ...).
+        val scope = meshScope
+        if (scope != null) {
+            scope.launch { relayToAllNeighbors(relayMessage, excludeSourceId = sourceId) }
+        } else {
+            relayToAllNeighbors(relayMessage, excludeSourceId = sourceId)
+        }
     }
 
     private suspend fun relayToAllNeighbors(message: MeshMessage, excludeSourceId: String?) {
@@ -647,12 +687,14 @@ class MeshNode(
         val framer = MeshFramer(maxFrameSize = mtu)
         val frames = framer.frame(message)
 
-        frames.forEach { frame ->
-            val result = session.notify(meshCharacteristicId, frame)
-            logger?.debug(
-                "relayToPeripheralSession: notified session ${session.id.value} " +
-                    "(${frame.size} bytes) -> $result"
-            )
+        sendMutexFor(session.id.value).withLock {
+            frames.forEach { frame ->
+                val result = session.notify(meshCharacteristicId, frame)
+                logger?.debug(
+                    "relayToPeripheralSession: notified session ${session.id.value} " +
+                        "(${frame.size} bytes) -> $result"
+                )
+            }
         }
     }
 
@@ -683,35 +725,39 @@ class MeshNode(
         val framer = MeshFramer(maxFrameSize = mtu)
         val frames = framer.frame(message)
 
-        frames.forEach { frame ->
-            // Apple's central write path only allows one in-flight "with response"
-            // write per connection; a second concurrent write (e.g. this node's own
-            // broadcast racing with relaying an inbound message to the same
-            // neighbor) is rejected immediately as Backpressured rather than being
-            // queued. Retry a few times with a short backoff so a message isn't
-            // silently dropped just because it collided with another in-flight
-            // write to the same neighbor.
-            var result = central.writeCharacteristic(
-                neighbor,
-                characteristic,
-                frame,
-                CharacteristicWriteType.WithResponse,
-            )
-            var attempt = 0
-            while (result == CharacteristicWriteResult.Backpressured && attempt < BACKPRESSURE_RETRY_LIMIT) {
-                attempt++
-                delay(BACKPRESSURE_RETRY_DELAY_MS)
-                result = central.writeCharacteristic(
+        sendMutexFor(neighbor.uuid).withLock {
+            frames.forEach { frame ->
+                // Apple's central write path only allows one in-flight "with response"
+                // write per connection; a write issued while another is outstanding is
+                // rejected immediately as Backpressured rather than being queued. The
+                // per-neighbour mutex above prevents this node from colliding with
+                // itself, but retry anyway to absorb a write left in flight by an
+                // earlier, already-cancelled send.
+                var result = central.writeCharacteristic(
                     neighbor,
                     characteristic,
                     frame,
                     CharacteristicWriteType.WithResponse,
                 )
+                var attempt = 0
+                while (
+                    result == CharacteristicWriteResult.Backpressured &&
+                    attempt < BACKPRESSURE_RETRY_LIMIT
+                ) {
+                    attempt++
+                    delay(BACKPRESSURE_RETRY_DELAY_MS)
+                    result = central.writeCharacteristic(
+                        neighbor,
+                        characteristic,
+                        frame,
+                        CharacteristicWriteType.WithResponse,
+                    )
+                }
+                logger?.debug(
+                    "relayToCentralNeighbor: wrote to ${neighbor.uuid} (${frame.size} bytes) -> " +
+                        "$result${if (attempt > 0) " (after $attempt retries)" else ""}"
+                )
             }
-            logger?.debug(
-                "relayToCentralNeighbor: wrote to ${neighbor.uuid} (${frame.size} bytes) -> " +
-                    "$result${if (attempt > 0) " (after $attempt retries)" else ""}"
-            )
         }
     }
 
