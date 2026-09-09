@@ -366,6 +366,18 @@ class MeshNode(
     }
 
     private suspend fun startScanningForNeighbors() {
+        // `central.peripherals` is a single shared, ever-growing set for the lifetime of the
+        // owning BlueFalcon instance - it is *not* scoped to the current scan() call, and it is
+        // never pruned when a new/different ServiceFilter is applied. If the app's general
+        // "Central" scan screen (typically unfiltered, discovering every nearby BLE device) has
+        // already populated it, every one of those unrelated devices - headphones, watches,
+        // etc. - would otherwise be treated below as a freshly-discovered mesh neighbor and
+        // dialled, even though they never advertise the mesh service and the physical test
+        // environment has no other mesh node at all. Clear it before starting this node's own
+        // filtered scan so only devices actually discovered under the mesh ServiceFilter below
+        // are considered.
+        central.clearPeripherals()
+
         // Set up peripheral discovery handling
         meshScope?.launch {
             central.peripherals.collect { peripherals ->
