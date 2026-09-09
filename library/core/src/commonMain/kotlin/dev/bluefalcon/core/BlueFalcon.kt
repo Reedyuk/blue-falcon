@@ -51,18 +51,21 @@ class BlueFalcon(
                         _connectionStates.update { it + (uuid to PeripheralConnectionState.Connected) }
                     }
                     BluetoothPeripheralState.Disconnected -> {
-                        val previous = _connectionStates.value[uuid]
-                        val reason = when (previous) {
-                            is PeripheralConnectionState.Disconnecting -> DisconnectReason.UserInitiated
-                            is PeripheralConnectionState.Connecting -> DisconnectReason.ConnectFailed(
-                                BluetoothUnknownException()
-                            )
-                            is PeripheralConnectionState.Connected,
-                            is PeripheralConnectionState.Ready -> DisconnectReason.Unexpected
-                            else -> null
-                        }
-                        _connectionStates.update {
-                            it + (uuid to PeripheralConnectionState.Disconnected(reason))
+                        // Derive the reason inside update() so the read-modify-write is
+                        // atomic: the lambda is re-run if another updater wins the CAS,
+                        // which matters now that engine work is no longer serialised
+                        // onto a single thread.
+                        _connectionStates.update { current ->
+                            val reason = when (current[uuid]) {
+                                is PeripheralConnectionState.Disconnecting -> DisconnectReason.UserInitiated
+                                is PeripheralConnectionState.Connecting -> DisconnectReason.ConnectFailed(
+                                    BluetoothUnknownException()
+                                )
+                                is PeripheralConnectionState.Connected,
+                                is PeripheralConnectionState.Ready -> DisconnectReason.Unexpected
+                                else -> null
+                            }
+                            current + (uuid to PeripheralConnectionState.Disconnected(reason))
                         }
                     }
                     BluetoothPeripheralState.Connecting -> {

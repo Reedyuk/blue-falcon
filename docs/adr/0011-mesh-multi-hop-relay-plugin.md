@@ -1,6 +1,6 @@
 # ADR 0011: Mesh/Multi-Hop Relay Plugin
 
-**Status:** Proposed
+**Status:** Accepted
 
 **Date:** 2026-08-27
 
