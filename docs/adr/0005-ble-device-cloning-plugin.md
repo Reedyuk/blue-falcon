@@ -1,6 +1,6 @@
 # ADR 0005: BLE Device Cloning Plugin
 
-**Status:** Proposed
+**Status:** ✅ Implemented
 
 **Date:** 2026-05-15
 

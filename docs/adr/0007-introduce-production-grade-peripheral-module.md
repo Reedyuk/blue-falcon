@@ -1,6 +1,6 @@
 # ADR 0007: Introduce a Production-Grade Peripheral/GATT Server Module
 
-**Status:** Proposed
+**Status:** ✅ Implemented
 
 **Date:** 2026-07-16
 

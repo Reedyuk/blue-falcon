@@ -1,6 +1,6 @@
 # ADR 0008: Structured Per-Peripheral Connection State Machine
 
-**Status:** Proposed
+**Status:** ✅ Implemented
 
 **Date:** 2026-08-27
 

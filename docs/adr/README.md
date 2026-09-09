@@ -60,10 +60,10 @@ ADRs can have the following statuses:
 - [ADR 0002: Adopt Plugin-Based Engine Architecture](0002-adopt-plugin-based-engine-architecture.md) - **Proposed** - 2026-04-10
 - [ADR 0003: Add Nordic FOTA Plugin Using SMP Protocol](0003-nordic-fota-plugin.md) - **Accepted** - 2026-04-12
 - [ADR 0004: Expose Characteristic Notification Events to Consumers and Plugins](0004-expose-characteristic-notification-events.md) - **Accepted** - 2026-04-18
-- [ADR 0005: BLE Device Cloning Plugin](0005-ble-device-cloning-plugin.md) - **Proposed** - 2026-05-15
+- [ADR 0005: BLE Device Cloning Plugin](0005-ble-device-cloning-plugin.md) - **Implemented** - 2026-05-15
 - [ADR 0006: BLE Device Broadcast Plugin](0006-ble-device-broadcast-plugin.md) - **Accepted** - 2026-05-15
-- [ADR 0007: Introduce a Production-Grade Peripheral/GATT Server Module](0007-introduce-production-grade-peripheral-module.md) - **Proposed** - 2026-07-16
-- [ADR 0008: Structured Per-Peripheral Connection State Machine](0008-structured-peripheral-connection-state-machine.md) - **Proposed** - 2026-08-27
+- [ADR 0007: Introduce a Production-Grade Peripheral/GATT Server Module](0007-introduce-production-grade-peripheral-module.md) - **Implemented** - 2026-07-16
+- [ADR 0008: Structured Per-Peripheral Connection State Machine](0008-structured-peripheral-connection-state-machine.md) - **Implemented** - 2026-08-27
 - [ADR 0009: Bonding/Pairing Plugin](0009-bonding-pairing-plugin.md) - **Proposed** - 2026-08-27
 - [ADR 0010: RSSI/Proximity Plugin](0010-rssi-proximity-plugin.md) - **Proposed** - 2026-08-27
 - [ADR 0011: Mesh/Multi-Hop Relay Plugin](0011-mesh-multi-hop-relay-plugin.md) - **Proposed** - 2026-08-27
