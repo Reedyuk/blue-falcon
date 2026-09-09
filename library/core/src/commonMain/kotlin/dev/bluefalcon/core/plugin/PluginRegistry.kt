@@ -3,6 +3,7 @@ package dev.bluefalcon.core.plugin
 import dev.bluefalcon.core.CharacteristicWriteResult
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
+import kotlin.time.TimeSource
 
 /**
  * Registry for managing installed plugins.
@@ -49,10 +50,31 @@ class PluginRegistry(private val client: BlueFalconClient? = null) {
         for (plugin in plugins) {
             currentCall = plugin.onBeforeScan(currentCall)
         }
-        proceed(currentCall)
+        val start = TimeSource.Monotonic.markNow()
+        try {
+            proceed(currentCall)
+        } catch (t: Throwable) {
+            dispatchOperationCompleted(
+                operation = BlueFalconOperationKind.SCAN,
+                peripheralUuid = null,
+                success = false,
+                start = start,
+                attempts = 1,
+                byteCount = null
+            )
+            throw t
+        }
         for (plugin in plugins.reversed()) {
             plugin.onAfterScan(currentCall)
         }
+        dispatchOperationCompleted(
+            operation = BlueFalconOperationKind.SCAN,
+            peripheralUuid = null,
+            success = true,
+            start = start,
+            attempts = 1,
+            byteCount = null
+        )
     }
     
     /**
@@ -62,8 +84,15 @@ class PluginRegistry(private val client: BlueFalconClient? = null) {
         get() = plugins.filterIsInstance<RetryCapable>()
 
     /**
+     * The outcome of [retryUntilSatisfied]: the last observed result plus the total number of
+     * attempts made (1 if no retry occurred).
+     */
+    private data class RetryOutcome<R>(val result: R, val attempts: Int)
+
+    /**
      * Re-invokes [proceed] while any installed [RetryCapable] plugin requests a retry after
-     * [result] represents a failure. Returns the last result observed.
+     * [result] represents a failure. Returns the last result observed plus how many attempts
+     * were made in total.
      */
     private suspend fun <C, R> retryUntilSatisfied(
         operation: RetryableOperation,
@@ -72,10 +101,10 @@ class PluginRegistry(private val client: BlueFalconClient? = null) {
         isFailure: (R) -> Boolean,
         failureCause: (R) -> Throwable?,
         proceed: suspend (C) -> R
-    ): R {
+    ): RetryOutcome<R> {
         val retryPlugins = retryCapablePlugins
         if (retryPlugins.isEmpty()) {
-            return initialResult
+            return RetryOutcome(initialResult, attempts = 1)
         }
 
         var result = initialResult
@@ -89,7 +118,32 @@ class PluginRegistry(private val client: BlueFalconClient? = null) {
             attempt++
             result = proceed(call)
         }
-        return result
+        return RetryOutcome(result, attempts = attempt + 1)
+    }
+
+    /**
+     * Notifies every installed plugin's [BlueFalconPlugin.onOperationCompleted] hook, in the same
+     * reversed (last-installed-first) order used for `onAfterX` hooks.
+     */
+    private suspend fun dispatchOperationCompleted(
+        operation: BlueFalconOperationKind,
+        peripheralUuid: String?,
+        success: Boolean,
+        start: TimeSource.Monotonic.ValueTimeMark,
+        attempts: Int,
+        byteCount: Int?
+    ) {
+        val telemetry = OperationTelemetry(
+            operation = operation,
+            peripheralUuid = peripheralUuid,
+            success = success,
+            durationMillis = start.elapsedNow().inWholeMilliseconds,
+            attempts = attempts,
+            byteCount = byteCount
+        )
+        for (plugin in plugins.reversed()) {
+            plugin.onOperationCompleted(telemetry)
+        }
     }
 
     /**
@@ -100,8 +154,9 @@ class PluginRegistry(private val client: BlueFalconClient? = null) {
         for (plugin in plugins) {
             currentCall = plugin.onBeforeConnect(currentCall)
         }
+        val start = TimeSource.Monotonic.markNow()
         val initialResult = proceed(currentCall)
-        val result = retryUntilSatisfied(
+        val outcome = retryUntilSatisfied(
             operation = RetryableOperation.CONNECT,
             call = currentCall,
             initialResult = initialResult,
@@ -109,9 +164,18 @@ class PluginRegistry(private val client: BlueFalconClient? = null) {
             failureCause = { it.exceptionOrNull() },
             proceed = proceed
         )
+        val result = outcome.result
         for (plugin in plugins.reversed()) {
             plugin.onAfterConnect(currentCall, result)
         }
+        dispatchOperationCompleted(
+            operation = BlueFalconOperationKind.CONNECT,
+            peripheralUuid = currentCall.peripheral.uuid,
+            success = result.isSuccess,
+            start = start,
+            attempts = outcome.attempts,
+            byteCount = null
+        )
         return result
     }
     
@@ -123,8 +187,9 @@ class PluginRegistry(private val client: BlueFalconClient? = null) {
         for (plugin in plugins) {
             currentCall = plugin.onBeforeRead(currentCall)
         }
+        val start = TimeSource.Monotonic.markNow()
         val initialResult = proceed(currentCall)
-        val result = retryUntilSatisfied(
+        val outcome = retryUntilSatisfied(
             operation = RetryableOperation.READ,
             call = currentCall,
             initialResult = initialResult,
@@ -132,9 +197,18 @@ class PluginRegistry(private val client: BlueFalconClient? = null) {
             failureCause = { it.exceptionOrNull() },
             proceed = proceed
         )
+        val result = outcome.result
         for (plugin in plugins.reversed()) {
             plugin.onAfterRead(currentCall, result)
         }
+        dispatchOperationCompleted(
+            operation = BlueFalconOperationKind.READ,
+            peripheralUuid = currentCall.peripheral.uuid,
+            success = result.isSuccess,
+            start = start,
+            attempts = outcome.attempts,
+            byteCount = result.getOrNull()?.size
+        )
         return result
     }
     
@@ -146,8 +220,9 @@ class PluginRegistry(private val client: BlueFalconClient? = null) {
         for (plugin in plugins) {
             currentCall = plugin.onBeforeWrite(currentCall)
         }
+        val start = TimeSource.Monotonic.markNow()
         val initialResult = proceed(currentCall)
-        val result = retryUntilSatisfied(
+        val outcome = retryUntilSatisfied(
             operation = RetryableOperation.WRITE,
             call = currentCall,
             initialResult = initialResult,
@@ -155,9 +230,18 @@ class PluginRegistry(private val client: BlueFalconClient? = null) {
             failureCause = { it.exceptionOrNull() },
             proceed = proceed
         )
+        val result = outcome.result
         for (plugin in plugins.reversed()) {
             plugin.onAfterWrite(currentCall, result)
         }
+        dispatchOperationCompleted(
+            operation = BlueFalconOperationKind.WRITE,
+            peripheralUuid = currentCall.peripheral.uuid,
+            success = result.isSuccess,
+            start = start,
+            attempts = outcome.attempts,
+            byteCount = if (result.isSuccess) currentCall.value.size else null
+        )
         return result
     }
 
@@ -190,10 +274,19 @@ class PluginRegistry(private val client: BlueFalconClient? = null) {
         for (plugin in plugins) {
             currentCall = plugin.onBeforeDisconnect(currentCall)
         }
+        val start = TimeSource.Monotonic.markNow()
         val result = proceed(currentCall)
         for (plugin in plugins.reversed()) {
             plugin.onAfterDisconnect(currentCall, result)
         }
+        dispatchOperationCompleted(
+            operation = BlueFalconOperationKind.DISCONNECT,
+            peripheralUuid = currentCall.peripheral.uuid,
+            success = result.isSuccess,
+            start = start,
+            attempts = 1,
+            byteCount = null
+        )
         return result
     }
 

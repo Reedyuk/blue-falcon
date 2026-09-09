@@ -60,6 +60,9 @@ commonMain.dependencies {
     
     // Service/characteristic caching
     implementation("dev.bluefalcon:blue-falcon-plugin-caching:3.7.5")
+    
+    // Connection success/failure counts, operation latency, and throughput metrics
+    implementation("dev.bluefalcon:blue-falcon-plugin-metrics:3.7.5")
 }
 ```
 
@@ -208,6 +211,7 @@ Blue Falcon 3.0 uses a three-layer architecture:
 - **LoggingPlugin** - Configurable logging with custom loggers
 - **RetryPlugin** - Automatic retry with exponential backoff
 - **CachingPlugin** - Service/characteristic discovery caching
+- **MetricsPlugin** - Connection success/failure counts, operation latency histograms, and read/write throughput ([ADR 0012](docs/adr/0012-metrics-observability-plugin.md))
 
 See the [Plugin Development Guide](docs/PLUGIN_DEVELOPMENT_GUIDE.md) to create your own!
 

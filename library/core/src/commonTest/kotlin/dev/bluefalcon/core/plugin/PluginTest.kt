@@ -302,6 +302,59 @@ class PluginTest {
     }
 
     @Test
+    fun `onOperationCompleted reports total attempts including retries on read`() = runTest {
+        // Given
+        val engine = FakeBlueFalconEngine().apply {
+            failReadTimes = 1
+        }
+        val peripheral = engine.createFakePeripheral("Device")
+        val characteristic = FakeCharacteristic(uuid = "00002a37-0000-1000-8000-00805f9b34fb".toUuid())
+        val blueFalcon = BlueFalcon(engine)
+        blueFalcon.plugins.install(alwaysRetryPlugin(maxAttempts = 3))
+        val telemetryEvents = mutableListOf<OperationTelemetry>()
+        blueFalcon.plugins.install(object : BlueFalconPlugin {
+            override fun install(client: BlueFalconClient, config: PluginConfig) {}
+            override suspend fun onOperationCompleted(telemetry: OperationTelemetry) {
+                telemetryEvents += telemetry
+            }
+        })
+
+        // When
+        blueFalcon.readCharacteristic(peripheral, characteristic)
+
+        // Then - one failed attempt + one successful retry = 2 total attempts
+        assertEquals(1, telemetryEvents.size)
+        val event = telemetryEvents.single()
+        assertEquals(BlueFalconOperationKind.READ, event.operation)
+        assertTrue(event.success)
+        assertEquals(2, event.attempts)
+    }
+
+    @Test
+    fun `onOperationCompleted reports a single attempt when no retry plugin is installed`() = runTest {
+        // Given
+        val engine = FakeBlueFalconEngine()
+        val peripheral = engine.createFakePeripheral("Device")
+        val blueFalcon = BlueFalcon(engine)
+        val telemetryEvents = mutableListOf<OperationTelemetry>()
+        blueFalcon.plugins.install(object : BlueFalconPlugin {
+            override fun install(client: BlueFalconClient, config: PluginConfig) {}
+            override suspend fun onOperationCompleted(telemetry: OperationTelemetry) {
+                telemetryEvents += telemetry
+            }
+        })
+
+        // When
+        blueFalcon.connect(peripheral)
+
+        // Then
+        assertEquals(1, telemetryEvents.size)
+        assertEquals(BlueFalconOperationKind.CONNECT, telemetryEvents.single().operation)
+        assertEquals(1, telemetryEvents.single().attempts)
+        assertTrue(telemetryEvents.single().success)
+    }
+
+    @Test
     fun `without a retry capable plugin failures are not retried`() = runTest {
         // Given
         val engine = FakeBlueFalconEngine().apply {

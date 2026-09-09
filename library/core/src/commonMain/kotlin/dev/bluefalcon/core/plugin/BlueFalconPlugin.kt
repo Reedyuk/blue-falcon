@@ -77,6 +77,20 @@ interface BlueFalconPlugin {
         characteristic: BluetoothCharacteristic,
         value: ByteArray
     ) {}
+
+    /**
+     * Called after any scan/connect/disconnect/read/write operation fully completes, including
+     * any retries driven by an installed [RetryCapable] plugin.
+     *
+     * This reports duration/attempt/byte-count metadata that the value-focused `onAfterX` hooks
+     * don't carry (they only see the final call/result). It is delivered *after* the matching
+     * `onAfterX` hook, to every installed plugin, in the same reversed (last-installed-first)
+     * order.
+     *
+     * This is purely additive observability: the default implementation is a no-op, so existing
+     * plugins that don't override it are unaffected.
+     */
+    suspend fun onOperationCompleted(telemetry: OperationTelemetry) {}
 }
 
 /**
@@ -87,6 +101,39 @@ enum class RetryableOperation {
     READ,
     WRITE
 }
+
+/**
+ * The kind of Blue Falcon operation an [OperationTelemetry] event describes.
+ */
+enum class BlueFalconOperationKind {
+    SCAN,
+    CONNECT,
+    DISCONNECT,
+    READ,
+    WRITE
+}
+
+/**
+ * Duration/attempt/byte-count metadata for one full [BlueFalconPlugin.onOperationCompleted]
+ * operation invocation, reported once the operation (and any retries) has settled.
+ *
+ * @param peripheralUuid `null` for [BlueFalconOperationKind.SCAN], which is not peripheral-scoped.
+ * @param success whether the final (post-retry) result was successful.
+ * @param durationMillis wall-clock time from the first attempt starting to the final attempt
+ * settling, including any inter-retry delays.
+ * @param attempts total number of attempts made (1 if no retry occurred).
+ * @param byteCount populated for [BlueFalconOperationKind.READ] (bytes read) and
+ * [BlueFalconOperationKind.WRITE] (bytes written); `null` otherwise, including on a failed/absent
+ * read result.
+ */
+data class OperationTelemetry(
+    val operation: BlueFalconOperationKind,
+    val peripheralUuid: String?,
+    val success: Boolean,
+    val durationMillis: Long,
+    val attempts: Int,
+    val byteCount: Int?
+)
 
 /**
  * Optional capability that a [BlueFalconPlugin] can implement to actually drive retries of

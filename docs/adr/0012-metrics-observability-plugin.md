@@ -1,6 +1,6 @@
 # ADR 0012: Metrics/Observability Plugin
 
-**Status:** Proposed
+**Status:** ✅ Implemented (`blue-falcon-plugin-metrics` core module; the optional `blue-falcon-plugin-metrics-otel` OpenTelemetry exporter is tracked separately and not yet built)
 
 **Date:** 2026-08-27
 
