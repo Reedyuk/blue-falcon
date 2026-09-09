@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -36,6 +37,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
@@ -126,8 +128,23 @@ fun MeshDemoScreen(
                     )
                 }
             } else {
+                val listState = rememberLazyListState()
+
+                // Messages are prepended (newest first) and reverseLayout puts index 0
+                // at the bottom, so this keeps the latest message in view as new ones
+                // arrive - matching how a chat app behaves - while the user can still
+                // freely scroll (drag) up through history at any time.
+                LaunchedEffect(state.messages.firstOrNull()?.id) {
+                    if (state.messages.isNotEmpty()) {
+                        listState.animateScrollToItem(0)
+                    }
+                }
+
                 LazyColumn(
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxWidth(),
+                    state = listState,
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                     contentPadding = PaddingValues(vertical = 4.dp),
                     reverseLayout = true,
