@@ -179,6 +179,16 @@ class AndroidEngine(
     override suspend fun connect(peripheral: BluetoothPeripheral, autoConnect: Boolean) {
         logger?.debug("Connecting to ${peripheral.name ?: peripheral.uuid}")
         val androidPeripheral = (peripheral as? AndroidBluetoothPeripheral) ?: return
+        // Ensure the peripheral we're about to connect is tracked in [_peripherals] *before*
+        // issuing connectGatt. Callers may hand us an AndroidBluetoothPeripheral that was never
+        // discovered via an active scan (e.g. reconstructed from a previously-known address), in
+        // which case it's absent from [_peripherals]. Every downstream GATT callback
+        // (onConnectionStateChange, onServicesDiscovered, onMtuChanged, onReadRemoteRssi) resolves
+        // the peripheral solely via [peripheralFor], which only searches [_peripherals] - if the
+        // address isn't tracked there, those callbacks silently no-op instead of surfacing the
+        // connection, permanently stalling the caller (native GATT connects fine, but nothing
+        // above this engine is ever notified).
+        registerPeripheralIfNeeded(androidPeripheral)
         // Reset any stale per-connection state before reconnecting so consumers wait for the new
         // connection's discovery/MTU instead of being satisfied instantly by the previous session's
         // values. This also covers the case where the STATE_DISCONNECTED callback is delayed or never
@@ -203,6 +213,16 @@ class AndroidEngine(
         _peripherals.value.firstOrNull {
             (it as? AndroidBluetoothPeripheral)?.device?.address == address
         } as? AndroidBluetoothPeripheral
+
+    // Adds [peripheral] to [_peripherals] if no entry for its address already exists, so that
+    // [peripheralFor] (relied on by every GATT callback) can resolve it. A no-op when the address
+    // is already tracked (e.g. from an earlier scan) - the existing, possibly richer (rssi,
+    // manufacturer data, etc.), instance is left in place rather than being replaced.
+    private fun registerPeripheralIfNeeded(peripheral: AndroidBluetoothPeripheral) {
+        if (peripheralFor(peripheral.device.address) == null) {
+            _peripherals.value = _peripherals.value + setOf(peripheral)
+        }
+    }
 
     private fun resetPeripheralState(address: String) {
         peripheralFor(address)?.resetConnectionState()
