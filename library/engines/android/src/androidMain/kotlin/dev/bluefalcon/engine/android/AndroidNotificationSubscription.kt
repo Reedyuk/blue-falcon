@@ -20,16 +20,17 @@ internal fun <T : Any> exactNativeAttribute(requested: T, resolved: T?): T? =
 
 internal class AndroidNotificationSubscriptionAction(
     private val enabled: Boolean,
+    private val useIndication: Boolean = false,
     private val setLocalNotification: (Boolean) -> Boolean,
     private val writeCccd: (ByteArray) -> Boolean,
 ) {
     fun submit(): Boolean {
         if (!setLocalNotification(enabled)) return false
         return writeCccd(
-            if (enabled) {
-                byteArrayOf(0x01, 0x00)
-            } else {
-                byteArrayOf(0x00, 0x00)
+            when {
+                !enabled -> byteArrayOf(0x00, 0x00)
+                useIndication -> byteArrayOf(0x02, 0x00)
+                else -> byteArrayOf(0x01, 0x00)
             }
         )
     }
