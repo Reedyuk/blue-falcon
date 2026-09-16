@@ -530,11 +530,17 @@ class AndroidEngine(
                     )
                 )
             )
-        if (enabled &&
-            targetCharacteristic.properties and BluetoothGattCharacteristic.PROPERTY_NOTIFY == 0
-        ) {
+        val supportsNotify =
+            targetCharacteristic.properties and BluetoothGattCharacteristic.PROPERTY_NOTIFY != 0
+        val supportsIndicate =
+            targetCharacteristic.properties and BluetoothGattCharacteristic.PROPERTY_INDICATE != 0
+        if (enabled && !supportsNotify && !supportsIndicate) {
             return report(NotificationSubscriptionResult.Unsupported)
         }
+        // Some peripherals (e.g. characteristics that only advertise indications) don't set
+        // PROPERTY_NOTIFY at all. Prefer notify when both are available, but fall back to
+        // indicate so we don't incorrectly reject a perfectly valid subscription.
+        val useIndication = enabled && !supportsNotify && supportsIndicate
         val cccd = targetCharacteristic.getDescriptor(CLIENT_CHARACTERISTIC_CONFIG_UUID)
             ?: return report(NotificationSubscriptionResult.Unsupported)
         val operationKey = CentralGattOperationKey(
@@ -552,6 +558,7 @@ class AndroidEngine(
         return suspendCancellableCoroutine { continuation ->
             val action = AndroidNotificationSubscriptionAction(
                 enabled = enabled,
+                useIndication = useIndication,
                 setLocalNotification = {
                     gatt.setCharacteristicNotification(targetCharacteristic, it)
                 },
