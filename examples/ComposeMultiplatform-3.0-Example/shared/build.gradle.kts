@@ -5,7 +5,7 @@ plugins {
     id("org.jetbrains.kotlin.plugin.compose")
 }
 
-val falconVersion = "3.7.8"
+val falconVersion = "3.7.9"
 val pluginVersion = "3.8.3"
 
 val peripheralVersion = "3.8.3"
