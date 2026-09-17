@@ -121,6 +121,39 @@ class AppleCentralWriteTest {
     }
 
     @Test
+    fun `without-response write refreshes maximum length after connect`() = runTest {
+        val peer = FakeWriteTarget(maximumWithoutResponse = 20)
+        val controller = AppleCentralWriteController(backgroundScope)
+        controller.connected(peer)
+        peer.maximumWithoutResponse = 244
+
+        val result = controller.write(
+            peer,
+            ByteArray(100) { 1 },
+            CharacteristicWriteType.WithoutResponse,
+        )
+
+        assertEquals(CharacteristicWriteResult.Sent, result)
+        assertEquals(
+            listOf(
+                CharacteristicWriteType.WithResponse,
+                CharacteristicWriteType.WithoutResponse,
+                CharacteristicWriteType.WithoutResponse,
+            ),
+            peer.maximumLengthQueries,
+        )
+        assertEquals(
+            244,
+            controller.capabilities.value.getValue(
+                CharacteristicWriteKey(
+                    peer.peripheralUuid,
+                    CharacteristicWriteType.WithoutResponse,
+                )
+            ).maximumLength,
+        )
+    }
+
+    @Test
     fun `with-response write completes only from matching callback`() = runTest {
         val peer = FakeWriteTarget()
         val controller = AppleCentralWriteController(backgroundScope)
@@ -277,8 +310,8 @@ class AppleCentralWriteTest {
             appleCharacteristicIdentity("service-a", "characteristic-a"),
         override var connected: Boolean = true,
         override var canSendWithoutResponse: Boolean = true,
-        private val maximumWithResponse: Int = 128,
-        private val maximumWithoutResponse: Int = 244,
+        var maximumWithResponse: Int = 128,
+        var maximumWithoutResponse: Int = 244,
     ) : AppleCentralWriteTarget {
         val maximumLengthQueries = mutableListOf<CharacteristicWriteType>()
         val writes = mutableListOf<Write>()
