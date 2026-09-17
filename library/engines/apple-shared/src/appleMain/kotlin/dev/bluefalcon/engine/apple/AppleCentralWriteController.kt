@@ -174,9 +174,16 @@ internal class AppleCentralWriteController(
         if (!target.connected) return CharacteristicWriteResult.Disconnected
         val connection = currentConnection(target.peripheralUuid)
             ?: return CharacteristicWriteResult.Disconnected
-        val capability = _capabilities.value[
-            CharacteristicWriteKey(target.peripheralUuid, writeType)
-        ] ?: return CharacteristicWriteResult.Disconnected
+            
+        val key = CharacteristicWriteKey(target.peripheralUuid, writeType)
+        val currentMaximumLength = target.maximumWriteValueLength(writeType)
+        var capability = _capabilities.value[key] ?: return CharacteristicWriteResult.Disconnected
+        
+        if (capability.maximumLength != currentMaximumLength) {
+            updateCapabilityMaximumLength(target.peripheralUuid, writeType, currentMaximumLength)
+            capability = _capabilities.value[key] ?: return CharacteristicWriteResult.Disconnected
+        }
+
         if (!capability.supported) return CharacteristicWriteResult.Unsupported
         capability.maximumLength?.let { maximumLength ->
             if (value.size > maximumLength) {
@@ -512,6 +519,18 @@ internal class AppleCentralWriteController(
             val key = CharacteristicWriteKey(peripheralUuid, writeType)
             val existing = _capabilities.value[key] ?: return
             _capabilities.value = _capabilities.value + (key to existing.copy(ready = ready))
+        }
+    }
+
+    private suspend fun updateCapabilityMaximumLength(
+        peripheralUuid: String,
+        writeType: CharacteristicWriteType,
+        maximumLength: Int,
+    ) {
+        mutex.withLock {
+            val key = CharacteristicWriteKey(peripheralUuid, writeType)
+            val existing = _capabilities.value[key] ?: return
+            _capabilities.value = _capabilities.value + (key to existing.copy(maximumLength = maximumLength))
         }
     }
 

@@ -257,6 +257,34 @@ class AppleCentralWriteTest {
     }
 
     @Test
+    fun `write dynamically updates cached maximum length`() = runTest {
+        val peer = FakeWriteTarget(maximumWithoutResponse = 20)
+        val controller = AppleCentralWriteController(backgroundScope)
+        controller.connected(peer)
+
+        // Simulate MTU change
+        peer.maximumWithoutResponse = 200
+
+        // This write would previously fail with PayloadTooLarge if it checked the cached 20 bytes
+        val result = controller.write(
+            peer,
+            ByteArray(137),
+            CharacteristicWriteType.WithoutResponse,
+        )
+
+        assertEquals(CharacteristicWriteResult.Sent, result)
+        assertEquals(
+            200,
+            controller.capabilities.value.getValue(
+                CharacteristicWriteKey(
+                    peer.peripheralUuid,
+                    CharacteristicWriteType.WithoutResponse,
+                )
+            ).maximumLength
+        )
+    }
+
+    @Test
     fun `disconnected target returns disconnected without native call`() = runTest {
         val peer = FakeWriteTarget(connected = false)
         val controller = AppleCentralWriteController(backgroundScope)
@@ -277,8 +305,8 @@ class AppleCentralWriteTest {
             appleCharacteristicIdentity("service-a", "characteristic-a"),
         override var connected: Boolean = true,
         override var canSendWithoutResponse: Boolean = true,
-        private val maximumWithResponse: Int = 128,
-        private val maximumWithoutResponse: Int = 244,
+        var maximumWithResponse: Int = 128,
+        var maximumWithoutResponse: Int = 244,
     ) : AppleCentralWriteTarget {
         val maximumLengthQueries = mutableListOf<CharacteristicWriteType>()
         val writes = mutableListOf<Write>()
