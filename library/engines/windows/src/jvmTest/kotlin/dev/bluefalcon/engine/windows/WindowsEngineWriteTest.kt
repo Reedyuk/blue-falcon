@@ -10,6 +10,7 @@ import dev.bluefalcon.core.toUuid
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlin.test.Test
+import kotlin.test.assertEquals
 import kotlin.test.assertIs
 
 class WindowsEngineWriteTest {
@@ -27,6 +28,22 @@ class WindowsEngineWriteTest {
             )
 
             assertIs<CharacteristicWriteResult.Failed>(result)
+        }
+    }
+
+    @Test
+    fun `typed write reports disconnected for Windows peripherals without an active connection`() {
+        runBlocking {
+            val engine = WindowsEngine()
+
+            val result = engine.writeCharacteristic(
+                peripheral = WindowsBluetoothPeripheral(address = 0x112233445566, deviceName = null),
+                characteristic = FakeCharacteristic,
+                value = byteArrayOf(0x01),
+                writeType = CharacteristicWriteType.WithoutResponse,
+            )
+
+            assertEquals(CharacteristicWriteResult.Disconnected, result)
         }
     }
 }
