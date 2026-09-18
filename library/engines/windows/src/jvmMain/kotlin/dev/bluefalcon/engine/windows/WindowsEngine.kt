@@ -313,7 +313,34 @@ class WindowsEngine : BlueFalconEngine {
             throw e
         }
     }
-    
+
+    override suspend fun writeCharacteristic(
+        peripheral: BluetoothPeripheral,
+        characteristic: BluetoothCharacteristic,
+        value: ByteArray,
+        writeType: CharacteristicWriteType,
+    ): CharacteristicWriteResult {
+        val windowsPeripheral = peripheral as? WindowsBluetoothPeripheral
+            ?: return CharacteristicWriteResult.Failed(
+                IllegalArgumentException("Peripheral must be a WindowsBluetoothPeripheral")
+            )
+        if (connections[windowsPeripheral.address] == null) {
+            return CharacteristicWriteResult.Disconnected
+        }
+
+        return try {
+            nativeWriteCharacteristic(
+                address = windowsPeripheral.address,
+                characteristicUuid = characteristic.uuid.toString(),
+                value = value,
+                withResponse = writeType == CharacteristicWriteType.WithResponse,
+            )
+            CharacteristicWriteResult.Sent
+        } catch (failure: Throwable) {
+            CharacteristicWriteResult.Failed(failure)
+        }
+    }
+
     override suspend fun notifyCharacteristic(
         peripheral: BluetoothPeripheral,
         characteristic: BluetoothCharacteristic,
