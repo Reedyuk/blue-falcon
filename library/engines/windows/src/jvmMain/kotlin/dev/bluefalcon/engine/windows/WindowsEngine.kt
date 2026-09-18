@@ -313,7 +313,28 @@ class WindowsEngine : BlueFalconEngine {
             throw e
         }
     }
-    
+
+    override suspend fun writeCharacteristic(
+        peripheral: BluetoothPeripheral,
+        characteristic: BluetoothCharacteristic,
+        value: ByteArray,
+        writeType: CharacteristicWriteType,
+    ): CharacteristicWriteResult =
+        try {
+            writeCharacteristic(
+                peripheral = peripheral,
+                characteristic = characteristic,
+                value = value,
+                writeType = when (writeType) {
+                    CharacteristicWriteType.WithResponse -> WRITE_TYPE_DEFAULT
+                    CharacteristicWriteType.WithoutResponse -> WRITE_TYPE_NO_RESPONSE
+                },
+            )
+            CharacteristicWriteResult.Sent
+        } catch (failure: Throwable) {
+            CharacteristicWriteResult.Failed(failure)
+        }
+
     override suspend fun notifyCharacteristic(
         peripheral: BluetoothPeripheral,
         characteristic: BluetoothCharacteristic,
