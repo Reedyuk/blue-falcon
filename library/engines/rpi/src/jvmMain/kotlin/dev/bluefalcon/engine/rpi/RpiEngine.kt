@@ -211,17 +211,24 @@ class RpiEngine : BlueFalconEngine {
         val rpiCharacteristic = characteristic as? RpiBluetoothCharacteristic
             ?: throw IllegalArgumentException("Characteristic must be an RpiBluetoothCharacteristic")
         
-        val blessedWriteType = when (writeType) {
-            0 -> BluetoothGattCharacteristic.WriteType.WITH_RESPONSE
-            1 -> BluetoothGattCharacteristic.WriteType.WITHOUT_RESPONSE
-            else -> BluetoothGattCharacteristic.WriteType.WITHOUT_RESPONSE
-        }
-        
-        rpiPeripheral.nativePeripheral.writeCharacteristic(
-            rpiCharacteristic.nativeCharacteristic,
+        val nativeCharacteristic = rpiCharacteristic.nativeCharacteristic
+        val blessedWriteType = resolveWriteType(
+            writeType = writeType,
+            supportsWithResponse = nativeCharacteristic.supportsWritingWithResponse(),
+            supportsWithoutResponse = nativeCharacteristic.supportsWritingWithoutResponse(),
+        )
+
+        // Blessed returns false when it refuses the write (not connected, empty value, or a write
+        // type the characteristic does not support). Report that, as readCharacteristic does,
+        // instead of dropping the write with no signal.
+        val queued = rpiPeripheral.nativePeripheral.writeCharacteristic(
+            nativeCharacteristic,
             value,
             blessedWriteType
         )
+        if (!queued) {
+            throw BluetoothUnknownException("Failed to queue characteristic write ($blessedWriteType)")
+        }
     }
     
     override suspend fun notifyCharacteristic(
@@ -385,5 +392,33 @@ class RpiEngine : BlueFalconEngine {
 
     companion object {
         private const val READ_TIMEOUT_MS = 10_000L
+
+        /** Android's `BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE`, as the other engines read it. */
+        private const val WRITE_TYPE_NO_RESPONSE = 1
+
+        /**
+         * Maps the legacy `Int?` write type to a Blessed write type, with the meaning that the Android,
+         * Windows, Apple and macOS engines give it: 1 (`WRITE_TYPE_NO_RESPONSE`) is a write without
+         * response, and any other value is a write with response. 0 stays a write with response, as
+         * this engine always read it.
+         *
+         * A null write type uses the characteristic's own write type: a write with response when the
+         * characteristic supports one, and a write without response when that is the only write it
+         * supports. Before this mapping, null and 2 (`WRITE_TYPE_DEFAULT`) asked for a write without
+         * response on every characteristic. On a characteristic that supports only a write with
+         * response, Blessed refused that write and the engine dropped it with no error. On one that
+         * supports both, the write went out with no reply, so an ATT error was lost.
+         */
+        internal fun resolveWriteType(
+            writeType: Int?,
+            supportsWithResponse: Boolean,
+            supportsWithoutResponse: Boolean,
+        ): BluetoothGattCharacteristic.WriteType = when {
+            writeType == WRITE_TYPE_NO_RESPONSE -> BluetoothGattCharacteristic.WriteType.WITHOUT_RESPONSE
+            writeType != null -> BluetoothGattCharacteristic.WriteType.WITH_RESPONSE
+            !supportsWithResponse && supportsWithoutResponse ->
+                BluetoothGattCharacteristic.WriteType.WITHOUT_RESPONSE
+            else -> BluetoothGattCharacteristic.WriteType.WITH_RESPONSE
+        }
     }
 }
