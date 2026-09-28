@@ -10,6 +10,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -50,6 +51,13 @@ class RpiEngine : BlueFalconEngine {
 
     private fun pendingReadKey(peripheralAddress: String, characteristicUuid: String) =
         "$peripheralAddress::$characteristicUuid"
+
+    // Blessed reports a write result only through onCharacteristicWrite, so each write is recorded
+    // here before it is queued and matched to its callback (see RpiPendingWrites).
+    private val pendingWrites = RpiPendingWrites()
+
+    override val centralCapabilities: CentralCapabilities =
+        CentralCapabilities.None.copy(reliableWriteResults = true)
     
     private val bluetoothManagerCallback = object : BluetoothCentralManagerCallback() {
         override fun onDiscoveredPeripheral(
@@ -64,6 +72,12 @@ class RpiEngine : BlueFalconEngine {
             device.rssi = scanResult.rssi.toFloat()
             device.manufacturerData = scanResult.manufacturerData ?: emptyMap()
             _peripherals.value = _peripherals.value + device
+        }
+
+        override fun onDisconnectedPeripheral(peripheral: BlessedPeripheral, status: BluetoothCommandStatus) {
+            // Blessed skips a queued write with no callback when the link is down, so no pending
+            // write of this peripheral can complete any more.
+            pendingWrites.disconnected(peripheral.address)
         }
     }
     
@@ -221,15 +235,80 @@ class RpiEngine : BlueFalconEngine {
         // Blessed returns false when it refuses the write (not connected, empty value, or a write
         // type the characteristic does not support). Report that, as readCharacteristic does,
         // instead of dropping the write with no signal.
-        val queued = rpiPeripheral.nativePeripheral.writeCharacteristic(
-            nativeCharacteristic,
-            value,
-            blessedWriteType
-        )
-        if (!queued) {
-            throw BluetoothUnknownException("Failed to queue characteristic write ($blessedWriteType)")
-        }
+        //
+        // This write is recorded although nobody waits for its result, so its callback cannot
+        // complete a typed write to the same characteristic.
+        val nativePeripheral = rpiPeripheral.nativePeripheral
+        pendingWrites.enqueue(nativePeripheral.address, nativeCharacteristic.writeKey()) {
+            nativePeripheral.writeCharacteristic(nativeCharacteristic, value, blessedWriteType)
+        } ?: throw BluetoothUnknownException("Failed to queue characteristic write ($blessedWriteType)")
     }
+
+    /**
+     * Writes [value] and suspends until Blessed reports the result in `onCharacteristicWrite`.
+     *
+     * For [CharacteristicWriteType.WithResponse] the result is the peripheral's ATT response, so an
+     * error such as "write not permitted" returns [CharacteristicWriteResult.Failed]. For
+     * [CharacteristicWriteType.WithoutResponse] BlueZ reports only that it sent the write.
+     *
+     * A write that gets no result within [WRITE_TIMEOUT_MS] returns [CharacteristicWriteResult.Failed].
+     * BlueZ gives no signal for when a write without response can be sent, and Blessed does not
+     * expose the MTU, so [characteristicWriteCapabilities] stays empty.
+     */
+    override suspend fun writeCharacteristic(
+        peripheral: dev.bluefalcon.core.BluetoothPeripheral,
+        characteristic: dev.bluefalcon.core.BluetoothCharacteristic,
+        value: ByteArray,
+        writeType: CharacteristicWriteType,
+    ): CharacteristicWriteResult {
+        val rpiPeripheral = peripheral as? RpiBluetoothPeripheral
+            ?: return CharacteristicWriteResult.Failed(
+                IllegalArgumentException("Peripheral must be an RpiBluetoothPeripheral")
+            )
+        val rpiCharacteristic = characteristic as? RpiBluetoothCharacteristic
+            ?: return CharacteristicWriteResult.Failed(
+                IllegalArgumentException("Characteristic must be an RpiBluetoothCharacteristic")
+            )
+        val nativePeripheral = rpiPeripheral.nativePeripheral
+        val nativeCharacteristic = rpiCharacteristic.nativeCharacteristic
+        if (nativePeripheral.state != ConnectionState.CONNECTED) {
+            return CharacteristicWriteResult.Disconnected
+        }
+        val blessedWriteType = when (writeType) {
+            CharacteristicWriteType.WithResponse -> BluetoothGattCharacteristic.WriteType.WITH_RESPONSE
+            CharacteristicWriteType.WithoutResponse -> BluetoothGattCharacteristic.WriteType.WITHOUT_RESPONSE
+        }
+        if (!nativeCharacteristic.supportsWriteType(blessedWriteType)) {
+            return CharacteristicWriteResult.Unsupported
+        }
+        if (value.isEmpty()) {
+            // Blessed refuses an empty value.
+            return CharacteristicWriteResult.Failed(IllegalArgumentException("Blessed cannot write an empty value"))
+        }
+
+        val pending = pendingWrites.enqueue(nativePeripheral.address, nativeCharacteristic.writeKey()) {
+            nativePeripheral.writeCharacteristic(nativeCharacteristic, value, blessedWriteType)
+        }
+        if (pending == null) {
+            return if (nativePeripheral.state != ConnectionState.CONNECTED) {
+                CharacteristicWriteResult.Disconnected
+            } else {
+                CharacteristicWriteResult.Failed(
+                    BluetoothUnknownException("Failed to queue characteristic write ($blessedWriteType)")
+                )
+            }
+        }
+        // On a timeout or a cancellation the entry stays registered, so that the late callback
+        // completes this entry and not the entry of a later write (see RpiPendingWrites).
+        val outcome = withTimeoutOrNull(WRITE_TIMEOUT_MS) { pending.outcome.await() }
+            ?: return CharacteristicWriteResult.Failed(
+                BluetoothUnknownException("Timed out waiting for characteristic write to complete")
+            )
+        return outcome.toWriteResult()
+    }
+
+    private fun BluetoothGattCharacteristic.writeKey(): String =
+        RpiPendingWrites.characteristicKey(service?.uuid, uuid)
     
     override suspend fun notifyCharacteristic(
         peripheral: dev.bluefalcon.core.BluetoothPeripheral,
@@ -385,6 +464,7 @@ class RpiEngine : BlueFalconEngine {
                 characteristic: BluetoothGattCharacteristic,
                 status: BluetoothCommandStatus
             ) {
+                pendingWrites.complete(nativePeripheral.address, characteristic.writeKey(), status)
                 peripheral.updateCharacteristicValue(characteristic.uuid.toString(), value)
             }
         }
@@ -392,6 +472,7 @@ class RpiEngine : BlueFalconEngine {
 
     companion object {
         private const val READ_TIMEOUT_MS = 10_000L
+        private const val WRITE_TIMEOUT_MS = 10_000L
 
         /** Android's `BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE`, as the other engines read it. */
         private const val WRITE_TYPE_NO_RESPONSE = 1
