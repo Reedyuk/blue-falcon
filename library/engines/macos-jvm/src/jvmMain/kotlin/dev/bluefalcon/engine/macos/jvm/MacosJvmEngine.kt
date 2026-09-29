@@ -47,8 +47,10 @@ class MacosJvmEngine : BlueFalconEngine {
     // suspend until that callback actually resolves this specific request.
     private val pendingReads = ConcurrentHashMap<String, CompletableDeferred<ByteArray>>()
 
+    // The native side reports SIG UUIDs in their short form ("2A19") and the Kotlin side sends
+    // the full form, so the key uses the parsed UUIDs to make both forms produce the same key.
     private fun pendingReadKey(peripheralUuid: String, serviceUuid: String, characteristicUuid: String) =
-        "$peripheralUuid::$serviceUuid::$characteristicUuid"
+        "$peripheralUuid::${parseUuid(serviceUuid)}::${parseUuid(characteristicUuid)}"
 
     // L2CAP open is async: native delivers the handle later via onL2capChannelOpened.
     private val l2capOpenDeferreds = ConcurrentHashMap<String, CompletableDeferred<Long>>()
@@ -134,7 +136,7 @@ class MacosJvmEngine : BlueFalconEngine {
     private fun onCharacteristicsDiscoveredForService(peripheralUuid: String, serviceUuid: String) {
         val peripheral = connections[peripheralUuid] ?: return
         val service = peripheral.services
-            .find { it.uuid.toString().uppercase() == serviceUuid.uppercase() } ?: return
+            .find { it.uuid == parseUuid(serviceUuid) } ?: return
         _serviceDiscoveryUpdates.tryEmit(
             ServiceDiscoveryUpdate(peripheral, ServiceDiscoveryPhase.CharacteristicsDiscovered, service)
         )
@@ -149,7 +151,7 @@ class MacosJvmEngine : BlueFalconEngine {
     ) {
         val peripheral = connections[peripheralUuid] ?: return
         val service = peripheral.services
-            .find { it.uuid.toString().uppercase() == serviceUuid.uppercase() }
+            .find { it.uuid == parseUuid(serviceUuid) }
             as? MacosJvmBluetoothService ?: return
         val characteristic = MacosJvmBluetoothCharacteristic(
             uuid = parseUuid(characteristicUuid),
@@ -453,9 +455,9 @@ class MacosJvmEngine : BlueFalconEngine {
         characteristicUuid: String
     ): MacosJvmBluetoothCharacteristic? =
         connections[peripheralUuid]?.services
-            ?.find { it.uuid.toString().uppercase() == serviceUuid.uppercase() }
+            ?.find { it.uuid == parseUuid(serviceUuid) }
             ?.characteristics
-            ?.find { it.uuid.toString().uppercase() == characteristicUuid.uppercase() }
+            ?.find { it.uuid == parseUuid(characteristicUuid) }
             as? MacosJvmBluetoothCharacteristic
 
     private fun findDescriptor(
@@ -466,7 +468,7 @@ class MacosJvmEngine : BlueFalconEngine {
     ): MacosJvmBluetoothCharacteristicDescriptor? =
         findCharacteristic(peripheralUuid, serviceUuid, characteristicUuid)
             ?.descriptors
-            ?.find { it.uuid.toString().uppercase() == descriptorUuid.uppercase() }
+            ?.find { it.uuid == parseUuid(descriptorUuid) }
             as? MacosJvmBluetoothCharacteristicDescriptor
 
     private fun BluetoothPeripheral.asMacos(): MacosJvmBluetoothPeripheral =

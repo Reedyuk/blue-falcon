@@ -111,9 +111,23 @@ static NSData* toNSData(JNIEnv *env, jbyteArray arr) {
 // Peripheral / service / characteristic lookup
 // ---------------------------------------------------------------------------
 
+// CBUUID.UUIDString gives the short form for a Bluetooth SIG UUID ("180A"), but the Kotlin side
+// sends the full 128-bit form ("0000180a-0000-1000-8000-00805f9b34fb"). Expand both to the full
+// form before comparing, so a lookup by a SIG UUID does not silently fail.
+static NSString* fullUuidString(NSString *uuid) {
+    NSString *u = [uuid uppercaseString];
+    if (u.length == 4) return [NSString stringWithFormat:@"0000%@-0000-1000-8000-00805F9B34FB", u];
+    if (u.length == 8) return [NSString stringWithFormat:@"%@-0000-1000-8000-00805F9B34FB", u];
+    return u;
+}
+
+static BOOL uuidMatches(CBUUID *cbUuid, NSString *uuid) {
+    return [fullUuidString(cbUuid.UUIDString) isEqualToString:fullUuidString(uuid)];
+}
+
 static CBService* findService(CBPeripheral *p, NSString *svcUuid) {
     for (CBService *s in p.services) {
-        if ([s.UUID.UUIDString caseInsensitiveCompare:svcUuid] == NSOrderedSame) return s;
+        if (uuidMatches(s.UUID, svcUuid)) return s;
     }
     return nil;
 }
@@ -122,7 +136,7 @@ static CBCharacteristic* findCharacteristic(CBPeripheral *p, NSString *svcUuid, 
     CBService *s = findService(p, svcUuid);
     if (!s) return nil;
     for (CBCharacteristic *c in s.characteristics) {
-        if ([c.UUID.UUIDString caseInsensitiveCompare:charUuid] == NSOrderedSame) return c;
+        if (uuidMatches(c.UUID, charUuid)) return c;
     }
     return nil;
 }
@@ -131,7 +145,7 @@ static CBDescriptor* findDescriptor(CBPeripheral *p, NSString *svcUuid, NSString
     CBCharacteristic *c = findCharacteristic(p, svcUuid, charUuid);
     if (!c) return nil;
     for (CBDescriptor *d in c.descriptors) {
-        if ([d.UUID.UUIDString caseInsensitiveCompare:descUuid] == NSOrderedSame) return d;
+        if (uuidMatches(d.UUID, descUuid)) return d;
     }
     return nil;
 }
