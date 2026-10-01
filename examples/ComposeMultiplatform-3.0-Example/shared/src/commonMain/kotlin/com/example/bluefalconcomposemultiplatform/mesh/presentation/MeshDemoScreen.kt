@@ -15,16 +15,19 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.clickable
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Clear
+import androidx.compose.material.icons.filled.ExpandLess
+import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.material.icons.filled.Groups
 import androidx.compose.material.icons.filled.Hub
-import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -41,25 +44,28 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.example.bluefalconcomposemultiplatform.mesh.domain.MeshEnvelope
 import dev.bluefalcon.plugins.mesh.MeshNodeState
 import dev.bluefalcon.plugins.metrics.MetricsPlugin
 import dev.bluefalcon.plugins.metrics.MetricsSnapshot
 
 /**
- * Composable screen demonstrating the Mesh plugin functionality.
+ * Composable screen demonstrating the Mesh plugin as an internet-less group chat (ADR 0016).
  *
- * Shows:
- * - Mesh node state (idle/running/stopped)
- * - Controls to start/stop mesh networking
- * - Message input for broadcasting
- * - List of received messages from the mesh
+ * Flow:
+ * - Enter a display name and join the mesh
+ * - See a live, WhatsApp-style group chat whose messages and participant list are synced across
+ *   every connected mesh node (no server, no internet)
+ * - Leave to stop the mesh node
  */
 @Composable
 fun MeshDemoScreen(
@@ -71,101 +77,100 @@ fun MeshDemoScreen(
     val metrics by metricsPlugin.snapshot.collectAsState()
 
     Box(modifier = modifier.fillMaxSize()) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                // Applied on the outer container (rather than just the input row) so
-                // that as the keyboard rises, it eats into the message list's weight(1f)
-                // space rather than being drawn underneath/behind the keyboard - the
-                // list shrinks and the input bar stays pinned directly above the
-                // keyboard, like a normal chat client.
-                .imePadding()
-                .padding(16.dp),
-        ) {
-            // Header with mesh status
-            MeshStatusHeader(
-                nodeState = state.nodeState,
-                nodeUuid = state.nodeUuid,
-                neighborCount = state.neighborCount,
+        if (!state.joined) {
+            JoinMeshView(
+                displayNameInput = state.displayNameInput,
+                onDisplayNameChange = { viewModel.onEvent(MeshDemoEvent.UpdateDisplayNameInput(it)) },
+                onJoin = { viewModel.onEvent(MeshDemoEvent.JoinMesh) },
+                modifier = Modifier.fillMaxSize(),
             )
+        } else {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    // Applied on the outer container (rather than just the input row) so
+                    // that as the keyboard rises, it eats into the message list's weight(1f)
+                    // space rather than being drawn underneath/behind the keyboard - the
+                    // list shrinks and the input bar stays pinned directly above the
+                    // keyboard, like a normal chat client.
+                    .imePadding()
+                    .padding(16.dp),
+            ) {
+                MeshStatusHeader(
+                    nodeState = state.nodeState,
+                    localDisplayName = state.localDisplayName,
+                    neighborCount = state.neighborCount,
+                    participants = state.participants,
+                    onLeave = { viewModel.onEvent(MeshDemoEvent.StopMesh) },
+                    onClear = { viewModel.onEvent(MeshDemoEvent.ClearMessages) },
+                )
 
-            Spacer(modifier = Modifier.height(16.dp))
+                Spacer(modifier = Modifier.height(8.dp))
 
-            // Control buttons
-            MeshControls(
-                nodeState = state.nodeState,
-                onStart = { viewModel.onEvent(MeshDemoEvent.StartMesh) },
-                onStop = { viewModel.onEvent(MeshDemoEvent.StopMesh) },
-                onClear = { viewModel.onEvent(MeshDemoEvent.ClearMessages) },
-            )
+                // Live connection/latency/throughput metrics (blue-falcon-plugin-metrics, ADR 0012).
+                // Every scan/connect/disconnect/read/write the mesh node performs against BlueFalcon
+                // flows through this same plugin, so these counters update live as the mesh runs.
+                // Collapsible so the user can hide it to give the chat list more room; it stays
+                // pinned above the list (like the status header) rather than scrolling with it.
+                MetricsSummaryCard(metrics = metrics)
 
-            Spacer(modifier = Modifier.height(16.dp))
+                Spacer(modifier = Modifier.height(16.dp))
 
-            // Live connection/latency/throughput metrics (blue-falcon-plugin-metrics, ADR 0012).
-            // Every scan/connect/disconnect/read/write the mesh node performs against BlueFalcon
-            // flows through this same plugin, so these counters update live as the mesh runs.
-            MetricsSummaryCard(metrics = metrics)
+                Text(
+                    text = "Chat (${state.messages.size})",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                )
 
-            Spacer(modifier = Modifier.height(16.dp))
+                Spacer(modifier = Modifier.height(8.dp))
 
-            // Messages list
-            Text(
-                text = "Messages (${state.messages.size})",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold,
-            )
+                if (state.messages.isEmpty()) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(1f),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(
+                            text = "No messages yet - send one to start chatting",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                } else {
+                    val listState = rememberLazyListState()
 
-            Spacer(modifier = Modifier.height(8.dp))
+                    // Messages are newest-first and reverseLayout puts index 0 at the bottom, so
+                    // this keeps the latest message in view as new ones arrive - matching how a
+                    // chat app behaves - while the user can still freely scroll up through history.
+                    LaunchedEffect(state.messages.firstOrNull()?.id) {
+                        if (state.messages.isNotEmpty()) {
+                            listState.animateScrollToItem(0)
+                        }
+                    }
 
-            if (state.messages.isEmpty()) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .weight(1f),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Text(
-                        text = if (state.nodeState == MeshNodeState.Running) {
-                            "No messages yet - send one to start chatting"
-                        } else {
-                            "Start the mesh to send and receive messages"
-                        },
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-            } else {
-                val listState = rememberLazyListState()
-
-                // Messages are prepended (newest first) and reverseLayout puts index 0
-                // at the bottom, so this keeps the latest message in view as new ones
-                // arrive - matching how a chat app behaves - while the user can still
-                // freely scroll (drag) up through history at any time.
-                LaunchedEffect(state.messages.firstOrNull()?.id) {
-                    if (state.messages.isNotEmpty()) {
-                        listState.animateScrollToItem(0)
+                    LazyColumn(
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxWidth(),
+                        state = listState,
+                        verticalArrangement = Arrangement.spacedBy(4.dp),
+                        contentPadding = PaddingValues(vertical = 4.dp),
+                        reverseLayout = true,
+                    ) {
+                        itemsIndexed(state.messages, key = { _, item -> item.id }) { index, message ->
+                            // In reverseLayout, the item "below" in reading order (same sender,
+                            // consecutive) is at index - 1, not index + 1.
+                            val previous = state.messages.getOrNull(index - 1)
+                            val isGroupedWithPrevious = previous != null && previous.userId == message.userId
+                            ChatMessageBubble(
+                                message = message,
+                                showSenderName = !message.isOwnMessage && !isGroupedWithPrevious,
+                            )
+                        }
                     }
                 }
 
-                LazyColumn(
-                    modifier = Modifier
-                        .weight(1f)
-                        .fillMaxWidth(),
-                    state = listState,
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                    contentPadding = PaddingValues(vertical = 4.dp),
-                    reverseLayout = true,
-                ) {
-                    items(state.messages, key = { it.id }) { message ->
-                        ChatMessageBubble(message = message)
-                    }
-                }
-            }
-
-            // Message input - pinned to the bottom of the screen, above the keyboard
-            // (via imePadding() on the outer Column) rather than above the message
-            // list, so the layout reads as a normal chat client.
-            if (state.nodeState == MeshNodeState.Running) {
                 Spacer(modifier = Modifier.height(16.dp))
 
                 MessageInput(
@@ -195,11 +200,67 @@ fun MeshDemoScreen(
 }
 
 @Composable
+private fun JoinMeshView(
+    displayNameInput: String,
+    onDisplayNameChange: (String) -> Unit,
+    onJoin: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier = modifier.padding(24.dp),
+        verticalArrangement = Arrangement.Center,
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Icon(
+            imageVector = Icons.Filled.Hub,
+            contentDescription = null,
+            modifier = Modifier.size(64.dp),
+            tint = MaterialTheme.colorScheme.primary,
+        )
+        Spacer(modifier = Modifier.height(16.dp))
+        Text(
+            text = "Join the Mesh Chat",
+            style = MaterialTheme.typography.headlineSmall,
+            fontWeight = FontWeight.SemiBold,
+        )
+        Spacer(modifier = Modifier.height(8.dp))
+        Text(
+            text = "Enter a display name to connect to nearby devices and start chatting - " +
+                "no internet connection required.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Spacer(modifier = Modifier.height(24.dp))
+        OutlinedTextField(
+            value = displayNameInput,
+            onValueChange = onDisplayNameChange,
+            modifier = Modifier.fillMaxWidth(),
+            label = { Text("Display name") },
+            singleLine = true,
+            shape = RoundedCornerShape(12.dp),
+        )
+        Spacer(modifier = Modifier.height(16.dp))
+        Button(
+            onClick = onJoin,
+            modifier = Modifier.fillMaxWidth(),
+            enabled = displayNameInput.isNotBlank(),
+        ) {
+            Text("Join Mesh")
+        }
+    }
+}
+
+@Composable
 private fun MeshStatusHeader(
     nodeState: MeshNodeState,
-    nodeUuid: String,
+    localDisplayName: String,
     neighborCount: Int,
+    participants: List<MeshEnvelope.UserJoined>,
+    onLeave: () -> Unit,
+    onClear: () -> Unit,
 ) {
+    var participantsExpanded by remember { mutableStateOf(false) }
+
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(
@@ -209,162 +270,172 @@ private fun MeshStatusHeader(
                 else -> MaterialTheme.colorScheme.surfaceVariant
             },
         ),
+        // Floats visually above the scrolling chat list beneath it (ADR 0016).
+        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            // Status indicator
-            Box(
-                modifier = Modifier
-                    .size(48.dp)
-                    .clip(CircleShape)
-                    .background(
-                        when (nodeState) {
-                            MeshNodeState.Running -> MaterialTheme.colorScheme.primary
-                            MeshNodeState.Stopping -> MaterialTheme.colorScheme.tertiary
-                            else -> MaterialTheme.colorScheme.outline
-                        }
-                    ),
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(
-                    imageVector = Icons.Filled.Hub,
-                    contentDescription = "Mesh status",
-                    tint = MaterialTheme.colorScheme.onPrimary,
-                    modifier = Modifier.size(28.dp),
-                )
-            }
-
-            Spacer(modifier = Modifier.width(16.dp))
-
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = "Mesh Node",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold,
-                )
-                Text(
-                    text = when (nodeState) {
-                        MeshNodeState.Idle -> "Not started"
-                        MeshNodeState.Running -> "Running"
-                        MeshNodeState.Stopping -> "Stopping..."
-                        MeshNodeState.Stopped -> "Stopped"
-                    },
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                if (nodeState == MeshNodeState.Running) {
-                    Text(
-                        text = if (neighborCount == 1) {
-                            "1 device connected"
-                        } else {
-                            "$neighborCount devices connected"
-                        },
-                        style = MaterialTheme.typography.bodyMedium,
-                        fontWeight = FontWeight.Medium,
-                        color = MaterialTheme.colorScheme.primary,
+        Column(modifier = Modifier.padding(16.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    modifier = Modifier
+                        .size(40.dp)
+                        .clip(CircleShape)
+                        .background(
+                            when (nodeState) {
+                                MeshNodeState.Running -> MaterialTheme.colorScheme.primary
+                                MeshNodeState.Stopping -> MaterialTheme.colorScheme.tertiary
+                                else -> MaterialTheme.colorScheme.outline
+                            },
+                        ),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.Hub,
+                        contentDescription = "Mesh status",
+                        tint = MaterialTheme.colorScheme.onPrimary,
+                        modifier = Modifier.size(22.dp),
                     )
                 }
-                if (nodeUuid.isNotEmpty()) {
+
+                Spacer(modifier = Modifier.width(12.dp))
+
+                Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = "ID: ${nodeUuid.take(8)}...",
+                        text = localDisplayName,
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                    Text(
+                        text = when (nodeState) {
+                            MeshNodeState.Idle -> "Not connected"
+                            MeshNodeState.Running -> "Connected - $neighborCount device(s) nearby"
+                            MeshNodeState.Stopping -> "Leaving..."
+                            MeshNodeState.Stopped -> "Disconnected"
+                        },
                         style = MaterialTheme.typography.bodySmall,
-                        fontFamily = FontFamily.Monospace,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
-            }
-        }
-    }
-}
 
-@Composable
-private fun MeshControls(
-    nodeState: MeshNodeState,
-    onStart: () -> Unit,
-    onStop: () -> Unit,
-    onClear: () -> Unit,
-) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-        when (nodeState) {
-            MeshNodeState.Idle, MeshNodeState.Stopped -> {
-                Button(
-                    onClick = onStart,
-                    modifier = Modifier.weight(1f),
-                ) {
-                    Icon(Icons.Filled.PlayArrow, contentDescription = null)
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text("Start Mesh")
+                IconButton(onClick = onLeave, enabled = nodeState != MeshNodeState.Stopping) {
+                    Icon(Icons.AutoMirrored.Filled.Logout, contentDescription = "Leave mesh")
                 }
             }
-            MeshNodeState.Running -> {
-                Button(
-                    onClick = onStop,
-                    modifier = Modifier.weight(1f),
-                ) {
-                    Icon(Icons.Filled.Stop, contentDescription = null)
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text("Stop Mesh")
-                }
-            }
-            MeshNodeState.Stopping -> {
-                Button(
-                    onClick = {},
-                    enabled = false,
-                    modifier = Modifier.weight(1f),
-                ) {
-                    Text("Stopping...")
-                }
-            }
-        }
 
-        FilledTonalButton(onClick = onClear) {
-            Icon(Icons.Filled.Clear, contentDescription = null)
-            Spacer(modifier = Modifier.width(8.dp))
-            Text("Clear")
+            Spacer(modifier = Modifier.height(12.dp))
+
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { participantsExpanded = !participantsExpanded },
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.Groups,
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(modifier = Modifier.width(6.dp))
+                Text(
+                    text = if (participants.size == 1) {
+                        "1 known participant"
+                    } else {
+                        "${participants.size} known participants"
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.weight(1f),
+                )
+                Icon(
+                    imageVector = if (participantsExpanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
+                    contentDescription = if (participantsExpanded) "Hide participants" else "Show participants",
+                    modifier = Modifier.size(18.dp),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                FilledTonalButton(onClick = onClear) {
+                    Icon(Icons.Filled.Clear, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("Clear")
+                }
+            }
+
+            if (participantsExpanded) {
+                Spacer(modifier = Modifier.height(8.dp))
+                if (participants.isEmpty()) {
+                    Text(
+                        text = "No participants known yet",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                } else {
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        participants.sortedBy { it.displayName }.forEach { participant ->
+                            Text(
+                                text = "• ${participant.displayName}",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+                }
+            }
         }
     }
 }
 
 @Composable
 private fun MetricsSummaryCard(metrics: MetricsSnapshot) {
+    var expanded by remember { mutableStateOf(true) }
+
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+        // Floats visually above the scrolling chat list beneath it (ADR 0016).
+        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
-            Text(
-                text = "Metrics",
-                style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.SemiBold,
-            )
-
-            Spacer(modifier = Modifier.height(8.dp))
-
             Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { expanded = !expanded },
+                verticalAlignment = Alignment.CenterVertically,
             ) {
-                MetricStat(
-                    label = "Connects",
-                    value = "${metrics.connectSuccessCount}/${metrics.connectSuccessCount + metrics.connectFailureCount}",
+                Text(
+                    text = "Metrics",
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.weight(1f),
                 )
-                MetricStat(
-                    label = "Reads",
-                    value = "${metrics.readSuccessCount}/${metrics.readSuccessCount + metrics.readFailureCount}",
+                Icon(
+                    imageVector = if (expanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
+                    contentDescription = if (expanded) "Hide metrics" else "Show metrics",
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-                MetricStat(
-                    label = "Writes",
-                    value = "${metrics.writeSuccessCount}/${metrics.writeSuccessCount + metrics.writeFailureCount}",
-                )
-                MetricStat(label = "Bytes ↓", value = metrics.bytesRead.toString())
-                MetricStat(label = "Bytes ↑", value = metrics.bytesWritten.toString())
+            }
+
+            if (expanded) {
+                Spacer(modifier = Modifier.height(8.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                ) {
+                    MetricStat(
+                        label = "Connects",
+                        value = "${metrics.connectSuccessCount}/${metrics.connectSuccessCount + metrics.connectFailureCount}",
+                    )
+                    MetricStat(
+                        label = "Reads",
+                        value = "${metrics.readSuccessCount}/${metrics.readSuccessCount + metrics.readFailureCount}",
+                    )
+                    MetricStat(
+                        label = "Writes",
+                        value = "${metrics.writeSuccessCount}/${metrics.writeSuccessCount + metrics.writeFailureCount}",
+                    )
+                    MetricStat(label = "Bytes ↓", value = metrics.bytesRead.toString())
+                    MetricStat(label = "Bytes ↑", value = metrics.bytesWritten.toString())
+                }
             }
         }
     }
@@ -400,7 +471,7 @@ private fun MessageInput(
             value = text,
             onValueChange = onTextChange,
             modifier = Modifier.weight(1f),
-            placeholder = { Text("Enter message to broadcast...") },
+            placeholder = { Text("Message") },
             singleLine = true,
             shape = RoundedCornerShape(24.dp),
         )
@@ -425,7 +496,7 @@ private fun MessageInput(
 }
 
 @Composable
-private fun ChatMessageBubble(message: ChatMessage) {
+private fun ChatMessageBubble(message: ChatMessage, showSenderName: Boolean) {
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = if (message.isOwnMessage) Arrangement.End else Arrangement.Start,
@@ -439,50 +510,54 @@ private fun ChatMessageBubble(message: ChatMessage) {
                 MaterialTheme.colorScheme.surfaceVariant
             },
         ) {
-            Column(
-                modifier = Modifier.padding(12.dp),
-            ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                ) {
+            Column(modifier = Modifier.padding(10.dp)) {
+                if (showSenderName) {
                     Text(
-                        text = if (message.isOwnMessage) {
-                            "You"
-                        } else {
-                            "From: ${message.originUuid.take(8)}..."
-                        },
-                        style = MaterialTheme.typography.labelSmall,
-                        fontFamily = FontFamily.Monospace,
-                        color = if (message.isOwnMessage) {
-                            MaterialTheme.colorScheme.onPrimaryContainer
-                        } else {
-                            MaterialTheme.colorScheme.onSurfaceVariant
-                        },
+                        text = message.displayName,
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.primary,
                     )
-                    if (!message.isOwnMessage) {
-                        Text(
-                            text = "${message.hopCount} hop(s)",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.tertiary,
-                        )
-                    }
+                    Spacer(modifier = Modifier.height(2.dp))
                 }
 
-                Spacer(modifier = Modifier.height(4.dp))
-
                 Text(
-                    text = message.payload,
+                    text = message.text,
                     style = MaterialTheme.typography.bodyMedium,
                     color = if (message.isOwnMessage) {
                         MaterialTheme.colorScheme.onPrimaryContainer
                     } else {
                         MaterialTheme.colorScheme.onSurfaceVariant
                     },
-                    maxLines = 3,
+                    maxLines = 10,
                     overflow = TextOverflow.Ellipsis,
+                )
+
+                Spacer(modifier = Modifier.height(2.dp))
+
+                Text(
+                    text = formatTimestamp(message.timestamp),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = if (message.isOwnMessage) {
+                        MaterialTheme.colorScheme.onPrimaryContainer
+                    } else {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    },
+                    modifier = Modifier.align(Alignment.End),
                 )
             }
         }
     }
+}
+
+/**
+ * Formats epoch millis as a UTC `HH:mm` clock time. Using UTC (rather than each platform's local
+ * time zone) keeps timestamps directly comparable across mesh nodes without a fifth
+ * platform-specific time-zone actual for this demo.
+ */
+private fun formatTimestamp(epochMillis: Long): String {
+    val totalSeconds = epochMillis / 1000
+    val hours = (totalSeconds / 3600) % 24
+    val minutes = (totalSeconds / 60) % 60
+    return "${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}"
 }

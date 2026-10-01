@@ -20,10 +20,16 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Bluetooth
 import androidx.compose.material.icons.filled.BluetoothDrive
+import androidx.compose.material.icons.filled.Hub
+import androidx.compose.material.icons.filled.SettingsInputAntenna
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.NavigationBar
+import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
@@ -37,6 +43,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -46,6 +53,7 @@ import com.example.bluefalconcomposemultiplatform.ble.presentation.UiEvent
 import com.example.bluefalconcomposemultiplatform.ble.presentation.component.DeviceDetailScreen
 import com.example.bluefalconcomposemultiplatform.ble.presentation.component.DeviceScanView
 import com.example.bluefalconcomposemultiplatform.core.presentation.BlueFalconTheme
+import com.example.bluefalconcomposemultiplatform.core.presentation.useBottomNavigation
 import com.example.bluefalconcomposemultiplatform.di.AppModule
 import com.example.bluefalconcomposemultiplatform.mesh.presentation.MeshDemoScreen
 import com.example.bluefalconcomposemultiplatform.mesh.presentation.MeshDemoViewModel
@@ -57,11 +65,13 @@ import dev.icerock.moko.mvvm.compose.viewModelFactory
 
 private enum class ExampleMode(
     val label: String,
+    val icon: ImageVector,
 ) {
-    Central("Central"),
-    Peripheral("Peripheral"),
-    Mesh("Mesh"),
+    Central("Central", Icons.Filled.Bluetooth),
+    Peripheral("Peripheral", Icons.Filled.SettingsInputAntenna),
+    Mesh("Mesh", Icons.Filled.Hub),
 }
+
 
 @Composable
 fun App(
@@ -114,67 +124,94 @@ fun App(
             null
         }
 
-        Column(modifier = Modifier.fillMaxSize()) {
-            SingleChoiceSegmentedButtonRow(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 12.dp),
-            ) {
-                ExampleMode.entries.forEachIndexed { index, mode ->
-                    SegmentedButton(
-                        selected = selectedMode == mode,
-                        onClick = {
-                            if (mode == ExampleMode.Peripheral) {
-                                peripheralViewModelInitialized = true
-                            }
-                            if (mode == ExampleMode.Mesh) {
-                                meshViewModelInitialized = true
-                            }
-                            selectedMode = mode
+        fun selectMode(mode: ExampleMode) {
+            if (mode == ExampleMode.Peripheral) {
+                peripheralViewModelInitialized = true
+            }
+            if (mode == ExampleMode.Mesh) {
+                meshViewModelInitialized = true
+            }
+            selectedMode = mode
+        }
+
+        val content: @Composable (Modifier) -> Unit = { contentModifier ->
+            when (selectedMode) {
+                ExampleMode.Central -> {
+                    val state by viewModel.deviceState.collectAsState()
+                    CentralContent(
+                        state = state,
+                        onEvent = viewModel::onEvent,
+                        metricsPlugin = appModule.metricsPlugin,
+                        modifier = contentModifier,
+                    )
+                }
+
+                ExampleMode.Peripheral -> {
+                    PeripheralServerView(
+                        viewModel = checkNotNull(peripheralViewModel) {
+                            "Peripheral mode must initialize its ViewModel"
                         },
-                        shape = SegmentedButtonDefaults.itemShape(
-                            index = index,
-                            count = ExampleMode.entries.size,
-                        ),
-                        label = { Text(mode.label) },
+                        modifier = contentModifier,
+                    )
+                }
+
+                ExampleMode.Mesh -> {
+                    MeshDemoScreen(
+                        viewModel = checkNotNull(meshViewModel) {
+                            "Mesh mode must initialize its ViewModel"
+                        },
+                        metricsPlugin = appModule.metricsPlugin,
+                        modifier = contentModifier,
                     )
                 }
             }
+        }
 
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(1f),
-            ) {
-                when (selectedMode) {
-                    ExampleMode.Central -> {
-                        val state by viewModel.deviceState.collectAsState()
-                        CentralContent(
-                            state = state,
-                            onEvent = viewModel::onEvent,
-                            metricsPlugin = appModule.metricsPlugin,
-                            modifier = Modifier.fillMaxSize(),
+        // Android/iOS use a bottom tab bar (conventional for mobile top-level navigation);
+        // desktop/macOS keep the top segmented control (ADR 0016).
+        if (useBottomNavigation) {
+            Scaffold(
+                bottomBar = {
+                    NavigationBar {
+                        ExampleMode.entries.forEach { mode ->
+                            NavigationBarItem(
+                                selected = selectedMode == mode,
+                                onClick = { selectMode(mode) },
+                                icon = { Icon(mode.icon, contentDescription = mode.label) },
+                                label = { Text(mode.label) },
+                            )
+                        }
+                    }
+                },
+            ) { innerPadding ->
+                content(Modifier.fillMaxSize().padding(innerPadding))
+            }
+        } else {
+            Column(modifier = Modifier.fillMaxSize()) {
+                SingleChoiceSegmentedButtonRow(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 12.dp),
+                ) {
+                    ExampleMode.entries.forEachIndexed { index, mode ->
+                        SegmentedButton(
+                            selected = selectedMode == mode,
+                            onClick = { selectMode(mode) },
+                            shape = SegmentedButtonDefaults.itemShape(
+                                index = index,
+                                count = ExampleMode.entries.size,
+                            ),
+                            label = { Text(mode.label) },
                         )
                     }
+                }
 
-                    ExampleMode.Peripheral -> {
-                        PeripheralServerView(
-                            viewModel = checkNotNull(peripheralViewModel) {
-                                "Peripheral mode must initialize its ViewModel"
-                            },
-                            modifier = Modifier.fillMaxSize(),
-                        )
-                    }
-
-                    ExampleMode.Mesh -> {
-                        MeshDemoScreen(
-                            viewModel = checkNotNull(meshViewModel) {
-                                "Mesh mode must initialize its ViewModel"
-                            },
-                            metricsPlugin = appModule.metricsPlugin,
-                            modifier = Modifier.fillMaxSize(),
-                        )
-                    }
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f),
+                ) {
+                    content(Modifier.fillMaxSize())
                 }
             }
         }

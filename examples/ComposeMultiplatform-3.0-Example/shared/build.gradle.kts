@@ -1,5 +1,6 @@
 plugins {
     kotlin("multiplatform")
+    kotlin("plugin.serialization")
     id("com.android.library")
     id("org.jetbrains.compose")
     id("org.jetbrains.kotlin.plugin.compose")
@@ -46,6 +47,9 @@ kotlin {
 
                 // Coroutines (must be explicit — blue-falcon-core uses implementation, not api)
                 implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:$coroutinesVersion")
+
+                // Mesh chat envelope/ledger encoding (ADR 0016)
+                implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
 
                 // Use api() for mvvm-core since it's exported in iOS framework
                 api("dev.icerock.moko:mvvm-core:0.16.1")

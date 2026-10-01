@@ -6,9 +6,22 @@ This application demonstrates both BLE roles exposed by Blue Falcon:
   notifications, changes MTU, reads RSSI, performs Nordic FOTA, and exercises the existing clone
   and broadcast plugins.
 - **Peripheral** hosts an interactive echo GATT server on Android, iOS, and Kotlin/Native macOS.
+- **Mesh** is an internet-less, ledger-synced group chat built on `blue-falcon-plugin-mesh`.
 
-Use the **Central / Peripheral** segmented selector at the top of the application to switch modes.
-The central workflow is unchanged by the peripheral example.
+Android and iOS switch between modes with a bottom tab bar; desktop JVM and native macOS use a
+segmented selector at the top of the window (see
+[ADR 0016](../../docs/adr/0016-mesh-chat-ledger-example.md)). The central workflow is unchanged by
+the peripheral and mesh examples.
+
+## Mesh chat mode
+
+Mesh mode demonstrates building a minimal group chat on top of `MeshNode` (ADR 0011): enter a
+display name to join, then send and receive timestamped messages over BLE with no server and no
+internet connectivity. A `MeshLedger` (`mesh/domain/MeshLedger.kt`) merges three sources of truth -
+locally sent messages, inbound mesh traffic, and periodic `LedgerSync` snapshots rebroadcast
+whenever a new neighbor connects - so a node that joins the mesh late still catches up on known
+participants and recent chat history. See ADR 0016 for the full protocol and its limitations
+(unauthenticated display names, no persistence, bandwidth cost of resyncing full history).
 
 ## Peripheral echo mode
 

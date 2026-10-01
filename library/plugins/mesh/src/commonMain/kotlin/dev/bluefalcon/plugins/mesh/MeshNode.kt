@@ -18,6 +18,7 @@ import dev.bluefalcon.peripheral.GattResponseStatus
 import dev.bluefalcon.peripheral.GattServerRequest
 import dev.bluefalcon.peripheral.GattServiceConfig
 import dev.bluefalcon.peripheral.GattServiceId
+import dev.bluefalcon.peripheral.NotificationResult
 import dev.bluefalcon.peripheral.PeripheralConfig
 import dev.bluefalcon.peripheral.PeripheralSession
 import kotlinx.coroutines.CoroutineScope
@@ -32,6 +33,7 @@ import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
@@ -710,10 +712,31 @@ class MeshNode(
 
         sendMutexFor(session.id.value).withLock {
             frames.forEach { frame ->
-                val result = session.notify(meshCharacteristicId, frame)
+                // A fragmented payload (e.g. a multi-message LedgerSync) issues several
+                // notify() calls back-to-back. Android's GATT server can only have one
+                // notification in flight at a time and returns Busy (rather than queuing)
+                // while a previous one is still being sent - unlike the central write path,
+                // which the stack queues/retries automatically. Without retrying here, any
+                // fragment beyond the first could be silently dropped, leaving the receiver's
+                // reassembly buffer permanently incomplete and the history resync never
+                // arriving, even though single-frame messages (ordinary chat messages) kept
+                // working fine.
+                var result = session.notify(meshCharacteristicId, frame)
+                var attempt = 0
+                while (result == NotificationResult.Busy && attempt < BACKPRESSURE_RETRY_LIMIT) {
+                    attempt++
+                    // Prefer waking as soon as the backend signals it drained the previous
+                    // notification; fall back to a fixed delay if that signal doesn't arrive
+                    // in time so a stuck/missed signal can't stall this fragment forever.
+                    withTimeoutOrNull(BACKPRESSURE_RETRY_DELAY_MS) {
+                        session.notificationReady.first()
+                    } ?: delay(BACKPRESSURE_RETRY_DELAY_MS)
+                    result = session.notify(meshCharacteristicId, frame)
+                }
                 logger?.debug(
                     "relayToPeripheralSession: notified session ${session.id.value} " +
-                        "(${frame.size} bytes) -> $result"
+                        "(${frame.size} bytes) -> $result" +
+                        if (attempt > 0) " (after $attempt retries)" else ""
                 )
             }
         }
