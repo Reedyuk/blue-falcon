@@ -187,6 +187,7 @@ Plugins provide cross-cutting functionality and are published as separate artifa
 - `blue-falcon-plugin-retry` (`library/plugins/retry/`) - Automatic retry on transient failures
 - `blue-falcon-plugin-caching` (`library/plugins/caching/`) - Cache GATT service/characteristic metadata
 - `blue-falcon-plugin-metrics` (`library/plugins/metrics/`) - Performance and usage metrics
+- `blue-falcon-plugin-command-queue` (`library/plugins/command-queue/`) - Bounded, observable central GATT command scheduling
 
 **Community Plugins** (examples, external repositories):
 - `blue-falcon-plugin-device-profiles` - High-level abstractions for common device types (heart rate monitors, thermometers, glucose meters)

@@ -19,6 +19,8 @@ jobs:
     name: Update Version Numbers
     runs-on: ubuntu-latest
     if: github.event_name == 'release'
+    outputs:
+      release_commit: ${{ steps.commit.outputs.release_commit }}
     permissions:
       contents: write
     steps:
@@ -35,6 +37,10 @@ jobs:
         TAG="${{ github.event.release.tag_name }}"
         # Strip leading 'v' if present
         VERSION="${TAG#v}"
+        if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$ ]]; then
+          echo "Unsupported release version: $VERSION" >&2
+          exit 1
+        fi
         echo "version=$VERSION" >> "$GITHUB_OUTPUT"
         echo "Updating to version: $VERSION"
 
@@ -51,14 +57,57 @@ jobs:
     - name: Update README.md
       run: |
         VERSION="${{ steps.version.outputs.version }}"
-        sed -i -E "s/(dev\.bluefalcon:blue-falcon[a-z-]*:)[0-9]+\.[0-9]+\.[0-9]+[a-zA-Z0-9.-]*/\1$VERSION/g" README.md
+        sed -i -E "s/(dev\.bluefalcon:blue-falcon[a-z-]*:)(<version>|[0-9]+\.[0-9]+\.[0-9]+[a-zA-Z0-9.-]*)/\1$VERSION/g" README.md
 
     - name: Update example projects
       run: |
         VERSION="${{ steps.version.outputs.version }}"
         sed -i -E "s/(val falconVersion = \")[0-9]+\.[0-9]+\.[0-9]+[a-zA-Z0-9.-]*(\")/\1$VERSION\2/" examples/ComposeMultiplatform-3.0-Example/shared/build.gradle.kts
 
+    - name: Verify every version was updated
+      run: |
+        VERSION="${{ steps.version.outputs.version }}"
+        VERSION_KEYS=(
+          version
+          versionCore
+          versionPeripheral
+          versionEngines
+          versionPlugins
+          versionLegacy
+        )
+
+        for KEY in "${VERSION_KEYS[@]}"; do
+          ACTUAL="$(sed -n "s/^${KEY}=//p" library/gradle.properties)"
+          if [[ "$ACTUAL" != "$VERSION" ]]; then
+            echo "library/gradle.properties: expected $KEY=$VERSION, found $ACTUAL" >&2
+            exit 1
+          fi
+        done
+
+        COORDINATE_COUNT=0
+        while IFS= read -r COORDINATE; do
+          COORDINATE_COUNT=$((COORDINATE_COUNT + 1))
+          ACTUAL="${COORDINATE##*:}"
+          if [[ "$ACTUAL" != "$VERSION" ]]; then
+            echo "README.md: expected $COORDINATE to use $VERSION" >&2
+            exit 1
+          fi
+        done < <(
+          grep -oE 'dev\.bluefalcon:blue-falcon[a-z-]*:[^" )[:space:]]+' README.md
+        )
+        if [[ "$COORDINATE_COUNT" -eq 0 ]]; then
+          echo "README.md: no Blue Falcon dependency coordinates found" >&2
+          exit 1
+        fi
+
+        EXPECTED="val falconVersion = \"$VERSION\""
+        if ! grep -Fqx "$EXPECTED" examples/ComposeMultiplatform-3.0-Example/shared/build.gradle.kts; then
+          echo "Compose example was not updated to $VERSION" >&2
+          exit 1
+        fi
+
     - name: Commit and push version update
+      id: commit
       run: |
         git config user.name "github-actions[bot]"
         git config user.email "github-actions[bot]@users.noreply.github.com"
@@ -69,17 +118,20 @@ jobs:
           git commit -m "chore: update version to ${{ steps.version.outputs.version }}"
           git push origin HEAD:${{ github.event.repository.default_branch }}
         fi
+        echo "release_commit=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
   build-windows-dll:
     name: Build Windows JNI DLL
     runs-on: windows-latest
     needs: update-versions
     if: ${{ !failure() }}
+    outputs:
+      release_commit: ${{ needs.update-versions.outputs.release_commit }}
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
       with:
-        ref: ${{ github.event.repository.default_branch }}
+        ref: ${{ needs.update-versions.outputs.release_commit || github.event.repository.default_branch }}
       
     - name: Set up JDK 17
       uses: actions/setup-java@v4
@@ -106,7 +158,7 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
       with:
-        ref: ${{ github.event.repository.default_branch }}
+        ref: ${{ needs.build-windows-dll.outputs.release_commit || github.event.repository.default_branch }}
       
     - name: Set up JDK 17
       uses: actions/setup-java@v4
@@ -149,6 +201,7 @@ jobs:
         echo "  • blue-falcon-plugin-clone"
         echo "  • blue-falcon-plugin-broadcast"
         echo "  • blue-falcon-plugin-queue"
+        echo "  • blue-falcon-plugin-command-queue"
         echo "  • blue-falcon-plugin-proximity"
         echo "  • blue-falcon-plugin-bonding"
         echo "  • blue-falcon (legacy compatibility)"

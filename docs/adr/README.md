@@ -70,3 +70,4 @@ ADRs can have the following statuses:
 - [ADR 0012: Metrics/Observability Plugin](0012-metrics-observability-plugin.md) - **Implemented** - 2026-08-27
 - [ADR 0013: Add Windows Bluetooth Adapter Enumeration and Selection](0013-add-windows-adapter-selection.md) - **Accepted** - 2026-09-01
 - [ADR 0014: Suspend `readCharacteristic` Until the Value Is Actually Received](0014-suspending-characteristic-reads.md) - **✅ Implemented** - 2026-09-09
+- [ADR 0015: Add an Observable Central Command Queue Plugin](0015-observable-central-command-queue.md) - **✅ Implemented** - 2026-10-01

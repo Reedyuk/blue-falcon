@@ -1,7 +1,6 @@
 package com.example.bluefalconcomposemultiplatform.ble.presentation
 
 import dev.bluefalcon.core.BlueFalcon
-import dev.bluefalcon.core.CharacteristicReadResult
 import dev.bluefalcon.core.DisconnectReason
 import dev.bluefalcon.core.PeripheralConnectionState
 import dev.bluefalcon.core.ServiceDiscoveryPhase
@@ -13,6 +12,8 @@ import dev.bluefalcon.plugins.bonding.BondingPlugin
 import dev.bluefalcon.plugins.broadcast.DeviceBroadcastPlugin
 import dev.bluefalcon.plugins.clone.CloneConfig
 import dev.bluefalcon.plugins.clone.DeviceClonePlugin
+import dev.bluefalcon.plugins.commandqueue.CommandQueuePlugin
+import dev.bluefalcon.plugins.commandqueue.CommandQueueResult
 import dev.bluefalcon.plugins.nordicfota.FotaState
 import dev.bluefalcon.plugins.nordicfota.NordicFotaPlugin
 import dev.bluefalcon.plugins.proximity.ProximityPlugin
@@ -30,6 +31,7 @@ import kotlin.uuid.ExperimentalUuidApi
 @OptIn(ExperimentalUuidApi::class)
 class BluetoothDeviceViewModel(
     private val blueFalcon: BlueFalcon,
+    private val commandQueue: CommandQueuePlugin,
     private val fotaPlugin: NordicFotaPlugin,
     private val bondingPlugin: BondingPlugin,
     private val proximityPlugin: ProximityPlugin,
@@ -48,6 +50,16 @@ class BluetoothDeviceViewModel(
     val deviceState: StateFlow<BluetoothDeviceState> get() = _deviceState
 
     init {
+        // CommandQueuePlugin exposes durable status for monitoring pending central GATT work.
+        viewModelScope.launch(Dispatchers.IO) {
+            commandQueue.state.collect { snapshot ->
+                println(
+                    "GATT queue: queued=${snapshot.queuedCount}, " +
+                        "inFlight=${snapshot.inFlightCount}, bytes=${snapshot.accountedBytes}"
+                )
+            }
+        }
+
         // Collect peripherals from BlueFalcon's StateFlow
         viewModelScope.launch(Dispatchers.IO) {
             blueFalcon.peripherals.collect { peripherals ->
@@ -185,7 +197,13 @@ class BluetoothDeviceViewModel(
                     ServiceDiscoveryPhase.ServicesDiscovered -> {
                         try {
                             update.peripheral.services.forEach { service ->
-                                blueFalcon.discoverCharacteristics(update.peripheral, service)
+                                val result = commandQueue.discoverCharacteristics(
+                                    update.peripheral,
+                                    service,
+                                )
+                                if (result !is CommandQueueResult.CharacteristicsDiscovered) {
+                                    println("Failed to discover characteristics: $result")
+                                }
                             }
                         } catch (e: Exception) {
                             println("Failed to discover characteristics: ${e.message}")
@@ -338,7 +356,10 @@ class BluetoothDeviceViewModel(
                                 // connected/connecting flags already driving the UI.
                                 val state = blueFalcon.peripheralState(device.peripheral)
                                 if (state is PeripheralConnectionState.Connected || state is PeripheralConnectionState.Ready) {
-                                    blueFalcon.discoverServices(device.peripheral)
+                                    val result = commandQueue.discoverServices(device.peripheral)
+                                    if (result != CommandQueueResult.ServicesDiscovered) {
+                                        println("Failed to discover services: $result")
+                                    }
                                 }
                             } catch (e: Exception) {
                                 println("Failed to discover services: ${e.message}")
@@ -357,7 +378,10 @@ class BluetoothDeviceViewModel(
                     viewModelScope.launch(Dispatchers.IO) {
                         try {
                             // Re-discover services; characteristic discovery is driven by serviceDiscoveryUpdates.
-                            blueFalcon.discoverServices(device.peripheral)
+                            val result = commandQueue.discoverServices(device.peripheral)
+                            if (result != CommandQueueResult.ServicesDiscovered) {
+                                println("Failed to refresh device: $result")
+                            }
                         } catch (e: Exception) {
                             println("Failed to refresh device: ${e.message}")
                         }
@@ -369,21 +393,16 @@ class BluetoothDeviceViewModel(
                 _deviceState.value.devices[event.macId]?.let { device ->
                     CoroutineScope(Dispatchers.IO).launch {
                         try {
-                            val result = blueFalcon.readCharacteristic(device.peripheral, event.characteristic)
+                            val result = commandQueue.read(device.peripheral, event.characteristic)
                             when (result) {
-                                is CharacteristicReadResult.Success -> {
+                                is CommandQueueResult.Read -> {
                                     _deviceState.update { state ->
                                         val updateDevices = state.devices.toMutableMap()
                                         updateDevices[event.macId] = device.copy(updateCount = device.updateCount + 1)
                                         state.copy(devices = HashMap(updateDevices))
                                     }
                                 }
-                                is CharacteristicReadResult.Failed ->
-                                    println("Failed to read characteristic: ${result.cause?.message}")
-                                CharacteristicReadResult.Disconnected ->
-                                    println("Failed to read characteristic: peripheral disconnected")
-                                CharacteristicReadResult.Unsupported ->
-                                    println("Failed to read characteristic: unsupported")
+                                else -> println("Failed to read characteristic: $result")
                             }
                         } catch (e: Exception) {
                             println("Failed to read characteristic: ${e.message}")
@@ -395,11 +414,20 @@ class BluetoothDeviceViewModel(
                 _deviceState.value.devices[event.macId]?.let { device ->
                     CoroutineScope(Dispatchers.IO).launch {
                         try {
-                            blueFalcon.writeCharacteristic(device.peripheral, event.characteristic, event.value)
-                            _deviceState.update { state ->
-                                val updateDevices = state.devices.toMutableMap()
-                                updateDevices[event.macId] = device.copy(updateCount = device.updateCount + 1)
-                                state.copy(devices = HashMap(updateDevices))
+                            val result = commandQueue.send(
+                                device.peripheral,
+                                event.characteristic,
+                                event.value.encodeToByteArray(),
+                            )
+                            if (result == CommandQueueResult.Sent) {
+                                _deviceState.update { state ->
+                                    val updateDevices = state.devices.toMutableMap()
+                                    updateDevices[event.macId] =
+                                        device.copy(updateCount = device.updateCount + 1)
+                                    state.copy(devices = HashMap(updateDevices))
+                                }
+                            } else {
+                                println("Failed to write characteristic: $result")
                             }
                         } catch (e: Exception) {
                             println("Failed to write characteristic: ${e.message}")
@@ -411,11 +439,21 @@ class BluetoothDeviceViewModel(
                 _deviceState.value.devices[event.macId]?.let { device ->
                     CoroutineScope(Dispatchers.IO).launch {
                         try {
-                            blueFalcon.notifyCharacteristic(device.peripheral, event.characteristic, !event.characteristic.isNotifying)
-                            _deviceState.update { state ->
-                                val updateDevices = state.devices.toMutableMap()
-                                updateDevices[event.macId] = device.copy(updateCount = device.updateCount + 1)
-                                state.copy(devices = HashMap(updateDevices))
+                            val enabled = !event.characteristic.isNotifying
+                            val result = commandQueue.setNotificationSubscription(
+                                device.peripheral,
+                                event.characteristic,
+                                enabled,
+                            )
+                            if (result == CommandQueueResult.SubscriptionUpdated(enabled)) {
+                                _deviceState.update { state ->
+                                    val updateDevices = state.devices.toMutableMap()
+                                    updateDevices[event.macId] =
+                                        device.copy(updateCount = device.updateCount + 1)
+                                    state.copy(devices = HashMap(updateDevices))
+                                }
+                            } else {
+                                println("Failed to toggle notify: $result")
                             }
                         } catch (e: Exception) {
                             println("Failed to toggle notify: ${e.message}")
@@ -427,11 +465,15 @@ class BluetoothDeviceViewModel(
                 _deviceState.value.devices[event.macId]?.let { device ->
                     CoroutineScope(Dispatchers.IO).launch {
                         try {
-                            blueFalcon.changeMTU(device.peripheral, event.mtuSize)
+                            val result = commandQueue.changeMtu(device.peripheral, event.mtuSize)
                             _deviceState.update { state ->
                                 val updateDevices = state.devices.toMutableMap()
                                 updateDevices[event.macId] = device.copy(
-                                    mtuStatus = "MTU updated",
+                                    mtuStatus = when (result) {
+                                        is CommandQueueResult.MtuChangeRequested ->
+                                            "MTU ${result.requestedMtu} requested"
+                                        else -> "MTU request failed: $result"
+                                    },
                                     updateCount = device.updateCount + 1
                                 )
                                 state.copy(devices = HashMap(updateDevices))
@@ -475,14 +517,25 @@ class BluetoothDeviceViewModel(
                             val smpChar = findSmpCharacteristic(device)
                             if (smpChar != null) {
                                 // Enable notifications on SMP characteristic
-                                blueFalcon.notifyCharacteristic(device.peripheral, smpChar, true)
+                                val subscription = commandQueue.setNotificationSubscription(
+                                    device.peripheral,
+                                    smpChar,
+                                    enabled = true,
+                                )
+                                if (subscription != CommandQueueResult.SubscriptionUpdated(true)) {
+                                    println("Failed to subscribe for FOTA notifications: $subscription")
+                                    return@launch
+                                }
                                 // Write the first chunk
                                 if (messages.isNotEmpty()) {
-                                    blueFalcon.writeCharacteristic(
+                                    val result = commandQueue.send(
                                         device.peripheral,
                                         smpChar,
-                                        messages.first()
+                                        messages.first(),
                                     )
+                                    if (result != CommandQueueResult.Sent) {
+                                        println("Failed to queue first FOTA message: $result")
+                                    }
                                 }
                             } else {
                                 println("SMP characteristic not found on device")
@@ -511,12 +564,15 @@ class BluetoothDeviceViewModel(
                             // (required on iOS/macOS where discoverServices doesn't include characteristics)
                             device.peripheral.services.forEach { service ->
                                 if (service.characteristics.isEmpty()) {
-                                    blueFalcon.discoverCharacteristics(device.peripheral, service)
+                                    val result = commandQueue.discoverCharacteristics(
+                                        device.peripheral,
+                                        service,
+                                    )
+                                    if (result !is CommandQueueResult.CharacteristicsDiscovered) {
+                                        println("Failed to discover characteristics: $result")
+                                    }
                                 }
                             }
-                            // Allow time for async characteristic discovery to complete
-                            kotlinx.coroutines.delay(1500)
-
                             val clone = clonePlugin.cloneDevice(device.peripheral, blueFalcon.engine)
                             val json = clonePlugin.exportToJson(clone)
                             _deviceState.update { state ->
