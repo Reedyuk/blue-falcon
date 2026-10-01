@@ -14,6 +14,7 @@ import dev.bluefalcon.plugins.retry.RetryPlugin
 import dev.bluefalcon.plugins.metrics.MetricsPlugin
 import dev.bluefalcon.plugins.nordicfota.NordicFotaPlugin
 import dev.bluefalcon.plugins.bonding.BondingPlugin
+import dev.bluefalcon.plugins.commandqueue.CommandQueuePlugin
 import dev.bluefalcon.plugins.proximity.ProximityPlugin
 import dev.bluefalcon.plugins.proximity.SmoothingStrategy
 
@@ -35,6 +36,11 @@ actual class AppModule(
     }
 
     actual val metricsPlugin: MetricsPlugin = MetricsPlugin.create()
+
+    actual val commandQueue: CommandQueuePlugin = CommandQueuePlugin.create {
+        maxPendingItemsPerPeripheral = 64
+        maxPendingBytes = 64 * 1024
+    }
 
     private val engine = AndroidEngine(context)
     actual val advertiser: BluetoothAdvertiser = createBluetoothAdvertiser(context)
@@ -77,5 +83,8 @@ actual class AppModule(
         // Install metrics plugin to observe connection success rate, operation latency, and
         // read/write throughput (ADR 0012)
         plugins.install(metricsPlugin) { }
+
+        // Serialize central GATT commands per peripheral and expose observable queue state.
+        plugins.install(commandQueue) { }
     }
 }

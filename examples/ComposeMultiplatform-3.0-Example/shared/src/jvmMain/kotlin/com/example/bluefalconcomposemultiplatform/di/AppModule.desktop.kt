@@ -16,6 +16,7 @@ import dev.bluefalcon.plugins.proximity.ProximityPlugin
 import dev.bluefalcon.plugins.proximity.SmoothingStrategy
 import dev.bluefalcon.plugins.retry.RetryPlugin
 import dev.bluefalcon.plugins.bonding.BondingPlugin
+import dev.bluefalcon.plugins.commandqueue.CommandQueuePlugin
 
 actual class AppModule {
     actual val fotaPlugin: NordicFotaPlugin = NordicFotaPlugin.create {
@@ -33,6 +34,11 @@ actual class AppModule {
     }
 
     actual val metricsPlugin: MetricsPlugin = MetricsPlugin.create()
+
+    actual val commandQueue: CommandQueuePlugin = CommandQueuePlugin.create {
+        maxPendingItemsPerPeripheral = 64
+        maxPendingBytes = 64 * 1024
+    }
 
     // Desktop JVM engines do not support the peripheral/advertising role
     actual val advertiser: BluetoothAdvertiser = NoOpBluetoothAdvertiser()
@@ -65,6 +71,9 @@ actual class AppModule {
         // Install metrics plugin to observe connection success rate, operation latency, and
         // read/write throughput (ADR 0012)
         plugins.install(metricsPlugin) { }
+
+        // Serialize central GATT commands per peripheral and expose observable queue state.
+        plugins.install(commandQueue) { }
     }
 }
 

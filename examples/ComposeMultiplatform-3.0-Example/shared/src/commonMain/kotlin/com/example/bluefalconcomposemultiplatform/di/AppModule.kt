@@ -4,6 +4,7 @@ import com.example.bluefalconcomposemultiplatform.peripheral.PeripheralExampleRu
 import dev.bluefalcon.core.BlueFalcon
 import dev.bluefalcon.peripheral.BluetoothAdvertiser
 import dev.bluefalcon.plugins.bonding.BondingPlugin
+import dev.bluefalcon.plugins.commandqueue.CommandQueuePlugin
 import dev.bluefalcon.plugins.metrics.MetricsPlugin
 import dev.bluefalcon.plugins.nordicfota.NordicFotaPlugin
 import dev.bluefalcon.plugins.proximity.ProximityPlugin
@@ -14,6 +15,7 @@ expect class AppModule {
     val bondingPlugin: BondingPlugin
     val proximityPlugin: ProximityPlugin
     val metricsPlugin: MetricsPlugin
+    val commandQueue: CommandQueuePlugin
     val advertiser: BluetoothAdvertiser
     val peripheralRuntime: PeripheralExampleRuntime?
 }

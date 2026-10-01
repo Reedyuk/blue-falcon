@@ -6,9 +6,6 @@ plugins {
 }
 
 val falconVersion = "3.7.11"
-val pluginVersion = "3.8.3"
-
-val peripheralVersion = "3.8.3"
 val coroutinesVersion = "1.11.0"
 
 kotlin {
@@ -58,17 +55,18 @@ kotlin {
 
                 // Blue Falcon 3.0
                 implementation("dev.bluefalcon:blue-falcon-core:$falconVersion")
-                implementation("dev.bluefalcon:blue-falcon-peripheral:$peripheralVersion")
-                implementation("dev.bluefalcon:blue-falcon-plugin-logging:$pluginVersion")
-                implementation("dev.bluefalcon:blue-falcon-plugin-queue:$pluginVersion")
-                implementation("dev.bluefalcon:blue-falcon-plugin-retry:$pluginVersion")
-                implementation("dev.bluefalcon:blue-falcon-plugin-nordic-fota:$pluginVersion")
-                implementation("dev.bluefalcon:blue-falcon-plugin-clone:$pluginVersion")
-                implementation("dev.bluefalcon:blue-falcon-plugin-broadcast:$pluginVersion")
-                implementation("dev.bluefalcon:blue-falcon-plugin-bonding:$pluginVersion")
-                implementation("dev.bluefalcon:blue-falcon-plugin-proximity:$pluginVersion")
-                implementation("dev.bluefalcon:blue-falcon-plugin-mesh:$pluginVersion")
-                implementation("dev.bluefalcon:blue-falcon-plugin-metrics:$pluginVersion")
+                implementation("dev.bluefalcon:blue-falcon-peripheral:$falconVersion")
+                implementation("dev.bluefalcon:blue-falcon-plugin-logging:$falconVersion")
+                implementation("dev.bluefalcon:blue-falcon-plugin-queue:$falconVersion")
+                implementation("dev.bluefalcon:blue-falcon-plugin-retry:$falconVersion")
+                implementation("dev.bluefalcon:blue-falcon-plugin-nordic-fota:$falconVersion")
+                implementation("dev.bluefalcon:blue-falcon-plugin-clone:$falconVersion")
+                implementation("dev.bluefalcon:blue-falcon-plugin-broadcast:$falconVersion")
+                implementation("dev.bluefalcon:blue-falcon-plugin-bonding:$falconVersion")
+                implementation("dev.bluefalcon:blue-falcon-plugin-proximity:$falconVersion")
+                implementation("dev.bluefalcon:blue-falcon-plugin-mesh:$falconVersion")
+                implementation("dev.bluefalcon:blue-falcon-plugin-metrics:$falconVersion")
+                implementation("dev.bluefalcon:blue-falcon-plugin-command-queue:$falconVersion")
             }
         }
         val commonTest by getting {

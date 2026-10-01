@@ -63,6 +63,9 @@ commonMain.dependencies {
     
     // Connection success/failure counts, operation latency, and throughput metrics
     implementation("dev.bluefalcon:blue-falcon-plugin-metrics:3.7.11")
+
+    // Bounded, observable central GATT command queue
+    implementation("dev.bluefalcon:blue-falcon-plugin-command-queue:<version>")
 }
 ```
 
@@ -366,8 +369,55 @@ The typed overload is implemented by Android, iOS, and native macOS. A `Backpres
 the payload was not retained; wait until the matching entry in
 `characteristicWriteCapabilities` is ready and submit it again. `characteristicWriteReady` is only
 an edge-triggered optimization and may be missed by a late collector. Other engines currently return
-`Unsupported`. Blue Falcon exposes transport outcomes and limits, while framing, fragmentation,
-retries, and durable application queues remain application-owned.
+`Unsupported`.
+
+For applications that want bounded buffering and automatic readiness handling, install the optional
+command queue plugin:
+
+```kotlin
+val commandQueue = CommandQueuePlugin.create {
+    maxPendingItemsPerPeripheral = 64
+    maxPendingBytes = 64 * 1024
+}
+
+val blueFalcon = BlueFalcon {
+    engine = platformEngine
+    install(commandQueue)
+}
+
+launch {
+    commandQueue.state.collect { snapshot ->
+        println("queued=${snapshot.queuedCount}, sending=${snapshot.inFlightCount}")
+    }
+}
+
+val result = commandQueue.send(
+    peripheral = bluetoothPeripheral,
+    characteristic = bluetoothCharacteristic,
+    value = payload,
+    writeType = CharacteristicWriteType.WithoutResponse,
+)
+
+val reading = commandQueue.read(bluetoothPeripheral, bluetoothCharacteristic)
+val services = commandQueue.discoverServices(bluetoothPeripheral)
+val characteristics = commandQueue.discoverCharacteristics(
+    bluetoothPeripheral,
+    bluetoothService,
+)
+val mtuRequest = commandQueue.changeMtu(bluetoothPeripheral, 247)
+val subscription = commandQueue.setNotificationSubscription(
+    bluetoothPeripheral,
+    bluetoothCharacteristic,
+    enabled = true,
+)
+```
+
+The plugin places writes, reads, discovery, MTU requests, and subscription changes into one FIFO per
+peripheral while allowing different peripherals to progress concurrently. It waits for confirmed
+read, discovery, and subscription outcomes and for durable write readiness after backpressure. MTU
+APIs do not expose a portable negotiated result, so a successful command reports that the change was
+requested. The plugin does not fragment, persist, reconnect, or retry terminal failures. Call
+`commandQueue.close()` when its owning client is no longer used.
 
 For the complete API including descriptors, MTU, L2CAP, and bonding, see the [API Reference](docs/API_REFERENCE.md).
 

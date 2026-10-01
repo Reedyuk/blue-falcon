@@ -897,6 +897,81 @@ val blueFalcon = BlueFalcon {
 
 ---
 
+## Command Queue Plugin
+
+The optional `blue-falcon-plugin-command-queue` artifact provides bounded, observable queuing for
+central writes, reads, service/characteristic discovery, MTU requests, and notification
+subscriptions.
+
+```kotlin
+val commandQueue = CommandQueuePlugin.create {
+    maxPendingItemsPerPeripheral = 64
+    maxPendingBytes = 64 * 1024
+}
+
+val blueFalcon = BlueFalcon {
+    engine = platformEngine
+    install(commandQueue)
+}
+```
+
+Submit a complete characteristic value with `send`:
+
+```kotlin
+when (
+    val result = commandQueue.send(
+        peripheral,
+        characteristic,
+        payload,
+        CharacteristicWriteType.WithoutResponse,
+    )
+) {
+    CommandQueueResult.Sent -> Unit
+    CommandQueueResult.QueueFull -> retryLater()
+    is CommandQueueResult.PayloadTooLarge -> splitAtTheProtocolLayer(result.maximumLength)
+    else -> handleTerminalResult(result)
+}
+```
+
+`state` is a durable `StateFlow<CommandQueueSnapshot>` containing every outstanding command and
+its `Queued`, `Sending`, or `Backpressured` phase. `events` is a best-effort `SharedFlow` for
+transition logging and diagnostics; use `state` whenever correctness depends on current status.
+
+All supported operation types share one FIFO for a peripheral:
+
+```kotlin
+val readResult = commandQueue.read(peripheral, characteristic)
+val servicesResult = commandQueue.discoverServices(peripheral, serviceUuids)
+val characteristicsResult = commandQueue.discoverCharacteristics(
+    peripheral,
+    service,
+    characteristicUuids,
+)
+val mtuResult = commandQueue.changeMtu(peripheral, 247)
+val subscriptionResult = commandQueue.setNotificationSubscription(
+    peripheral,
+    characteristic,
+    enabled = true,
+)
+```
+
+Reads return `CommandQueueResult.Read`, discovery waits for the matching discovery event, and
+subscriptions return `CommandQueueResult.SubscriptionUpdated`. Because every engine does not expose
+a portable MTU-negotiation completion result, MTU commands return
+`CommandQueueResult.MtuChangeRequested`; on Android the queue additionally waits for the durable
+operation gate to become ready before dispatching the next command. Discovery and readiness waits
+use `operationTimeoutMillis`, which defaults to 30 seconds and return `TimedOut` on expiry.
+
+The configured item limit applies independently to each peripheral. The byte limit applies across
+the entire plugin instance; an empty write or a non-payload command consumes one accounting byte.
+Commands retain FIFO order within a peripheral while separate peripherals drain concurrently. On
+disconnect, outstanding commands for that peripheral complete as `Disconnected`.
+
+The plugin does not provide fragmentation, persistence, reconnection, or protocol retry. Direct
+calls to `BlueFalcon` bypass this application queue, although platform engines continue enforcing
+their native safety constraints. Call `commandQueue.close()` when the owning client is no longer
+used.
+
 ## Error Handling
 
 ### Exception Hierarchy
