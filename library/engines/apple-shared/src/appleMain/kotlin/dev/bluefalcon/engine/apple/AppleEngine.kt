@@ -513,12 +513,18 @@ class AppleEngine : BlueFalconEngine, CBCentralManagerCallback, CBPeripheralCall
         callbackDispatcher.dispatch {
             val uuid = peripheral.identifier.UUIDString
             val existingConnection = connectedPeripherals[uuid]
-            // Reuse the existing device wrapper (updating its native reference in-place so
-            // callers that hold a reference to the old object continue to work), but always
-            // create a fresh write-peer so it holds the current CBPeripheral instance.
-            val device = existingConnection?.device?.also {
-                it.updatePeripheral(peripheral)
-            } ?: AppleBluetoothPeripheral(peripheral, null)
+            val scannedDevice = _peripherals.value
+                .filterIsInstance<AppleBluetoothPeripheral>()
+                .firstOrNull { device -> device.uuid == uuid }
+            // Prefer the wrapper previously emitted by scanning so its advertisement metadata
+            // (manufacturer data, RSSI, and advertised identity) survives the transition to a
+            // GATT connection. CoreBluetooth's connected CBPeripheral does not carry that data.
+            val device = selectConnectionPeripheral(
+                connected = existingConnection?.device,
+                scanned = scannedDevice,
+                create = { AppleBluetoothPeripheral(peripheral, null) },
+                updateNativePeripheral = { selected -> selected.updatePeripheral(peripheral) },
+            )
             val connection = centralWriteController.connected(CoreBluetoothWritePeer(peripheral))
             connectedPeripherals[uuid] = ActiveAppleConnection(
                 peripheral = peripheral,
@@ -772,6 +778,17 @@ private class CoreBluetoothWriteTarget(
             writeType.toNativeWriteType(),
         )
     }
+}
+
+internal fun <T> selectConnectionPeripheral(
+    connected: T?,
+    scanned: T?,
+    create: () -> T,
+    updateNativePeripheral: (T) -> Unit,
+): T {
+    val selected = connected ?: scanned ?: create()
+    updateNativePeripheral(selected)
+    return selected
 }
 
 private class CoreBluetoothNotificationTarget(
