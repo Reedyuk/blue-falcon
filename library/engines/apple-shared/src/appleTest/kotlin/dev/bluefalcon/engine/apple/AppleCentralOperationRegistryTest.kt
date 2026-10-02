@@ -14,6 +14,34 @@ import kotlin.test.assertTrue
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class AppleCentralOperationRegistryTest {
+    @Test
+    fun `subscribed characteristic rejects ambiguous reads`() = runTest {
+        val registry = AppleCentralOperationRegistry()
+        val connection = registry.connected("peer")
+        val key = AppleCentralOperationKey("peer", connection.generation, "service/characteristic")
+        assertTrue(registry.registerSubscription(key, true) {})
+        assertFalse(registry.registerRead(key) {})
+        assertTrue(registry.completeSubscription(key, NotificationSubscriptionResult.Updated(true)))
+        assertFalse(registry.registerRead(key) {})
+        assertTrue(registry.registerSubscription(key, false) {})
+        assertFalse(registry.registerRead(key) {})
+        assertTrue(registry.completeSubscription(key, NotificationSubscriptionResult.Updated(false)))
+        assertTrue(registry.registerRead(key) {})
+    }
+
+    @Test
+    fun `pending and abandoned reads prevent enabling notifications until callback drains`() = runTest {
+        val registry = AppleCentralOperationRegistry()
+        val connection = registry.connected("peer")
+        val key = AppleCentralOperationKey("peer", connection.generation, "service/characteristic")
+        assertTrue(registry.registerRead(key) {})
+        assertFalse(registry.registerSubscription(key, true) {})
+        assertTrue(registry.abandonRead(key))
+        assertFalse(registry.registerSubscription(key, true) {})
+        assertTrue(registry.completeRead(key, AppleReadOutcome.Success(byteArrayOf(1))))
+        assertTrue(registry.registerSubscription(key, true) {})
+    }
+
 
     @Test
     fun `one with-response write owns a peripheral until matching callback`() = runTest {
