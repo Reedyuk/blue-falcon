@@ -625,30 +625,32 @@ class AppleEngine : BlueFalconEngine, CBCentralManagerCallback, CBPeripheralCall
             null
         }
         val isNotifying = characteristic.isNotifying
-        // A consumed read callback (including an abandoned read) must never also
-        // become a notification. Reads and subscriptions are mutually exclusive.
+        // This callback fires for both solicited reads (readValueForCharacteristic) and
+        // unsolicited notifications - resolve any pending read for this exact characteristic
+        // (ADR 0014) without disturbing the notification flow below, which must keep firing
+        // for genuine subscription updates regardless of whether a read happens to be pending.
         callbackDispatcher.dispatch {
-            val consumedRead = centralWriteController.onCharacteristicValueReceived(
+            centralWriteController.onCharacteristicValueReceived(
                 peripheralUuid = peripheralUuid,
                 characteristicUuid = characteristicIdentity,
                 value = value,
                 failure = error?.let { IllegalStateException(it.localizedDescription) },
             )
-            if (consumedRead || !isNotifying || error != null) return@dispatch
-            val safeValue = value ?: return@dispatch
-            val bluetoothCharacteristic = AppleBluetoothCharacteristic(
-                cbCharacteristic = characteristic,
-                service = characteristic.service?.let { AppleBluetoothService(it) }
-            )
-            bluetoothCharacteristic.emitNotification(safeValue)
-            _characteristicNotifications.tryEmit(
-                CharacteristicNotification(
-                    peripheral = AppleBluetoothPeripheral(peripheral, null),
-                    characteristic = bluetoothCharacteristic,
-                    value = safeValue,
-                )
-            )
         }
+        if (error != null || !isNotifying) return
+        val safeValue = value ?: return
+        val bluetoothCharacteristic = AppleBluetoothCharacteristic(
+            cbCharacteristic = characteristic,
+            service = characteristic.service?.let { AppleBluetoothService(it) }
+        )
+        bluetoothCharacteristic.emitNotification(safeValue)
+        _characteristicNotifications.tryEmit(
+            CharacteristicNotification(
+                peripheral = AppleBluetoothPeripheral(peripheral, null),
+                characteristic = bluetoothCharacteristic,
+                value = safeValue,
+            )
+        )
     }
     
     override fun onCharacteristicWritten(
