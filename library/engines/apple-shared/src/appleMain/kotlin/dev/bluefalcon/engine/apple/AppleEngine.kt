@@ -11,6 +11,10 @@ import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withTimeout
 import platform.CoreBluetooth.*
 import platform.Foundation.*
 
@@ -66,7 +70,16 @@ class AppleEngine : BlueFalconEngine, CBCentralManagerCallback, CBPeripheralCall
         get() = bluetoothManager.centralManager
     
     // Peripheral delegate for handling peripheral events
-    private val peripheralDelegate = CBPeripheralDelegateWrapper(this)
+    private val connectMutex = Mutex()
+    private val peripheralDelegates = MutableStateFlow<
+        Map<AppleNativeConnectionToken<CBPeripheral>, CBPeripheralDelegateWrapper>
+    >(emptyMap())
+
+    private fun installPeripheralDelegate(peripheral: CBPeripheral) {
+        val token = nativeConnectionOwnership.capture(peripheral.identifier.UUIDString, peripheral)
+            ?: return
+        peripheral.delegate = peripheralDelegates.value[token]
+    }
     
     // Map to track connected peripherals
     private val connectedPeripherals = mutableMapOf<String, ActiveAppleConnection>()
@@ -113,25 +126,31 @@ class AppleEngine : BlueFalconEngine, CBCentralManagerCallback, CBPeripheralCall
             ?: throw IllegalArgumentException("Peripheral must be an AppleBluetoothPeripheral")
         
         val cbPeripheral = applePeripheral.cbPeripheral
-        
-        // If already connected, trigger connection callback
-        if (cbPeripheral.state == CBPeripheralStateConnected) {
-            val replacementDevice = centralManager.retrievePeripheralsWithIdentifiers(
-                listOf(cbPeripheral.identifier)
-            ).firstOrNull() as? CBPeripheral
-            
-            if (replacementDevice != null) {
-                if (replacementDevice.state == CBPeripheralStateDisconnected || 
-                    replacementDevice.state == CBPeripheralStateDisconnecting) {
-                    centralManager.connectPeripheral(replacementDevice, null)
-                } else {
-                    onPeripheralConnected(replacementDevice)
-                }
-            } else {
-                onPeripheralConnected(cbPeripheral)
+        connectMutex.withLock {
+            val uuid = cbPeripheral.identifier.UUIDString
+            val previous = nativeConnectionOwnership.current(uuid)
+            if (previous != null) {
+                if ((previous.owner.state == CBPeripheralStateConnected &&
+                        cbPeripheral.state == CBPeripheralStateConnected) ||
+                    (previous.owner === cbPeripheral &&
+                        cbPeripheral.state == CBPeripheralStateConnecting)
+                ) return
+                // CoreBluetooth lifecycle callbacks carry no generation. Drain the
+                // old terminal callback before issuing another native attempt.
+                centralManager.cancelPeripheralConnection(previous.owner)
+                withTimeout(10_000L) { previous.terminated.await() }
             }
-        } else {
-            centralManager.connectPeripheral(cbPeripheral, null)
+            val token = nativeConnectionOwnership.connected(uuid, cbPeripheral)
+            val delegate = CBPeripheralDelegateWrapper(this) {
+                nativeConnectionOwnership.isActive(token)
+            }
+            peripheralDelegates.update { it + (token to delegate) }
+            cbPeripheral.delegate = delegate
+            if (cbPeripheral.state == CBPeripheralStateConnected) {
+                onPeripheralConnected(cbPeripheral)
+            } else {
+                centralManager.connectPeripheral(cbPeripheral, null)
+            }
         }
     }
     
@@ -174,7 +193,7 @@ class AppleEngine : BlueFalconEngine, CBCentralManagerCallback, CBPeripheralCall
             ?: throw IllegalArgumentException("Peripheral must be an AppleBluetoothPeripheral")
         
         // Ensure delegate is set before discovering services
-        applePeripheral.cbPeripheral.delegate = peripheralDelegate
+        installPeripheralDelegate(applePeripheral.cbPeripheral)
         
         val uuids = if (serviceUUIDs.isEmpty()) {
             null
@@ -200,7 +219,7 @@ class AppleEngine : BlueFalconEngine, CBCentralManagerCallback, CBPeripheralCall
             ?: throw IllegalArgumentException("Service must be an AppleBluetoothService")
         
         // Ensure delegate is set before discovering characteristics
-        applePeripheral.cbPeripheral.delegate = peripheralDelegate
+        installPeripheralDelegate(applePeripheral.cbPeripheral)
         
         val uuids = if (characteristicUUIDs.isEmpty()) {
             null
@@ -235,7 +254,7 @@ class AppleEngine : BlueFalconEngine, CBCentralManagerCallback, CBPeripheralCall
         }
         
         // Ensure delegate is set
-        applePeripheral.cbPeripheral.delegate = peripheralDelegate
+        installPeripheralDelegate(applePeripheral.cbPeripheral)
 
         val outcome = centralWriteController.read(
             CoreBluetoothReadTarget(
@@ -292,7 +311,7 @@ class AppleEngine : BlueFalconEngine, CBCentralManagerCallback, CBPeripheralCall
                 )
             )
         }
-        applePeripheral.cbPeripheral.delegate = peripheralDelegate
+        installPeripheralDelegate(applePeripheral.cbPeripheral)
         return centralWriteController.write(
             CoreBluetoothWriteTarget(
                 peripheral = applePeripheral.cbPeripheral,
@@ -363,7 +382,7 @@ class AppleEngine : BlueFalconEngine, CBCentralManagerCallback, CBPeripheralCall
                 ),
             )
         }
-        applePeripheral.cbPeripheral.delegate = peripheralDelegate
+        installPeripheralDelegate(applePeripheral.cbPeripheral)
         return centralWriteController.setNotificationSubscription(
             CoreBluetoothNotificationTarget(
                 peripheral = applePeripheral.cbPeripheral,
@@ -441,7 +460,7 @@ class AppleEngine : BlueFalconEngine, CBCentralManagerCallback, CBPeripheralCall
             ?: throw L2capException("Peripheral must be an AppleBluetoothPeripheral")
 
         val cbPeripheral = applePeripheral.cbPeripheral
-        cbPeripheral.delegate = peripheralDelegate
+        installPeripheralDelegate(cbPeripheral)
 
         val identifier = cbPeripheral.identifier.UUIDString
         val deferred = CompletableDeferred<CBL2CAPChannel>()
@@ -505,14 +524,14 @@ class AppleEngine : BlueFalconEngine, CBCentralManagerCallback, CBPeripheralCall
     }
     
     override fun onPeripheralConnected(peripheral: CBPeripheral) {
-        peripheral.delegate = peripheralDelegate
-        nativeConnectionOwnership.connected(
-            peripheral.identifier.UUIDString,
-            peripheral,
-        )
+        val token = nativeConnectionOwnership.capture(peripheral.identifier.UUIDString, peripheral)
+            ?: return
+        installPeripheralDelegate(peripheral)
         callbackDispatcher.dispatch {
+            if (!nativeConnectionOwnership.isActive(token)) return@dispatch
             val uuid = peripheral.identifier.UUIDString
             val existingConnection = connectedPeripherals[uuid]
+            if (existingConnection?.ownership === token) return@dispatch
             // Reuse the existing device wrapper (updating its native reference in-place so
             // callers that hold a reference to the old object continue to work), but always
             // create a fresh write-peer so it holds the current CBPeripheral instance.
@@ -524,6 +543,7 @@ class AppleEngine : BlueFalconEngine, CBCentralManagerCallback, CBPeripheralCall
                 peripheral = peripheral,
                 device = device,
                 connection = connection,
+                ownership = token,
             )
             _connectionStateUpdates.tryEmit(
                 ConnectionStateUpdate(device, BluetoothPeripheralState.Connected)
@@ -533,45 +553,42 @@ class AppleEngine : BlueFalconEngine, CBCentralManagerCallback, CBPeripheralCall
     
     override fun onPeripheralDisconnected(peripheral: CBPeripheral, error: NSError?) {
         val uuid = peripheral.identifier.UUIDString
-        nativeConnectionOwnership.disconnected(uuid, peripheral)
+        val token = nativeConnectionOwnership.capture(uuid, peripheral) ?: return
+        if (!nativeConnectionOwnership.isActive(token)) return
         callbackDispatcher.dispatch {
             val active = connectedPeripherals[uuid]
-            val device = active?.device ?: AppleBluetoothPeripheral(peripheral, null)
-            connectedPeripherals.remove(uuid)
-            peripheral.delegate = null
-            active?.let { centralWriteController.disconnected(it.connection) }
-            _connectionStateUpdates.tryEmit(
-                ConnectionStateUpdate(device, BluetoothPeripheralState.Disconnected)
-            )
+            try {
+                if (active != null && active.ownership !== token) return@dispatch
+                if (!nativeConnectionOwnership.disconnected(token)) return@dispatch
+                val device = active?.device ?: AppleBluetoothPeripheral(peripheral, null)
+                connectedPeripherals.remove(uuid)
+                peripheral.delegate = null
+                active?.let { centralWriteController.disconnected(it.connection) }
+                l2capDeferreds.remove(uuid)?.completeExceptionally(
+                    L2capException("Peripheral disconnected while opening L2CAP channel")
+                )
+                _connectionStateUpdates.tryEmit(
+                    ConnectionStateUpdate(device, BluetoothPeripheralState.Disconnected)
+                )
+            } finally {
+                peripheralDelegates.update { it - token }
+                token.terminated.complete(Unit)
+            }
         }
     }
     
     override fun onPeripheralConnectionFailed(peripheral: CBPeripheral, error: NSError?) {
-        // The peripheral was never successfully connected, so it is not in connectedPeripherals.
-        // Still emit Disconnected to notify any code waiting on the connection outcome.
-        nativeConnectionOwnership.disconnected(
-            peripheral.identifier.UUIDString,
-            peripheral,
-        )
-        callbackDispatcher.dispatch {
-            val device = AppleBluetoothPeripheral(peripheral, null)
-            val active = connectedPeripherals[device.uuid]
-            if (active != null) {
-                connectedPeripherals.remove(device.uuid)
-                centralWriteController.disconnected(active.connection)
-            }
-            _connectionStateUpdates.tryEmit(
-                ConnectionStateUpdate(device, BluetoothPeripheralState.Disconnected)
-            )
-        }
+        onPeripheralDisconnected(peripheral, error)
     }
     
     // CBPeripheralCallback implementation
     
     override fun onServicesDiscovered(peripheral: CBPeripheral, error: NSError?) {
+        val token = nativeConnectionOwnership.capture(peripheral.identifier.UUIDString, peripheral)
+            ?: return
         callbackDispatcher.dispatch {
             if (error != null) return@dispatch
-            val active = activeConnection(peripheral) ?: return@dispatch
+            val active = activeConnection(token) ?: return@dispatch
             _serviceDiscoveryUpdates.tryEmit(
                 ServiceDiscoveryUpdate(
                     active.device,
@@ -582,9 +599,11 @@ class AppleEngine : BlueFalconEngine, CBCentralManagerCallback, CBPeripheralCall
     }
 
     override fun onCharacteristicsDiscovered(peripheral: CBPeripheral, service: CBService, error: NSError?) {
+        val token = nativeConnectionOwnership.capture(peripheral.identifier.UUIDString, peripheral)
+            ?: return
         callbackDispatcher.dispatch {
             if (error != null) return@dispatch
-            val active = activeConnection(peripheral) ?: return@dispatch
+            val active = activeConnection(token) ?: return@dispatch
             val bluetoothService = AppleBluetoothService(service)
             _serviceDiscoveryUpdates.tryEmit(
                 ServiceDiscoveryUpdate(
@@ -606,15 +625,8 @@ class AppleEngine : BlueFalconEngine, CBCentralManagerCallback, CBPeripheralCall
         characteristic: CBCharacteristic,
         error: NSError?
     ) {
-        // Gate on the UUID-tracked connection (not referential equality of the CBPeripheral
-        // instance) to stay consistent with activeConnection(). CoreBluetooth can hand back a
-        // different CBPeripheral wrapper for the same underlying device (e.g. after a
-        // reconnect via retrievePeripheralsWithIdentifiers), which previously caused valid
-        // notifications to be silently dropped on iOS.
-        if (connectedPeripherals[peripheral.identifier.UUIDString] == null) {
-            return
-        }
-        val peripheralUuid = peripheral.identifier.UUIDString
+        val token = nativeConnectionOwnership.capture(peripheral.identifier.UUIDString, peripheral)
+            ?: return
         val characteristicIdentity = appleCharacteristicIdentity(
             characteristic.service?.UUID?.UUIDString,
             characteristic.UUID.UUIDString,
@@ -629,27 +641,28 @@ class AppleEngine : BlueFalconEngine, CBCentralManagerCallback, CBPeripheralCall
         // (ADR 0014) without disturbing the notification flow below, which must keep firing
         // for genuine subscription updates regardless of whether a read happens to be pending.
         callbackDispatcher.dispatch {
+            val active = activeConnection(token) ?: return@dispatch
             centralWriteController.onCharacteristicValueReceived(
-                peripheralUuid = peripheralUuid,
+                connection = active.connection,
                 characteristicUuid = characteristicIdentity,
                 value = value,
                 failure = error?.let { IllegalStateException(it.localizedDescription) },
             )
-        }
-        if (error != null) return
-        val safeValue = value ?: return
-        val bluetoothCharacteristic = AppleBluetoothCharacteristic(
-            cbCharacteristic = characteristic,
-            service = characteristic.service?.let { AppleBluetoothService(it) }
-        )
-        bluetoothCharacteristic.emitNotification(safeValue)
-        _characteristicNotifications.tryEmit(
-            CharacteristicNotification(
-                peripheral = AppleBluetoothPeripheral(peripheral, null),
-                characteristic = bluetoothCharacteristic,
-                value = safeValue,
+            if (error != null) return@dispatch
+            val safeValue = value ?: return@dispatch
+            val bluetoothCharacteristic = AppleBluetoothCharacteristic(
+                cbCharacteristic = characteristic,
+                service = characteristic.service?.let { AppleBluetoothService(it) }
             )
-        )
+            bluetoothCharacteristic.emitNotification(safeValue)
+            _characteristicNotifications.tryEmit(
+                CharacteristicNotification(
+                    peripheral = active.device,
+                    characteristic = bluetoothCharacteristic,
+                    value = safeValue,
+                )
+            )
+        }
     }
     
     override fun onCharacteristicWritten(
@@ -657,8 +670,10 @@ class AppleEngine : BlueFalconEngine, CBCentralManagerCallback, CBPeripheralCall
         characteristic: CBCharacteristic,
         error: NSError?
     ) {
+        val token = nativeConnectionOwnership.capture(peripheral.identifier.UUIDString, peripheral)
+            ?: return
         callbackDispatcher.dispatch {
-            val active = activeConnection(peripheral) ?: return@dispatch
+            val active = activeConnection(token) ?: return@dispatch
             centralWriteController.onCharacteristicWritten(
                 connection = active.connection,
                 characteristicUuid = appleCharacteristicIdentity(
@@ -685,15 +700,18 @@ class AppleEngine : BlueFalconEngine, CBCentralManagerCallback, CBPeripheralCall
         characteristic: CBCharacteristic,
         error: NSError?
     ) {
+        val token = nativeConnectionOwnership.capture(peripheral.identifier.UUIDString, peripheral)
+            ?: return
+        val isNotifying = characteristic.isNotifying
         callbackDispatcher.dispatch {
-            val active = activeConnection(peripheral) ?: return@dispatch
+            val active = activeConnection(token) ?: return@dispatch
             centralWriteController.onNotificationStateUpdated(
                 connection = active.connection,
                 characteristicIdentity = appleCharacteristicIdentity(
                     characteristic.service?.UUID?.UUIDString,
                     characteristic.UUID.UUIDString,
                 ),
-                isNotifying = characteristic.isNotifying,
+                isNotifying = isNotifying,
                 failure = error?.let {
                     IllegalStateException(it.localizedDescription)
                 },
@@ -702,8 +720,10 @@ class AppleEngine : BlueFalconEngine, CBCentralManagerCallback, CBPeripheralCall
     }
 
     override fun onReadyToSendWriteWithoutResponse(peripheral: CBPeripheral) {
+        val token = nativeConnectionOwnership.capture(peripheral.identifier.UUIDString, peripheral)
+            ?: return
         callbackDispatcher.dispatch {
-            val active = activeConnection(peripheral) ?: return@dispatch
+            val active = activeConnection(token) ?: return@dispatch
             centralWriteController.onReadyToSendWithoutResponse(
                 active.connection,
                 CoreBluetoothWritePeer(peripheral),
@@ -712,15 +732,20 @@ class AppleEngine : BlueFalconEngine, CBCentralManagerCallback, CBPeripheralCall
     }
     
     override fun onL2CAPChannelOpened(peripheral: CBPeripheral, channel: CBL2CAPChannel?, error: NSError?) {
-        val deferred = l2capDeferreds[peripheral.identifier.UUIDString] ?: return
-        when {
-            error != null ->
-                deferred.completeExceptionally(
-                    L2capException("Failed to open L2CAP channel: ${error.localizedDescription}")
-                )
-            channel == null ->
-                deferred.completeExceptionally(L2capException("L2CAP channel was null"))
-            else -> deferred.complete(channel)
+        val token = nativeConnectionOwnership.capture(peripheral.identifier.UUIDString, peripheral)
+            ?: return
+        callbackDispatcher.dispatch {
+            activeConnection(token) ?: return@dispatch
+            val deferred = l2capDeferreds[peripheral.identifier.UUIDString] ?: return@dispatch
+            when {
+                error != null ->
+                    deferred.completeExceptionally(
+                        L2capException("Failed to open L2CAP channel: ${error.localizedDescription}")
+                    )
+                channel == null ->
+                    deferred.completeExceptionally(L2capException("L2CAP channel was null"))
+                else -> deferred.complete(channel)
+            }
         }
     }
     
@@ -728,14 +753,17 @@ class AppleEngine : BlueFalconEngine, CBCentralManagerCallback, CBPeripheralCall
         // Descriptor written - could expose this through a callback if needed
     }
 
-    private fun activeConnection(peripheral: CBPeripheral): ActiveAppleConnection? =
-        connectedPeripherals[peripheral.identifier.UUIDString]
+    private fun activeConnection(token: AppleNativeConnectionToken<CBPeripheral>): ActiveAppleConnection? =
+        connectedPeripherals[token.peripheralUuid]?.takeIf {
+            it.ownership === token && nativeConnectionOwnership.isActive(token)
+        }
 }
 
 private data class ActiveAppleConnection(
     val peripheral: CBPeripheral,
     val device: AppleBluetoothPeripheral,
     val connection: AppleCentralConnectionKey,
+    val ownership: AppleNativeConnectionToken<CBPeripheral>,
 )
 
 private open class CoreBluetoothWritePeer(

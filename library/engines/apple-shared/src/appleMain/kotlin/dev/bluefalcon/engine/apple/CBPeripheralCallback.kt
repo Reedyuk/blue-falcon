@@ -25,10 +25,12 @@ interface CBPeripheralCallback {
  * events to a callback interface
  */
 class CBPeripheralDelegateWrapper(
-    private val callback: CBPeripheralCallback
+    private val callback: CBPeripheralCallback,
+    private val acceptsCallback: () -> Boolean = { true },
 ) : NSObject(), CBPeripheralDelegateProtocol {
     
     override fun peripheral(peripheral: CBPeripheral, didDiscoverServices: NSError?) {
+        if (!acceptsCallback()) return
         callback.onServicesDiscovered(peripheral, didDiscoverServices)
     }
     
@@ -37,6 +39,7 @@ class CBPeripheralDelegateWrapper(
         didDiscoverCharacteristicsForService: CBService,
         error: NSError?
     ) {
+        if (!acceptsCallback()) return
         callback.onCharacteristicsDiscovered(peripheral, didDiscoverCharacteristicsForService, error)
     }
     
@@ -46,6 +49,7 @@ class CBPeripheralDelegateWrapper(
         didUpdateValueForCharacteristic: CBCharacteristic,
         error: NSError?
     ) {
+        if (!acceptsCallback()) return
         callback.onCharacteristicValueUpdated(peripheral, didUpdateValueForCharacteristic, error)
     }
     
@@ -55,6 +59,7 @@ class CBPeripheralDelegateWrapper(
         didWriteValueForCharacteristic: CBCharacteristic,
         error: NSError?
     ) {
+        if (!acceptsCallback()) return
         callback.onCharacteristicWritten(peripheral, didWriteValueForCharacteristic, error)
     }
     
@@ -64,6 +69,7 @@ class CBPeripheralDelegateWrapper(
         didDiscoverDescriptorsForCharacteristic: CBCharacteristic,
         error: NSError?
     ) {
+        if (!acceptsCallback()) return
         callback.onDescriptorsDiscovered(peripheral, didDiscoverDescriptorsForCharacteristic, error)
     }
     
@@ -73,10 +79,12 @@ class CBPeripheralDelegateWrapper(
         didUpdateNotificationStateForCharacteristic: CBCharacteristic,
         error: NSError?
     ) {
+        if (!acceptsCallback()) return
         callback.onNotificationStateUpdated(peripheral, didUpdateNotificationStateForCharacteristic, error)
     }
 
     override fun peripheralIsReadyToSendWriteWithoutResponse(peripheral: CBPeripheral) {
+        if (!acceptsCallback()) return
         callback.onReadyToSendWriteWithoutResponse(peripheral)
     }
     
@@ -86,6 +94,7 @@ class CBPeripheralDelegateWrapper(
         didOpenL2CAPChannel: CBL2CAPChannel?,
         error: NSError?
     ) {
+        if (!acceptsCallback()) return
         callback.onL2CAPChannelOpened(peripheral, didOpenL2CAPChannel, error)
     }
     
@@ -94,6 +103,7 @@ class CBPeripheralDelegateWrapper(
         didWriteValueForDescriptor: CBDescriptor,
         error: NSError?
     ) {
+        if (!acceptsCallback()) return
         callback.onDescriptorWritten(peripheral, didWriteValueForDescriptor, error)
     }
 }
