@@ -20,7 +20,6 @@ import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.withContext
-import java.util.concurrent.CopyOnWriteArrayList
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 
@@ -196,7 +195,7 @@ class AndroidEngine(
         // are normally the same object, but a re-scan can produce a fresh instance.
         androidPeripheral.resetConnectionState()
         resetPeripheralState(androidPeripheral.device.address)
-        val gatt = androidPeripheral.device.connectGatt(context, autoConnect, gattCallback, transportMethod)
+        val gatt = gattCallback.connect(androidPeripheral.device, autoConnect)
         // Track the returned handle IMMEDIATELY, not only once it reaches STATE_CONNECTED. A direct
         // (autoConnect=false) connect that never establishes never fires onConnectionStateChange, so
         // without this it would never enter [gatts] — meaning neither disconnect() nor a later
@@ -205,8 +204,7 @@ class AndroidEngine(
         // wedge it (it stops completing any new connection until power-cycled). Registering here lets
         // the next connect()/disconnect() tear the orphan down, so at most one initiation is ever
         // outstanding per address.
-        gatt?.let { gattCallback.trackConnecting(it) }
-            ?: logger?.warn("connectGatt returned null for ${androidPeripheral.device.address}")
+        if (gatt == null) logger?.warn("connectGatt returned null for ${androidPeripheral.device.address}")
     }
 
     private fun peripheralFor(address: String): AndroidBluetoothPeripheral? =
@@ -952,7 +950,8 @@ class AndroidEngine(
     
     // GATT callback implementation
     private inner class GattClientCallback : BluetoothGattCallback() {
-        internal val gatts: MutableList<BluetoothGatt> = CopyOnWriteArrayList()
+        private val ownership = AndroidGattOwnership<BluetoothGatt>()
+        internal val gatts: List<BluetoothGatt> get() = ownership.snapshot()
         private val disconnectHandler = Handler(Looper.getMainLooper())
         private val operationHandler = Handler(Looper.getMainLooper())
         private val pendingTimeouts = java.util.concurrent.ConcurrentHashMap<String, Runnable>()
@@ -977,7 +976,13 @@ class AndroidEngine(
         // enqueues on the caller's thread — so check-then-act sequences must be serialized. Lock order
         // is always gattLock -> queue monitor; no path takes them the other way, so there is no
         // deadlock with [CentralGattOperationGate]'s per-instance synchronization.
-        private val gattLock = Any()
+        private val gattLock = ownership.lock
+
+        fun connect(device: BluetoothDevice, autoConnect: Boolean): BluetoothGatt? =
+            synchronized(gattLock) {
+                // Binder callbacks cannot run before the returned handle is registered.
+                device.connectGatt(context, autoConnect, this, transportMethod)?.also(::trackConnecting)
+            }
 
         /**
          * Register a freshly issued connectGatt handle before it reaches STATE_CONNECTED, closing any
@@ -989,26 +994,14 @@ class AndroidEngine(
          */
         fun trackConnecting(gatt: BluetoothGatt) = synchronized(gattLock) {
             val address = gatt.device.address
-            gatts.filter { it.device.address == address && it !== gatt }
-                .forEach { closeAndForget(it) }
-            if (gatts.none { it === gatt }) {
-                gatts.add(gatt)
-            }
+            cancelDisconnectTimeout(address)
+            ownership.track(address, gatt)?.let { closeAndForget(it) }
         }
 
         private fun addGatt(gatt: BluetoothGatt) = synchronized(gattLock) {
-            // Replace any stale same-address gatt from a previous connection. On a fast reconnect the
-            // new connection's STATE_CONNECTED can arrive before the old gatt's STATE_DISCONNECTED (or
-            // its force-close timeout); without this, the new gatt would be dropped and every later op
-            // would target the dead one. connectGatt always returns a fresh instance, so an existing
-            // entry with the same address but different identity is always stale.
-            val existing = gatts.firstOrNull { it.device.address == gatt.device.address }
-            if (existing != null && existing !== gatt) {
-                closeAndForget(existing)
-            }
-            if (gatts.none { it === gatt }) {
-                gatts.add(gatt)
-            }
+            // Only connect() registers ownership. A late CONNECTED callback must
+            // never reinsert a superseded handle or close the replacement.
+            if (gatts.none { it === gatt }) return@synchronized
             gattGenerations.computeIfAbsent(gatt) {
                 centralWriteState.onConnected(gatt.device.address)
             }
@@ -1020,8 +1013,8 @@ class AndroidEngine(
          * Idempotent, so it is safe if both STATE_DISCONNECTED and the force-close watchdog fire.
          */
         private fun closeAndForget(gatt: BluetoothGatt) = synchronized(gattLock) {
-            cancelDisconnectTimeout(gatt.device.address)
-            gatts.remove(gatt)
+            val wasCurrent = ownership.forget(gatt)
+            if (wasCurrent) cancelDisconnectTimeout(gatt.device.address)
             val generation = gattGenerations.remove(gatt)
             operationGates.remove(gatt)?.disconnect()
             if (generation != null) {
@@ -1171,110 +1164,118 @@ class AndroidEngine(
         }
         
         override fun onConnectionStateChange(gatt: BluetoothGatt?, status: Int, newState: Int) {
-            logger?.debug("onConnectionStateChange status: $status newState: $newState")
-            gatt?.device?.let { device ->
-                if (newState == BluetoothProfile.STATE_CONNECTED) {
-                    logger?.info("Connected to ${device.address}")
-                    addGatt(gatt)
-                    peripheralFor(device.address)?.let { peripheral ->
-                        _connectionStateUpdates.tryEmit(
-                            ConnectionStateUpdate(peripheral, BluetoothPeripheralState.Connected)
-                        )
-                    }
-                    if (autoDiscoverAllServicesAndCharacteristics) {
-                        // Serialize the post-connect service discovery and RSSI read; issued back to
-                        // back without a queue, the second would race the first and be dropped.
-                        // Discovery is enqueued first because it is the critical path consumers gate
-                        // subscription work on — the best-effort RSSI read must not sit ahead of it,
-                        // or a dropped RSSI callback would stall discovery for the full op watchdog.
-                        enqueueOperation(gatt, CentralGattOperationType.DiscoverServices, "discoverServices") {
-                            it.discoverServices()
+            ownership.withCurrent(gatt) { gatt ->
+                logger?.debug("onConnectionStateChange status: $status newState: $newState")
+                gatt.device.let { device ->
+                    if (newState == BluetoothProfile.STATE_CONNECTED) {
+                        logger?.info("Connected to ${device.address}")
+                        addGatt(gatt)
+                        peripheralFor(device.address)?.let { peripheral ->
+                            _connectionStateUpdates.tryEmit(
+                                ConnectionStateUpdate(peripheral, BluetoothPeripheralState.Connected)
+                            )
                         }
-                        enqueueOperation(gatt, CentralGattOperationType.ReadRssi, "readRemoteRssi") {
-                            it.readRemoteRssi()
+                        if (autoDiscoverAllServicesAndCharacteristics) {
+                            // Serialize the post-connect service discovery and RSSI read; issued back to
+                            // back without a queue, the second would race the first and be dropped.
+                            // Discovery is enqueued first because it is the critical path consumers gate
+                            // subscription work on — the best-effort RSSI read must not sit ahead of it,
+                            // or a dropped RSSI callback would stall discovery for the full op watchdog.
+                            enqueueOperation(gatt, CentralGattOperationType.DiscoverServices, "discoverServices") {
+                                it.discoverServices()
+                            }
+                            enqueueOperation(gatt, CentralGattOperationType.ReadRssi, "readRemoteRssi") {
+                                it.readRemoteRssi()
+                            }
                         }
+                    } else if (newState == BluetoothProfile.STATE_DISCONNECTED) {
+                        logger?.info("Disconnected from ${device.address}")
+                        peripheralFor(device.address)?.let { peripheral ->
+                            _connectionStateUpdates.tryEmit(
+                                ConnectionStateUpdate(peripheral, BluetoothPeripheralState.Disconnected)
+                            )
+                        }
+                        // closeAndForget removes/closes the gatt, clears its queue, and resets the reused
+                        // peripheral's transient state so a later reconnect waits for the new connection's
+                        // discovery/MTU instead of reading stale values — but only if no newer gatt for this
+                        // address is already tracked (reconnect race).
+                        closeAndForget(gatt)
                     }
-                } else if (newState == BluetoothProfile.STATE_DISCONNECTED) {
-                    logger?.info("Disconnected from ${device.address}")
-                    peripheralFor(device.address)?.let { peripheral ->
-                        _connectionStateUpdates.tryEmit(
-                            ConnectionStateUpdate(peripheral, BluetoothPeripheralState.Disconnected)
-                        )
-                    }
-                    // closeAndForget removes/closes the gatt, clears its queue, and resets the reused
-                    // peripheral's transient state so a later reconnect waits for the new connection's
-                    // discovery/MTU instead of reading stale values — but only if no newer gatt for this
-                    // address is already tracked (reconnect race).
-                    closeAndForget(gatt)
                 }
             }
         }
         
         override fun onServicesDiscovered(gatt: BluetoothGatt?, status: Int) {
-            logger?.info("onServicesDiscovered status=$status")
-            // Advance the queue regardless of status so a failed discovery does not stall it.
-            gatt?.let {
-                completeOperation(
-                    it,
-                    CentralGattOperationType.DiscoverServices,
-                    status = status,
-                )
-            }
-            if (status != BluetoothGatt.GATT_SUCCESS) {
-                logger?.error("Service discovery failed with status $status")
-                return
-            }
-            gatt?.device?.let { device ->
-                val peripheral = peripheralFor(device.address) ?: return@let
-                val services = gatt.services.map { AndroidBluetoothService(it) }
-                peripheral._servicesFlow.value = services
-                // Android discovers services and characteristics atomically — emit both phases.
-                _serviceDiscoveryUpdates.tryEmit(
-                    ServiceDiscoveryUpdate(peripheral, ServiceDiscoveryPhase.ServicesDiscovered)
-                )
-                services.forEach { service ->
-                    _serviceDiscoveryUpdates.tryEmit(
-                        ServiceDiscoveryUpdate(peripheral, ServiceDiscoveryPhase.CharacteristicsDiscovered, service)
+            ownership.withCurrent(gatt) { gatt ->
+                logger?.info("onServicesDiscovered status=$status")
+                // Advance the queue regardless of status so a failed discovery does not stall it.
+                gatt.let {
+                    completeOperation(
+                        it,
+                        CentralGattOperationType.DiscoverServices,
+                        status = status,
                     )
+                }
+                if (status != BluetoothGatt.GATT_SUCCESS) {
+                    logger?.error("Service discovery failed with status $status")
+                    return@withCurrent
+                }
+                gatt.device.let { device ->
+                    val peripheral = peripheralFor(device.address) ?: return@let
+                    val services = gatt.services.map { AndroidBluetoothService(it) }
+                    peripheral._servicesFlow.value = services
+                    // Android discovers services and characteristics atomically — emit both phases.
+                    _serviceDiscoveryUpdates.tryEmit(
+                        ServiceDiscoveryUpdate(peripheral, ServiceDiscoveryPhase.ServicesDiscovered)
+                    )
+                    services.forEach { service ->
+                        _serviceDiscoveryUpdates.tryEmit(
+                            ServiceDiscoveryUpdate(peripheral, ServiceDiscoveryPhase.CharacteristicsDiscovered, service)
+                        )
+                    }
                 }
             }
         }
         
         override fun onMtuChanged(gatt: BluetoothGatt?, mtu: Int, status: Int) {
-            logger?.debug("onMtuChanged mtu=$mtu status=$status")
-            gatt?.device?.let { device ->
-                if (status == BluetoothGatt.GATT_SUCCESS) {
-                    peripheralFor(device.address)?.mtuSize = mtu
+            ownership.withCurrent(gatt) { gatt ->
+                logger?.debug("onMtuChanged mtu=$mtu status=$status")
+                gatt.device.let { device ->
+                    if (status == BluetoothGatt.GATT_SUCCESS) {
+                        peripheralFor(device.address)?.mtuSize = mtu
+                    }
+                    gattGenerations[gatt]?.let { generation ->
+                        centralWriteState.onMtuChanged(
+                            peripheralUuid = device.address,
+                            generation = generation,
+                            mtu = mtu,
+                            successful = status == BluetoothGatt.GATT_SUCCESS,
+                        )
+                    }
                 }
-                gattGenerations[gatt]?.let { generation ->
-                    centralWriteState.onMtuChanged(
-                        peripheralUuid = device.address,
-                        generation = generation,
-                        mtu = mtu,
-                        successful = status == BluetoothGatt.GATT_SUCCESS,
+                gatt.let {
+                    completeOperation(
+                        it,
+                        CentralGattOperationType.ChangeMtu,
+                        status = status,
                     )
                 }
-            }
-            gatt?.let {
-                completeOperation(
-                    it,
-                    CentralGattOperationType.ChangeMtu,
-                    status = status,
-                )
             }
         }
         
         override fun onReadRemoteRssi(gatt: BluetoothGatt?, rssi: Int, status: Int) {
-            logger?.debug("onReadRemoteRssi $rssi")
-            gatt?.let {
-                completeOperation(
-                    it,
-                    CentralGattOperationType.ReadRssi,
-                    status = status,
-                )
-            }
-            gatt?.device?.let { device ->
-                peripheralFor(device.address)?.rssi = rssi.toFloat()
+            ownership.withCurrent(gatt) { gatt ->
+                logger?.debug("onReadRemoteRssi $rssi")
+                gatt.let {
+                    completeOperation(
+                        it,
+                        CentralGattOperationType.ReadRssi,
+                        status = status,
+                    )
+                }
+                gatt.device.let { device ->
+                    peripheralFor(device.address)?.rssi = rssi.toFloat()
+                }
             }
         }
         
@@ -1283,23 +1284,25 @@ class AndroidEngine(
             characteristic: BluetoothGattCharacteristic?,
             status: Int
         ) {
-            logger?.debug("onCharacteristicRead ${characteristic?.uuid} status=$status")
-            gatt?.let {
-                val identity = characteristicOperationIdentity(
-                    characteristic?.service?.uuid?.toString(),
-                    characteristic?.uuid?.toString(),
-                )
-                gattGenerations[it]?.let { generation ->
-                    pendingReadValues[
-                        CentralGattOperationKey(generation, CentralGattOperationType.ReadCharacteristic, identity)
-                    ] = characteristic?.value?.copyOf()
+            ownership.withCurrent(gatt) { gatt ->
+                logger?.debug("onCharacteristicRead ${characteristic?.uuid} status=$status")
+                gatt.let {
+                    val identity = characteristicOperationIdentity(
+                        characteristic?.service?.uuid?.toString(),
+                        characteristic?.uuid?.toString(),
+                    )
+                    gattGenerations[it]?.let { generation ->
+                        pendingReadValues[
+                            CentralGattOperationKey(generation, CentralGattOperationType.ReadCharacteristic, identity)
+                        ] = characteristic?.value?.copyOf()
+                    }
+                    completeOperation(
+                        it,
+                        CentralGattOperationType.ReadCharacteristic,
+                        identity,
+                        status,
+                    )
                 }
-                completeOperation(
-                    it,
-                    CentralGattOperationType.ReadCharacteristic,
-                    identity,
-                    status,
-                )
             }
         }
         
@@ -1307,20 +1310,22 @@ class AndroidEngine(
             gatt: BluetoothGatt?,
             characteristic: BluetoothGattCharacteristic?
         ) {
-            logger?.debug("onCharacteristicChanged ${characteristic?.uuid}")
-            if (gatt == null || characteristic == null) return
+            ownership.withCurrent(gatt) { gatt ->
+                logger?.debug("onCharacteristicChanged ${characteristic?.uuid}")
+                if (characteristic == null) return@withCurrent
 
-            val value = characteristic.value?.copyOf() ?: return
-            val peripheral = peripheralFor(gatt.device.address) ?: AndroidBluetoothPeripheral(gatt.device)
-            val bluetoothCharacteristic = AndroidBluetoothCharacteristic(characteristic)
-            bluetoothCharacteristic.emitNotification(value)
-            _characteristicNotifications.tryEmit(
-                CharacteristicNotification(
-                    peripheral = peripheral,
-                    characteristic = bluetoothCharacteristic,
-                    value = value
+                val value = characteristic.value?.copyOf() ?: return@withCurrent
+                val peripheral = peripheralFor(gatt.device.address) ?: AndroidBluetoothPeripheral(gatt.device)
+                val bluetoothCharacteristic = AndroidBluetoothCharacteristic(characteristic)
+                bluetoothCharacteristic.emitNotification(value)
+                _characteristicNotifications.tryEmit(
+                    CharacteristicNotification(
+                        peripheral = peripheral,
+                        characteristic = bluetoothCharacteristic,
+                        value = value
+                    )
                 )
-            )
+            }
         }
         
         override fun onCharacteristicWrite(
@@ -1328,17 +1333,19 @@ class AndroidEngine(
             characteristic: BluetoothGattCharacteristic?,
             status: Int
         ) {
-            logger?.debug("onCharacteristicWrite ${characteristic?.uuid} status=$status")
-            gatt?.let {
-                completeOperation(
-                    it,
-                    CentralGattOperationType.WriteCharacteristic,
-                    characteristicOperationIdentity(
-                        characteristic?.service?.uuid?.toString(),
-                        characteristic?.uuid?.toString(),
-                    ),
-                    status,
-                )
+            ownership.withCurrent(gatt) { gatt ->
+                logger?.debug("onCharacteristicWrite ${characteristic?.uuid} status=$status")
+                gatt.let {
+                    completeOperation(
+                        it,
+                        CentralGattOperationType.WriteCharacteristic,
+                        characteristicOperationIdentity(
+                            characteristic?.service?.uuid?.toString(),
+                            characteristic?.uuid?.toString(),
+                        ),
+                        status,
+                    )
+                }
             }
         }
 
@@ -1347,18 +1354,20 @@ class AndroidEngine(
             descriptor: BluetoothGattDescriptor?,
             status: Int
         ) {
-            logger?.debug("onDescriptorRead ${descriptor?.uuid}")
-            gatt?.let {
-                completeOperation(
-                    it,
-                    CentralGattOperationType.ReadDescriptor,
-                    descriptorOperationIdentity(
-                        descriptor?.characteristic?.service?.uuid?.toString(),
-                        descriptor?.characteristic?.uuid?.toString(),
-                        descriptor?.uuid?.toString(),
-                    ),
-                    status,
-                )
+            ownership.withCurrent(gatt) { gatt ->
+                logger?.debug("onDescriptorRead ${descriptor?.uuid}")
+                gatt.let {
+                    completeOperation(
+                        it,
+                        CentralGattOperationType.ReadDescriptor,
+                        descriptorOperationIdentity(
+                            descriptor?.characteristic?.service?.uuid?.toString(),
+                            descriptor?.characteristic?.uuid?.toString(),
+                            descriptor?.uuid?.toString(),
+                        ),
+                        status,
+                    )
+                }
             }
         }
 
@@ -1367,18 +1376,20 @@ class AndroidEngine(
             descriptor: BluetoothGattDescriptor?,
             status: Int
         ) {
-            logger?.debug("onDescriptorWrite ${descriptor?.uuid} status=$status")
-            gatt?.let {
-                completeOperation(
-                    it,
-                    CentralGattOperationType.WriteDescriptor,
-                    descriptorOperationIdentity(
-                        descriptor?.characteristic?.service?.uuid?.toString(),
-                        descriptor?.characteristic?.uuid?.toString(),
-                        descriptor?.uuid?.toString(),
-                    ),
-                    status,
-                )
+            ownership.withCurrent(gatt) { gatt ->
+                logger?.debug("onDescriptorWrite ${descriptor?.uuid} status=$status")
+                gatt.let {
+                    completeOperation(
+                        it,
+                        CentralGattOperationType.WriteDescriptor,
+                        descriptorOperationIdentity(
+                            descriptor?.characteristic?.service?.uuid?.toString(),
+                            descriptor?.characteristic?.uuid?.toString(),
+                            descriptor?.uuid?.toString(),
+                        ),
+                        status,
+                    )
+                }
             }
         }
 
