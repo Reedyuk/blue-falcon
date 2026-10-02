@@ -630,6 +630,7 @@ class AppleEngine : BlueFalconEngine, CBCentralManagerCallback, CBPeripheralCall
         } else {
             null
         }
+        val isNotifying = characteristic.isNotifying
         // This callback fires for both solicited reads (readValueForCharacteristic) and
         // unsolicited notifications - resolve any pending read for this exact characteristic
         // (ADR 0014) without disturbing the notification flow below, which must keep firing
@@ -642,7 +643,7 @@ class AppleEngine : BlueFalconEngine, CBCentralManagerCallback, CBPeripheralCall
                 failure = error?.let { IllegalStateException(it.localizedDescription) },
             )
         }
-        if (error != null) return
+        if (error != null || !isNotifying) return
         val safeValue = value ?: return
         val bluetoothCharacteristic = AppleBluetoothCharacteristic(
             cbCharacteristic = characteristic,
@@ -815,6 +816,8 @@ private class CoreBluetoothReadTarget(
     private val peripheral: CBPeripheral,
     private val characteristic: CBCharacteristic,
 ) : AppleCentralReadTarget {
+    override val isNotifying: Boolean
+        get() = characteristic.isNotifying
     override val peripheralUuid: String
         get() = peripheral.identifier.UUIDString
     override val characteristicUuid: String
