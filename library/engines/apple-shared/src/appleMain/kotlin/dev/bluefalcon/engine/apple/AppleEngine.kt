@@ -648,12 +648,15 @@ class AppleEngine : BlueFalconEngine, CBCentralManagerCallback, CBPeripheralCall
                 value = value,
                 failure = error?.let { IllegalStateException(it.localizedDescription) },
             )
-            if (error != null) return@dispatch
-            val safeValue = value ?: return@dispatch
-            val bluetoothCharacteristic = AppleBluetoothCharacteristic(
-                cbCharacteristic = characteristic,
-                service = characteristic.service?.let { AppleBluetoothService(it) }
-            )
+        }
+        if (error != null) return
+        val safeValue = value ?: return
+        val bluetoothCharacteristic = AppleBluetoothCharacteristic(
+            cbCharacteristic = characteristic,
+            service = characteristic.service?.let { AppleBluetoothService(it) }
+        )
+        callbackDispatcher.dispatch {
+            val active = activeConnection(token) ?: return@dispatch
             bluetoothCharacteristic.emitNotification(safeValue)
             _characteristicNotifications.tryEmit(
                 CharacteristicNotification(
