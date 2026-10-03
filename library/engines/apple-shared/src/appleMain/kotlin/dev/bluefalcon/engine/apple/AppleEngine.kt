@@ -3,6 +3,10 @@ package dev.bluefalcon.engine.apple
 import dev.bluefalcon.core.*
 import kotlinx.cinterop.BetaInteropApi
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -43,7 +47,12 @@ class AppleEngine : BlueFalconEngine, CBCentralManagerCallback, CBPeripheralCall
     private val _serviceDiscoveryUpdates = MutableSharedFlow<ServiceDiscoveryUpdate>(extraBufferCapacity = 64)
     override val serviceDiscoveryUpdates: SharedFlow<ServiceDiscoveryUpdate> = _serviceDiscoveryUpdates
 
-    private val centralWriteController = AppleCentralWriteController(scope)
+    private val centralWriteController = AppleCentralWriteController(scope, onQuarantine = { connection ->
+        val token = nativeConnectionOwnership.current(connection.peripheralUuid)
+        if (token != null) callbackDispatcher.dispatch {
+            if (connectedPeripherals[connection.peripheralUuid]?.connection == connection) requestTermination(token)
+        }
+    })
     private val callbackDispatcher = AppleCentralCallbackDispatcher(scope)
     private val nativeConnectionOwnership =
         AppleNativeConnectionOwnership<CBPeripheral>()
@@ -69,6 +78,10 @@ class AppleEngine : BlueFalconEngine, CBCentralManagerCallback, CBPeripheralCall
     
     // Peripheral delegate for handling peripheral events
     private val connectionAttempts = AppleConnectionAttemptCoordinator()
+    private val peerManagers = ApplePeerManagerEpochs<BluetoothPeripheralManager>()
+    private val terminalWatches = AppleTerminalWatchdogs<AppleNativeConnectionToken<CBPeripheral>>({ action ->
+        scope.launch { delay(10_000L); action() }
+    })
     private val peripheralDelegates = MutableStateFlow<
         Map<AppleNativeConnectionToken<CBPeripheral>, CBPeripheralDelegateWrapper>
     >(emptyMap())
@@ -123,46 +136,123 @@ class AppleEngine : BlueFalconEngine, CBCentralManagerCallback, CBPeripheralCall
         val applePeripheral = peripheral as? AppleBluetoothPeripheral
             ?: throw IllegalArgumentException("Peripheral must be an AppleBluetoothPeripheral")
         
-        val cbPeripheral = applePeripheral.cbPeripheral
-        val uuid = cbPeripheral.identifier.UUIDString
+        val uuid = applePeripheral.cbPeripheral.identifier.UUIDString
         connectionAttempts.withAttempt(uuid) {
+            peerManagers.current(uuid)?.takeIf { !peerManagers.isCurrent(it) }?.let {
+                withTimeout(11_000L) { it.terminated.await() }
+            }
             val previous = nativeConnectionOwnership.current(uuid)
             if (previous != null) {
-                if ((previous.owner.state == CBPeripheralStateConnected &&
-                        cbPeripheral.state == CBPeripheralStateConnected) ||
-                    (previous.owner === cbPeripheral &&
-                        cbPeripheral.state == CBPeripheralStateConnecting)
-                ) {
-                    // Callers may hold another wrapper for the same UUID. All
-                    // operations must use the native object that owns this epoch.
+                if (peerManagers.current(uuid)?.let(peerManagers::isCurrent) == true &&
+                    nativeConnectionOwnership.isActive(previous) && !terminalWatches.isPending(previous) &&
+                    (previous.owner.state == CBPeripheralStateConnected || previous.owner.state == CBPeripheralStateConnecting)) {
                     applePeripheral.updatePeripheral(previous.owner)
                     installPeripheralDelegate(previous.owner)
                     return@withAttempt
                 }
-                // CoreBluetooth lifecycle callbacks carry no generation. Drain the
-                // old terminal callback before issuing another native attempt.
-                centralManager.cancelPeripheralConnection(previous.owner)
-                withTimeout(10_000L) { previous.terminated.await() }
+                requestTermination(previous)
+                withTimeout(11_000L) { previous.terminated.await() }
             }
-            val token = nativeConnectionOwnership.connected(uuid, cbPeripheral)
-            val delegate = CBPeripheralDelegateWrapper(ConnectionCallback(token))
-            peripheralDelegates.update { it + (token to delegate) }
-            cbPeripheral.delegate = delegate
-            if (cbPeripheral.state == CBPeripheralStateConnected) {
-                onPeripheralConnected(cbPeripheral)
-            } else {
-                centralManager.connectPeripheral(cbPeripheral, null)
+            val epoch = peerManagers.reserve(uuid)
+            try {
+                val manager = BluetoothPeripheralManager(PeerManagerCallback(epoch))
+                epoch.manager = manager
+                manager.awaitPoweredOn()
+                if (!peerManagers.isCurrent(epoch)) throw IllegalStateException("Apple manager retired during connection")
+                // CBPeripheral objects belong to their originating manager. Transfer identity,
+                // never a scanned/retired native handle, to this isolated manager.
+                val cbPeripheral = manager.centralManager.retrievePeripheralsWithIdentifiers(listOf(NSUUID(uuid)))
+                    .filterIsInstance<CBPeripheral>().firstOrNull()
+                    ?: throw IllegalStateException("Peripheral unavailable to replacement Apple manager; scan again")
+                check(peerManagers.nativeAllowed(cbPeripheral)) {
+                    "Replacement Apple manager returned a quarantined native handle or recovery capacity exhausted"
+                }
+                val token = nativeConnectionOwnership.connected(uuid, cbPeripheral, epoch)
+                val delegate = CBPeripheralDelegateWrapper(ConnectionCallback(token))
+                peripheralDelegates.update { it + (token to delegate) }
+                cbPeripheral.delegate = delegate
+                applePeripheral.updatePeripheral(cbPeripheral)
+                manager.centralManager.connectPeripheral(cbPeripheral, null)
+            } catch (failure: Throwable) {
+                retirePeer(epoch, nativeConnectionOwnership.current(uuid)?.takeIf { it.origin === epoch }, forced = true)
+                throw failure
             }
         }
     }
-    
+
     override suspend fun disconnect(peripheral: BluetoothPeripheral) {
         val applePeripheral = peripheral as? AppleBluetoothPeripheral
             ?: throw IllegalArgumentException("Peripheral must be an AppleBluetoothPeripheral")
-        
-        centralManager.cancelPeripheralConnection(applePeripheral.cbPeripheral)
+        nativeConnectionOwnership.current(applePeripheral.uuid)?.let(::requestTermination)
     }
-    
+
+    private fun requestTermination(token: AppleNativeConnectionToken<CBPeripheral>) {
+        if (!nativeConnectionOwnership.isActive(token)) return
+        val epoch = peerManagers.current(token.peripheralUuid) ?: return
+        terminalWatches.start(token,
+            stillCurrent = { nativeConnectionOwnership.isActive(token) && peerManagers.isCurrent(epoch) },
+            expire = {
+                retirePeer(epoch, token, forced = true)
+            },
+        )
+        epoch.manager?.centralManager?.cancelPeripheralConnection(token.owner)
+    }
+
+    private fun retirePeer(
+        epoch: ApplePeerManagerEpochs.Epoch<BluetoothPeripheralManager>,
+        token: AppleNativeConnectionToken<CBPeripheral>?,
+        forced: Boolean,
+    ) {
+        peerManagers.retireAfterClose(epoch, close = {
+            token?.let { nativeConnectionOwnership.beginRetirement(it) }
+            if (forced && token != null) peerManagers.quarantineNative(token.owner)
+            epoch.manager?.close(token?.owner)
+        }, cleanup = {
+            if (token == null) peerManagers.finishRetirement(epoch)
+            else retireConnection(token, epoch)
+        })
+    }
+
+    private fun retireConnection(token: AppleNativeConnectionToken<CBPeripheral>, epoch: ApplePeerManagerEpochs.Epoch<BluetoothPeripheralManager>) {
+        callbackDispatcher.dispatch {
+            try {
+                val active = connectedPeripherals[token.peripheralUuid]
+                if (active?.ownership === token) {
+                    connectedPeripherals.remove(token.peripheralUuid)
+                    centralWriteController.disconnected(active.connection)
+                    l2capDeferreds.remove(token.peripheralUuid)?.completeExceptionally(L2capException("Apple connection retired"))
+                    _connectionStateUpdates.tryEmit(ConnectionStateUpdate(active.device, BluetoothPeripheralState.Disconnected))
+                }
+            } finally {
+                peripheralDelegates.update { it - token }
+                terminalWatches.complete(token)
+                nativeConnectionOwnership.disconnected(token)
+                peerManagers.finishRetirement(epoch)
+                token.terminated.complete(Unit)
+            }
+        }
+    }
+
+    private inner class PeerManagerCallback(
+        private val epoch: ApplePeerManagerEpochs.Epoch<BluetoothPeripheralManager>,
+    ) : CBCentralManagerCallback {
+        override fun onStateUpdated(state: CBManagerState) = Unit
+        override fun onPeripheralDiscovered(peripheral: CBPeripheral, advertisementData: Map<Any?, *>, rssi: NSNumber) = Unit
+        override fun onPeripheralConnected(peripheral: CBPeripheral) {
+            if (peerManagers.isCurrent(epoch)) onPeerConnected(epoch, peripheral)
+        }
+        override fun onPeripheralDisconnected(peripheral: CBPeripheral, error: NSError?) {
+            if (peerManagers.isCurrent(epoch)) finish(peripheral)
+        }
+        override fun onPeripheralConnectionFailed(peripheral: CBPeripheral, error: NSError?) {
+            if (peerManagers.isCurrent(epoch)) finish(peripheral)
+        }
+        private fun finish(peripheral: CBPeripheral) {
+            val token = peerManagers.capture(epoch, nativeConnectionOwnership, peripheral) ?: return
+            retirePeer(epoch, token, forced = false)
+        }
+    }
+
     override fun connectionState(peripheral: BluetoothPeripheral): BluetoothPeripheralState {
         val applePeripheral = peripheral as? AppleBluetoothPeripheral
             ?: return BluetoothPeripheralState.Unknown
@@ -526,12 +616,13 @@ class AppleEngine : BlueFalconEngine, CBCentralManagerCallback, CBPeripheralCall
         return mapOf(companyId to payload)
     }
     
-    override fun onPeripheralConnected(peripheral: CBPeripheral) {
-        val token = nativeConnectionOwnership.capture(peripheral.identifier.UUIDString, peripheral)
-            ?: return
+    override fun onPeripheralConnected(peripheral: CBPeripheral) = Unit
+
+    private fun onPeerConnected(epoch: ApplePeerManagerEpochs.Epoch<BluetoothPeripheralManager>, peripheral: CBPeripheral) {
+        val token = peerManagers.capture(epoch, nativeConnectionOwnership, peripheral) ?: return
         installPeripheralDelegate(peripheral)
         callbackDispatcher.dispatch {
-            if (!nativeConnectionOwnership.isActive(token)) return@dispatch
+            if (!peerManagers.isCurrent(epoch) || !nativeConnectionOwnership.isActive(token)) return@dispatch
             val uuid = peripheral.identifier.UUIDString
             val existingConnection = connectedPeripherals[uuid]
             if (existingConnection?.ownership === token) return@dispatch
@@ -560,36 +651,9 @@ class AppleEngine : BlueFalconEngine, CBCentralManagerCallback, CBPeripheralCall
         }
     }
     
-    override fun onPeripheralDisconnected(peripheral: CBPeripheral, error: NSError?) {
-        val uuid = peripheral.identifier.UUIDString
-        val token = nativeConnectionOwnership.capture(uuid, peripheral) ?: return
-        if (!nativeConnectionOwnership.isActive(token)) return
-        callbackDispatcher.dispatch {
-            val active = connectedPeripherals[uuid]
-            try {
-                if (active != null && active.ownership !== token) return@dispatch
-                if (!nativeConnectionOwnership.disconnected(token)) return@dispatch
-                val device = active?.device ?: AppleBluetoothPeripheral(peripheral, null)
-                connectedPeripherals.remove(uuid)
-                peripheral.delegate = null
-                active?.let { centralWriteController.disconnected(it.connection) }
-                l2capDeferreds.remove(uuid)?.completeExceptionally(
-                    L2capException("Peripheral disconnected while opening L2CAP channel")
-                )
-                _connectionStateUpdates.tryEmit(
-                    ConnectionStateUpdate(device, BluetoothPeripheralState.Disconnected)
-                )
-            } finally {
-                peripheralDelegates.update { it - token }
-                token.terminated.complete(Unit)
-            }
-        }
-    }
-    
-    override fun onPeripheralConnectionFailed(peripheral: CBPeripheral, error: NSError?) {
-        onPeripheralDisconnected(peripheral, error)
-    }
-    
+    override fun onPeripheralDisconnected(peripheral: CBPeripheral, error: NSError?) = Unit
+    override fun onPeripheralConnectionFailed(peripheral: CBPeripheral, error: NSError?) = Unit
+
     private inner class ConnectionCallback(token: AppleNativeConnectionToken<CBPeripheral>) : CBPeripheralCallback {
         private val callbacks = AppleNativeConnectionCallbacks(token, nativeConnectionOwnership)
 
@@ -948,7 +1012,10 @@ class AppleEngine : BlueFalconEngine, CBCentralManagerCallback, CBPeripheralCall
 
     private fun activeConnection(token: AppleNativeConnectionToken<CBPeripheral>): ActiveAppleConnection? =
         connectedPeripherals[token.peripheralUuid]?.takeIf {
-            it.ownership === token && nativeConnectionOwnership.isActive(token)
+            it.ownership === token && nativeConnectionOwnership.isActive(token) &&
+                peerManagers.current(token.peripheralUuid)?.let { epoch ->
+                    epoch === token.origin && peerManagers.isCurrent(epoch)
+                } == true
         }
 }
 
