@@ -39,6 +39,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.channelFlow
 import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
@@ -54,11 +55,13 @@ internal class DefaultBlueFalconPeripheral(
     coroutineContext: CoroutineContext = EmptyCoroutineContext,
     requestCapacity: Int = DefaultBufferCapacity,
     eventCapacity: Int = DefaultBufferCapacity,
+    backendEventCapacity: Int = DefaultBackendEventCapacity,
 ) : BlueFalconPeripheral {
 
     init {
         require(requestCapacity > 0) { "Request capacity must be positive" }
         require(eventCapacity > 0) { "Event capacity must be positive" }
+        require(backendEventCapacity > 0) { "Backend event capacity must be positive" }
     }
 
     private val lifecycleMutex = Mutex()
@@ -77,7 +80,10 @@ internal class DefaultBlueFalconPeripheral(
     private var nextGeneration = 0L
     private var nextInactivityToken = 0L
     private var nextSessionReadinessEpoch = 0L
-    private var activeGeneration = NoGeneration
+    private val mutableActiveGeneration = MutableStateFlow(NoGeneration)
+    private var activeGeneration: Long
+        get() = mutableActiveGeneration.value
+        set(value) { mutableActiveGeneration.value = value }
     private var activeConfig: PeripheralConfig? = null
     private var closeStarted = false
     private val closeCompletion = CompletableDeferred<Throwable?>()
@@ -133,7 +139,22 @@ internal class DefaultBlueFalconPeripheral(
         failure?.let { throw it }
     }
 
-    private val backendEventChannel = Channel<BackendEvent>(Channel.UNLIMITED)
+    // Native callbacks cannot suspend. Keep at most capacity queued events plus
+    // one in-flight event. Losing state/lifecycle events is terminal for this run.
+    private val backendEventChannel = Channel<BackendEvent>(backendEventCapacity)
+    private val backendEventOverflow = MutableStateFlow<BackendEventOverflow?>(null)
+    // A fixed, conflated monitor also wakes when the consumer drains the queue
+    // between trySend failing and the overflow flag being published. Never launch
+    // a new coroutine for each rejected callback.
+    private val backendEventOverflowProcessor = managerScope.launch(start = CoroutineStart.UNDISPATCHED) {
+        backendEventOverflow.filterNotNull().collect { overflow ->
+            try {
+                failBackendEventOverflow(overflow)
+            } finally {
+                backendEventOverflow.compareAndSet(overflow, null)
+            }
+        }
+    }
     private val backendEventProcessor = managerScope.launch(start = CoroutineStart.UNDISPATCHED) {
         for (event in backendEventChannel) {
             try {
@@ -142,6 +163,50 @@ internal class DefaultBlueFalconPeripheral(
                 throw cause
             } catch (cause: Throwable) {
                 eventChannel.trySend(PeripheralEvent.PlatformFailure(cause))
+            }
+        }
+    }
+
+    private fun submitBackendEvent(event: BackendEvent) {
+        if (event.generation != activeGeneration) return
+        if (backendEventOverflow.value?.generation == event.generation) return
+        val result = backendEventChannel.trySend(event)
+        if (result.isSuccess || result.isClosed) return
+        while (event.generation == activeGeneration) {
+            val current = backendEventOverflow.value
+            if (current?.generation == event.generation) return
+            val overflow = BackendEventOverflow(
+                event.generation,
+                PeripheralLifecycleException("Backend event queue capacity exceeded"),
+            )
+            if (backendEventOverflow.compareAndSet(current, overflow)) return
+        }
+    }
+
+    private suspend fun failBackendEventOverflow(overflow: BackendEventOverflow) {
+        lifecycleMutex.withLock {
+            if (overflow.generation != activeGeneration) return
+            withContext(NonCancellable) {
+                activeGeneration = NoGeneration
+                activeConfig = null
+                mutableState.value = PeripheralManagerState.Stopping
+                val closingSessions = beginCloseAllSessions()
+                try {
+                    backend.stop()
+                } catch (cause: Throwable) {
+                    overflow.cause.addSuppressed(cause)
+                } finally {
+                    try {
+                        finishCloseAllSessions(closingSessions)
+                    } catch (cause: Throwable) {
+                        overflow.cause.addSuppressed(cause)
+                    }
+                    // No new generation can start while lifecycleMutex is held.
+                    // Free the failed run's capacity before publishing Failed.
+                    while (backendEventChannel.tryReceive().isSuccess) { }
+                    mutableState.value = PeripheralManagerState.Failed(overflow.cause)
+                    eventChannel.trySend(PeripheralEvent.PlatformFailure(overflow.cause))
+                }
             }
         }
     }
@@ -262,6 +327,7 @@ internal class DefaultBlueFalconPeripheral(
 
         requestIngressProcessor.join()
         backendEventProcessor.join()
+        backendEventOverflowProcessor.cancelAndJoin()
         try {
             pluginRegistry.close()
         } catch (cause: Throwable) {
@@ -537,7 +603,7 @@ internal class DefaultBlueFalconPeripheral(
         inactivityTokens[sessionId] = token
         inactivityJobs[sessionId] = managerScope.launch {
             delay(timeout)
-            backendEventChannel.trySend(
+            submitBackendEvent(
                 BackendEvent.InactivityExpired(
                     generation = generation,
                     sessionId = sessionId,
@@ -690,6 +756,17 @@ internal class DefaultBlueFalconPeripheral(
         }
 
         override fun onRequest(request: BackendGattServerRequest) {
+            if (generation != activeGeneration ||
+                backendEventOverflow.value?.generation == generation
+            ) {
+                try {
+                    request.responder?.respond(GattResponseStatus.UnlikelyError, null)
+                } catch (_: Throwable) {
+                    // A stale platform responder may already be closed.
+                }
+                if (generation == activeGeneration) emitRequestDropped(request)
+                return
+            }
             val responseHandle = request.responder?.let { responder ->
                 DefaultGattResponseHandle { status, value -> responder.respond(status, value) }
             }
@@ -715,7 +792,7 @@ internal class DefaultBlueFalconPeripheral(
                 } catch (_: Throwable) {
                     // The manager is already closed, so there is no live event stream to report to.
                 }
-                emitRequestDropped(request)
+                if (generation == activeGeneration) emitRequestDropped(request)
             }
         }
 
@@ -724,7 +801,7 @@ internal class DefaultBlueFalconPeripheral(
         }
 
         private fun submit(event: BackendEvent) {
-            backendEventChannel.trySend(event)
+            submitBackendEvent(event)
         }
     }
 
@@ -774,8 +851,15 @@ internal class DefaultBlueFalconPeripheral(
 
     private companion object {
         const val DefaultBufferCapacity = 64
+        // Accommodates readiness bursts while keeping aggregate ingress finite.
+        const val DefaultBackendEventCapacity = 256
         const val NoGeneration = -1L
     }
+
+    private data class BackendEventOverflow(
+        val generation: Long,
+        val cause: PeripheralLifecycleException,
+    )
 
     private data class RegisteredBackendRequest(
         val generation: Long,
