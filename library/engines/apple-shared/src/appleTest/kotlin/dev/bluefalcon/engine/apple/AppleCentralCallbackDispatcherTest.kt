@@ -11,6 +11,70 @@ import kotlin.test.assertTrue
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class AppleCentralCallbackDispatcherTest {
+    @Test
+    fun `entered delegate callback cannot recapture a reconnect epoch`() = runTest {
+        val ownership = AppleNativeConnectionOwnership<Any>()
+        val native = Any()
+        val old = ownership.connected("peer", native)
+        val delegate = AppleNativeConnectionCallbacks(old, ownership)
+        val dispatcher = AppleCentralCallbackDispatcher(backgroundScope)
+        val events = mutableListOf<String>()
+        delegate.forward { captured ->
+            // Reconnect after the delegate's initial check, before engine dispatch.
+            ownership.disconnected(old)
+            val current = ownership.connected("peer", native)
+            assertEquals(old, captured)
+            assertTrue(ownership.isActive(current))
+            dispatcher.dispatch {
+                if (ownership.isActive(captured)) events += "stale callback"
+            }
+        }
+        runCurrent()
+        assertTrue(events.isEmpty())
+        delegate.forward { error("Old delegate must remain inactive") }
+    }
+
+    @Test
+    fun `captured ownership cannot become a newer epoch even when native object is reused`() {
+        val ownership = AppleNativeConnectionOwnership<Any>()
+        val native = Any()
+        val old = ownership.connected("peer", native)
+        val current = ownership.connected("peer", native)
+        assertFalse(ownership.isActive(old))
+        assertTrue(ownership.isActive(current))
+        assertEquals(current, ownership.capture("peer", native))
+        assertFalse(ownership.disconnected(old))
+        assertTrue(ownership.isActive(current))
+    }
+
+    @Test
+    fun `queued callbacks keep their captured epoch across replacement`() = runTest {
+        val ownership = AppleNativeConnectionOwnership<Any>()
+        val native = Any()
+        ownership.connected("peer", native)
+        val captured = ownership.capture("peer", native)!!
+        val dispatcher = AppleCentralCallbackDispatcher(backgroundScope)
+        val release = CompletableDeferred<Unit>()
+        val events = mutableListOf<String>()
+        dispatcher.dispatch { release.await() }
+        for (kind in listOf("write", "read", "subscription", "notification", "disconnect")) {
+            dispatcher.dispatch {
+                if (ownership.isActive(captured)) events += kind
+            }
+        }
+        runCurrent()
+        val current = ownership.connected("peer", native)
+        release.complete(Unit)
+        runCurrent()
+        assertTrue(events.isEmpty())
+        assertTrue(ownership.isActive(current))
+        dispatcher.dispatch {
+            if (ownership.isActive(current)) events += "current notification"
+        }
+        runCurrent()
+        assertEquals(listOf("current notification"), events)
+    }
+
 
     @Test
     fun `delegate callbacks are processed serially in delivery order`() = runTest {
