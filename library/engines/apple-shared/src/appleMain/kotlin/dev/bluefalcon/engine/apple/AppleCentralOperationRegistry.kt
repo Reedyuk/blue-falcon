@@ -43,6 +43,7 @@ internal class AppleCentralOperationRegistry {
     private val writes = mutableMapOf<AppleCentralConnectionKey, PendingWrite>()
     private val subscriptions = mutableMapOf<AppleCentralOperationKey, PendingSubscription>()
     private val reads = mutableMapOf<AppleCentralOperationKey, PendingRead>()
+    private val notifying = mutableSetOf<AppleCentralOperationKey>()
 
     private val _readiness =
         MutableStateFlow<Map<AppleCentralConnectionKey, Boolean>>(emptyMap())
@@ -109,7 +110,7 @@ internal class AppleCentralOperationRegistry {
         enabled: Boolean,
         onComplete: (NotificationSubscriptionResult) -> Unit,
     ): Boolean = mutex.withLock {
-        if (!isActiveLocked(key.connection) || subscriptions.containsKey(key)) {
+        if (!isActiveLocked(key.connection) || subscriptions.containsKey(key) || reads.containsKey(key)) {
             return@withLock false
         }
         subscriptions[key] = PendingSubscription(
@@ -126,6 +127,9 @@ internal class AppleCentralOperationRegistry {
         val completion = mutex.withLock {
             if (!isActiveLocked(key.connection)) return false
             val pending = subscriptions.remove(key) ?: return false
+            if (result is NotificationSubscriptionResult.Updated) {
+                if (result.enabled) notifying.add(key) else notifying.remove(key)
+            }
             pending.onComplete
         }
         completion?.invoke(result)
@@ -148,7 +152,10 @@ internal class AppleCentralOperationRegistry {
         key: AppleCentralOperationKey,
         onComplete: (AppleReadOutcome) -> Unit,
     ): Boolean = mutex.withLock {
-        if (!isActiveLocked(key.connection) || reads.containsKey(key)) {
+        // CoreBluetooth does not distinguish a read response from a notification.
+        if (!isActiveLocked(key.connection) || reads.containsKey(key) ||
+            key in notifying || subscriptions.containsKey(key)
+        ) {
             return@withLock false
         }
         reads[key] = PendingRead(onComplete)
@@ -207,6 +214,7 @@ internal class AppleCentralOperationRegistry {
         connection: AppleCentralConnectionKey,
     ): List<() -> Unit> {
         activeConnections.remove(connection.peripheralUuid)
+        notifying.removeAll { it.connection == connection }
         _readiness.value = _readiness.value - connection
 
         val callbacks = mutableListOf<() -> Unit>()

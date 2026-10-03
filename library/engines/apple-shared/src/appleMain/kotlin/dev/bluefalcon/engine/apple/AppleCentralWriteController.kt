@@ -72,6 +72,7 @@ internal interface AppleCentralReadTarget {
     val peripheralUuid: String
     val characteristicUuid: String
     val connected: Boolean
+    val isNotifying: Boolean get() = false
 
     fun readValue()
 }
@@ -286,7 +287,7 @@ internal class AppleCentralWriteController(
             return report(
                 NotificationSubscriptionResult.Failed(
                     IllegalStateException(
-                        "A notification subscription is already pending for this characteristic"
+                        "A read or notification subscription is already pending for this characteristic"
                     )
                 )
             )
@@ -366,6 +367,11 @@ internal class AppleCentralWriteController(
 
     suspend fun read(target: AppleCentralReadTarget): AppleReadOutcome {
         if (!target.connected) return AppleReadOutcome.Disconnected
+        if (target.isNotifying) {
+            return AppleReadOutcome.Failed(
+                IllegalStateException("Disable notifications before reading this characteristic on Apple platforms")
+            )
+        }
         val connection = currentConnection(target.peripheralUuid)
             ?: return AppleReadOutcome.Disconnected
         val key = AppleCentralOperationKey(
@@ -377,7 +383,7 @@ internal class AppleCentralWriteController(
         if (!registry.registerRead(key) { outcome -> result.complete(outcome) }) {
             return AppleReadOutcome.Failed(
                 IllegalStateException(
-                    "A read is already pending for this characteristic"
+                    "A read or subscription is pending, or notifications are enabled; disable notifications before reading"
                 )
             )
         }

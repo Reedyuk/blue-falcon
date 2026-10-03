@@ -26,6 +26,7 @@ Blue Falcon provides a unified API for Bluetooth LE operations across all platfo
 - **⚡ Native Performance** - Compiles to platform-native code (Obj-C, JVM, JS, etc.)
 - **🔧 Flexible APIs** - Choose between Flow-based reactive API or delegate callbacks
 - **🎯 Type-Safe** - Full Kotlin type safety across all platforms
+- **Peripheral / GATT Server** - Advertising, local services, multi-central sessions, and targeted notifications on Android, iOS, and macOS (3.7.0+)
 
 ## 📦 Installation
 
@@ -35,16 +36,16 @@ Blue Falcon provides a unified API for Bluetooth LE operations across all platfo
 
 ```kotlin
 commonMain.dependencies {
-    implementation("dev.bluefalcon:blue-falcon-core:3.7.12")
+    implementation("dev.bluefalcon:blue-falcon-core:3.7.13")
 }
 
 // Add platform-specific engines
 androidMain.dependencies {
-    implementation("dev.bluefalcon:blue-falcon-engine-android:3.7.12")
+    implementation("dev.bluefalcon:blue-falcon-engine-android:3.7.13")
 }
 
 iosMain.dependencies {
-    implementation("dev.bluefalcon:blue-falcon-engine-ios:3.7.12")
+    implementation("dev.bluefalcon:blue-falcon-engine-ios:3.7.13")
 }
 ```
 
@@ -53,19 +54,19 @@ iosMain.dependencies {
 ```kotlin
 commonMain.dependencies {
     // Logging support
-    implementation("dev.bluefalcon:blue-falcon-plugin-logging:3.7.12")
+    implementation("dev.bluefalcon:blue-falcon-plugin-logging:3.7.13")
     
     // Automatic retry with exponential backoff
-    implementation("dev.bluefalcon:blue-falcon-plugin-retry:3.7.12")
+    implementation("dev.bluefalcon:blue-falcon-plugin-retry:3.7.13")
     
     // Service/characteristic caching
-    implementation("dev.bluefalcon:blue-falcon-plugin-caching:3.7.12")
+    implementation("dev.bluefalcon:blue-falcon-plugin-caching:3.7.13")
     
     // Connection success/failure counts, operation latency, and throughput metrics
-    implementation("dev.bluefalcon:blue-falcon-plugin-metrics:3.7.12")
+    implementation("dev.bluefalcon:blue-falcon-plugin-metrics:3.7.13")
 
     // Bounded, observable central GATT command queue
-    implementation("dev.bluefalcon:blue-falcon-plugin-command-queue:3.7.12")
+    implementation("dev.bluefalcon:blue-falcon-plugin-command-queue:3.7.13")
 }
 ```
 
@@ -102,6 +103,102 @@ launch {
 blueFalcon.scan()
 ```
 
+## Peripheral / GATT Server (3.7.0+)
+
+The `blue-falcon-peripheral` module provides the BLE Peripheral role alongside the
+Central engines. Production GATT-server backends are available on **Android, iOS,
+and macOS**; the other Central platforms do not currently provide this server API.
+
+```kotlin
+commonMain.dependencies {
+    implementation("dev.bluefalcon:blue-falcon-peripheral:3.7.13")
+    // Optional bounded notification queue with fair per-session scheduling
+    implementation("dev.bluefalcon:blue-falcon-plugin-queue:3.7.13")
+}
+```
+
+The module supports a configurable local service/characteristic/descriptor tree,
+advertising, independent `PeripheralSession` instances for connected centrals,
+subscription tracking, per-session `maximumUpdateValueLength`, and targeted
+`session.notify()` calls. Requests include reads, writes, descriptor operations,
+and prepared-write batches (`GattCharacteristicWriteBatchRequest`). Applications
+must validate requests and send the appropriate ATT responses. Extend the manager
+through `PeripheralPluginRegistry`, or install `QueuePlugin` for bounded FIFO
+notification queues with aggregate byte limits and fair round-robin scheduling.
+
+Create the manager in platform code:
+
+```kotlin
+// Android: dev.bluefalcon.peripheral.android.createBlueFalconPeripheral
+val peripheral = createBlueFalconPeripheral(applicationContext)
+
+// iOS/macOS: dev.bluefalcon.peripheral.apple.createBlueFalconPeripheral
+val peripheral = createBlueFalconPeripheral()
+```
+
+Configure and start it from an application-owned coroutine scope:
+
+```kotlin
+import dev.bluefalcon.peripheral.*
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.launch
+
+val serviceUuid = "84f7e120-63fd-4f79-8b08-5b9780a36a94"
+val characteristicUuid = "84f7e121-63fd-4f79-8b08-5b9780a36a94"
+
+// Install the request collector before advertising. This minimal example accepts
+// ordinary writes and explicitly rejects other operations.
+applicationScope.launch(start = CoroutineStart.UNDISPATCHED) {
+    peripheral.requests.collect { request ->
+        val status = if (request is GattCharacteristicWriteRequest &&
+            !request.preparedWrite && request.offset == 0
+        ) {
+            println("Received ${request.value.size} bytes from ${request.session.id}")
+            GattResponseStatus.Success
+        } else {
+            GattResponseStatus.RequestNotSupported
+        }
+        request.response?.respond(status)
+    }
+}
+
+applicationScope.launch {
+    peripheral.sessions.collect { sessions ->
+        println("Connected centrals: ${sessions.size}")
+    }
+}
+
+applicationScope.launch {
+    peripheral.start(PeripheralConfig(
+        advertiseConfig = AdvertiseConfig(
+            localName = "Blue Falcon Peripheral",
+            serviceUuids = listOf(serviceUuid),
+            services = listOf(GattServiceConfig(
+                uuid = serviceUuid,
+                characteristics = listOf(GattCharacteristicConfig(
+                    uuid = characteristicUuid,
+                    properties = setOf(
+                        CharacteristicProperty.WRITE,
+                        CharacteristicProperty.NOTIFY,
+                    ),
+                )),
+            )),
+        ),
+    ))
+}
+```
+
+Use `PeripheralConfig.restorationIdentifier` for Apple state restoration and
+declare `bluetooth-peripheral` in `UIBackgroundModes` when enabling it on iOS.
+Advertisement fields are platform-dependent: iOS does not advertise manufacturer
+data. Inspect `peripheral.capabilities` and typed notification results before
+relying on platform-specific behavior. `stop()` is restartable; `close()` is
+terminal and should run before cancelling the owning scope.
+
+See the **[Peripheral Echo Server example](examples/Peripheral-Example/README.md)**
+for complete request routing, targeted notifications through `QueuePlugin`,
+platform permissions, lifecycle ownership, and restoration setup.
+
 ## 📚 Documentation
 
 - **[Migration Guide](docs/MIGRATION_GUIDE.md)** - Upgrading from 2.x (legacy API reference)
@@ -110,6 +207,7 @@ blueFalcon.scan()
 - **[Testing Guide](docs/TESTING_GUIDE.md)** - Testing your BLE code
 - **[Publishing Guide](docs/PUBLISHING.md)** - Release and publishing process
 - **[Windows Setup](library/src/windowsMain/WINDOWS.md)** - Windows support details, including native DLL build steps
+- **[Peripheral / GATT Server example](examples/Peripheral-Example/README.md)** - Advertising, request handling, multi-central sessions, and queued notifications
 - **Windows adapter selection** - `WindowsEngine` supports `adapters()` and `selectAdapter(identifier)` for multi-radio hosts
 
 ### Architecture
