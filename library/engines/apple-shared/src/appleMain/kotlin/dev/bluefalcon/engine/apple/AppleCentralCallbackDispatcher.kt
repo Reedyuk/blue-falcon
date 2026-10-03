@@ -13,6 +13,16 @@ internal class AppleNativeConnectionToken<T : Any>(val peripheralUuid: String, v
     val terminated = CompletableDeferred<Unit>()
 }
 
+/** A delegate keeps this binding even if the same native object is reconnected. */
+internal class AppleNativeConnectionCallbacks<T : Any>(
+    private val token: AppleNativeConnectionToken<T>,
+    private val ownership: AppleNativeConnectionOwnership<T>,
+) {
+    fun forward(callback: (AppleNativeConnectionToken<T>) -> Unit) {
+        if (ownership.isActive(token)) callback(token)
+    }
+}
+
 internal class AppleNativeConnectionOwnership<T : Any> {
     private val owners = MutableStateFlow<Map<String, AppleNativeConnectionToken<T>>>(emptyMap())
 

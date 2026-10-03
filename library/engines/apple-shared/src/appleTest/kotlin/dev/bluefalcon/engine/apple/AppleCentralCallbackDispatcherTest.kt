@@ -12,6 +12,29 @@ import kotlin.test.assertTrue
 @OptIn(ExperimentalCoroutinesApi::class)
 class AppleCentralCallbackDispatcherTest {
     @Test
+    fun `entered delegate callback cannot recapture a reconnect epoch`() = runTest {
+        val ownership = AppleNativeConnectionOwnership<Any>()
+        val native = Any()
+        val old = ownership.connected("peer", native)
+        val delegate = AppleNativeConnectionCallbacks(old, ownership)
+        val dispatcher = AppleCentralCallbackDispatcher(backgroundScope)
+        val events = mutableListOf<String>()
+        delegate.forward { captured ->
+            // Reconnect after the delegate's initial check, before engine dispatch.
+            ownership.disconnected(old)
+            val current = ownership.connected("peer", native)
+            assertEquals(old, captured)
+            assertTrue(ownership.isActive(current))
+            dispatcher.dispatch {
+                if (ownership.isActive(captured)) events += "stale callback"
+            }
+        }
+        runCurrent()
+        assertTrue(events.isEmpty())
+        delegate.forward { error("Old delegate must remain inactive") }
+    }
+
+    @Test
     fun `captured ownership cannot become a newer epoch even when native object is reused`() {
         val ownership = AppleNativeConnectionOwnership<Any>()
         val native = Any()

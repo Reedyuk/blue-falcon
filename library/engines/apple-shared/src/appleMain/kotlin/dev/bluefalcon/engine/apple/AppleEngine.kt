@@ -12,8 +12,6 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withTimeout
 import platform.CoreBluetooth.*
 import platform.Foundation.*
@@ -70,7 +68,7 @@ class AppleEngine : BlueFalconEngine, CBCentralManagerCallback, CBPeripheralCall
         get() = bluetoothManager.centralManager
     
     // Peripheral delegate for handling peripheral events
-    private val connectMutex = Mutex()
+    private val connectionAttempts = AppleConnectionAttemptCoordinator()
     private val peripheralDelegates = MutableStateFlow<
         Map<AppleNativeConnectionToken<CBPeripheral>, CBPeripheralDelegateWrapper>
     >(emptyMap())
@@ -126,24 +124,28 @@ class AppleEngine : BlueFalconEngine, CBCentralManagerCallback, CBPeripheralCall
             ?: throw IllegalArgumentException("Peripheral must be an AppleBluetoothPeripheral")
         
         val cbPeripheral = applePeripheral.cbPeripheral
-        connectMutex.withLock {
-            val uuid = cbPeripheral.identifier.UUIDString
+        val uuid = cbPeripheral.identifier.UUIDString
+        connectionAttempts.withAttempt(uuid) {
             val previous = nativeConnectionOwnership.current(uuid)
             if (previous != null) {
                 if ((previous.owner.state == CBPeripheralStateConnected &&
                         cbPeripheral.state == CBPeripheralStateConnected) ||
                     (previous.owner === cbPeripheral &&
                         cbPeripheral.state == CBPeripheralStateConnecting)
-                ) return
+                ) {
+                    // Callers may hold another wrapper for the same UUID. All
+                    // operations must use the native object that owns this epoch.
+                    applePeripheral.updatePeripheral(previous.owner)
+                    installPeripheralDelegate(previous.owner)
+                    return@withAttempt
+                }
                 // CoreBluetooth lifecycle callbacks carry no generation. Drain the
                 // old terminal callback before issuing another native attempt.
                 centralManager.cancelPeripheralConnection(previous.owner)
                 withTimeout(10_000L) { previous.terminated.await() }
             }
             val token = nativeConnectionOwnership.connected(uuid, cbPeripheral)
-            val delegate = CBPeripheralDelegateWrapper(this) {
-                nativeConnectionOwnership.isActive(token)
-            }
+            val delegate = CBPeripheralDelegateWrapper(ConnectionCallback(token))
             peripheralDelegates.update { it + (token to delegate) }
             cbPeripheral.delegate = delegate
             if (cbPeripheral.state == CBPeripheralStateConnected) {
@@ -495,8 +497,9 @@ class AppleEngine : BlueFalconEngine, CBCentralManagerCallback, CBPeripheralCall
     
     override fun onPeripheralDiscovered(
         peripheral: CBPeripheral,
-        advertisementData: Map<Any?, *>,
-        rssi: NSNumber
+        advertisementData: Map<Any?,
+        *>,
+        rssi: NSNumber,
     ) {
         if (isScanning) {
             val uuid = peripheral.identifier.UUIDString
@@ -587,11 +590,105 @@ class AppleEngine : BlueFalconEngine, CBCentralManagerCallback, CBPeripheralCall
         onPeripheralDisconnected(peripheral, error)
     }
     
+    private inner class ConnectionCallback(token: AppleNativeConnectionToken<CBPeripheral>) : CBPeripheralCallback {
+        private val callbacks = AppleNativeConnectionCallbacks(token, nativeConnectionOwnership)
+
+        override fun onServicesDiscovered(peripheral: CBPeripheral, error: NSError?) {
+            callbacks.forward { token ->
+                this@AppleEngine.onServicesDiscovered(token, peripheral, error)
+            }
+        }
+
+        override fun onCharacteristicsDiscovered(
+            peripheral: CBPeripheral,
+            service: CBService,
+            error: NSError?,
+        ) {
+            callbacks.forward { token ->
+                this@AppleEngine.onCharacteristicsDiscovered(token, peripheral, service, error)
+            }
+        }
+
+        override fun onCharacteristicValueUpdated(
+            peripheral: CBPeripheral,
+            characteristic: CBCharacteristic,
+            error: NSError?,
+        ) {
+            callbacks.forward { token ->
+                this@AppleEngine.onCharacteristicValueUpdated(token, peripheral, characteristic, error)
+            }
+        }
+
+        override fun onCharacteristicWritten(
+            peripheral: CBPeripheral,
+            characteristic: CBCharacteristic,
+            error: NSError?,
+        ) {
+            callbacks.forward { token ->
+                this@AppleEngine.onCharacteristicWritten(token, peripheral, characteristic, error)
+            }
+        }
+
+        override fun onDescriptorsDiscovered(
+            peripheral: CBPeripheral,
+            characteristic: CBCharacteristic,
+            error: NSError?,
+        ) {
+            callbacks.forward { token ->
+                this@AppleEngine.onDescriptorsDiscovered(token, peripheral, characteristic, error)
+            }
+        }
+
+        override fun onNotificationStateUpdated(
+            peripheral: CBPeripheral,
+            characteristic: CBCharacteristic,
+            error: NSError?,
+        ) {
+            callbacks.forward { token ->
+                this@AppleEngine.onNotificationStateUpdated(token, peripheral, characteristic, error)
+            }
+        }
+
+        override fun onReadyToSendWriteWithoutResponse(peripheral: CBPeripheral) {
+            callbacks.forward { token ->
+                this@AppleEngine.onReadyToSendWriteWithoutResponse(token, peripheral)
+            }
+        }
+
+        override fun onL2CAPChannelOpened(
+            peripheral: CBPeripheral,
+            channel: CBL2CAPChannel?,
+            error: NSError?,
+        ) {
+            callbacks.forward { token ->
+                this@AppleEngine.onL2CAPChannelOpened(token, peripheral, channel, error)
+            }
+        }
+
+        override fun onDescriptorWritten(
+            peripheral: CBPeripheral,
+            descriptor: CBDescriptor,
+            error: NSError?,
+        ) {
+            callbacks.forward { token ->
+                this@AppleEngine.onDescriptorWritten(token, peripheral, descriptor, error)
+            }
+        }
+    }
+
     // CBPeripheralCallback implementation
     
     override fun onServicesDiscovered(peripheral: CBPeripheral, error: NSError?) {
         val token = nativeConnectionOwnership.capture(peripheral.identifier.UUIDString, peripheral)
             ?: return
+        onServicesDiscovered(token, peripheral, error)
+    }
+
+    private fun onServicesDiscovered(
+        token: AppleNativeConnectionToken<CBPeripheral>,
+        peripheral: CBPeripheral,
+        error: NSError?,
+    ) {
         callbackDispatcher.dispatch {
             if (error != null) return@dispatch
             val active = activeConnection(token) ?: return@dispatch
@@ -604,9 +701,22 @@ class AppleEngine : BlueFalconEngine, CBCentralManagerCallback, CBPeripheralCall
         }
     }
 
-    override fun onCharacteristicsDiscovered(peripheral: CBPeripheral, service: CBService, error: NSError?) {
+    override fun onCharacteristicsDiscovered(
+        peripheral: CBPeripheral,
+        service: CBService,
+        error: NSError?,
+    ) {
         val token = nativeConnectionOwnership.capture(peripheral.identifier.UUIDString, peripheral)
             ?: return
+        onCharacteristicsDiscovered(token, peripheral, service, error)
+    }
+
+    private fun onCharacteristicsDiscovered(
+        token: AppleNativeConnectionToken<CBPeripheral>,
+        peripheral: CBPeripheral,
+        service: CBService,
+        error: NSError?,
+    ) {
         callbackDispatcher.dispatch {
             if (error != null) return@dispatch
             val active = activeConnection(token) ?: return@dispatch
@@ -629,10 +739,19 @@ class AppleEngine : BlueFalconEngine, CBCentralManagerCallback, CBPeripheralCall
     override fun onCharacteristicValueUpdated(
         peripheral: CBPeripheral,
         characteristic: CBCharacteristic,
-        error: NSError?
+        error: NSError?,
     ) {
         val token = nativeConnectionOwnership.capture(peripheral.identifier.UUIDString, peripheral)
             ?: return
+        onCharacteristicValueUpdated(token, peripheral, characteristic, error)
+    }
+
+    private fun onCharacteristicValueUpdated(
+        token: AppleNativeConnectionToken<CBPeripheral>,
+        peripheral: CBPeripheral,
+        characteristic: CBCharacteristic,
+        error: NSError?,
+    ) {
         val characteristicIdentity = appleCharacteristicIdentity(
             characteristic.service?.UUID?.UUIDString,
             characteristic.UUID.UUIDString,
@@ -678,10 +797,19 @@ class AppleEngine : BlueFalconEngine, CBCentralManagerCallback, CBPeripheralCall
     override fun onCharacteristicWritten(
         peripheral: CBPeripheral,
         characteristic: CBCharacteristic,
-        error: NSError?
+        error: NSError?,
     ) {
         val token = nativeConnectionOwnership.capture(peripheral.identifier.UUIDString, peripheral)
             ?: return
+        onCharacteristicWritten(token, peripheral, characteristic, error)
+    }
+
+    private fun onCharacteristicWritten(
+        token: AppleNativeConnectionToken<CBPeripheral>,
+        peripheral: CBPeripheral,
+        characteristic: CBCharacteristic,
+        error: NSError?,
+    ) {
         callbackDispatcher.dispatch {
             val active = activeConnection(token) ?: return@dispatch
             centralWriteController.onCharacteristicWritten(
@@ -700,7 +828,18 @@ class AppleEngine : BlueFalconEngine, CBCentralManagerCallback, CBPeripheralCall
     override fun onDescriptorsDiscovered(
         peripheral: CBPeripheral,
         characteristic: CBCharacteristic,
-        error: NSError?
+        error: NSError?,
+    ) {
+        val token = nativeConnectionOwnership.capture(peripheral.identifier.UUIDString, peripheral)
+            ?: return
+        onDescriptorsDiscovered(token, peripheral, characteristic, error)
+    }
+
+    private fun onDescriptorsDiscovered(
+        token: AppleNativeConnectionToken<CBPeripheral>,
+        peripheral: CBPeripheral,
+        characteristic: CBCharacteristic,
+        error: NSError?,
     ) {
         // Descriptors discovered - automatically handled through characteristic.descriptors property
     }
@@ -708,10 +847,19 @@ class AppleEngine : BlueFalconEngine, CBCentralManagerCallback, CBPeripheralCall
     override fun onNotificationStateUpdated(
         peripheral: CBPeripheral,
         characteristic: CBCharacteristic,
-        error: NSError?
+        error: NSError?,
     ) {
         val token = nativeConnectionOwnership.capture(peripheral.identifier.UUIDString, peripheral)
             ?: return
+        onNotificationStateUpdated(token, peripheral, characteristic, error)
+    }
+
+    private fun onNotificationStateUpdated(
+        token: AppleNativeConnectionToken<CBPeripheral>,
+        peripheral: CBPeripheral,
+        characteristic: CBCharacteristic,
+        error: NSError?,
+    ) {
         val isNotifying = characteristic.isNotifying
         callbackDispatcher.dispatch {
             val active = activeConnection(token) ?: return@dispatch
@@ -732,6 +880,13 @@ class AppleEngine : BlueFalconEngine, CBCentralManagerCallback, CBPeripheralCall
     override fun onReadyToSendWriteWithoutResponse(peripheral: CBPeripheral) {
         val token = nativeConnectionOwnership.capture(peripheral.identifier.UUIDString, peripheral)
             ?: return
+        onReadyToSendWriteWithoutResponse(token, peripheral)
+    }
+
+    private fun onReadyToSendWriteWithoutResponse(
+        token: AppleNativeConnectionToken<CBPeripheral>,
+        peripheral: CBPeripheral,
+    ) {
         callbackDispatcher.dispatch {
             val active = activeConnection(token) ?: return@dispatch
             centralWriteController.onReadyToSendWithoutResponse(
@@ -741,9 +896,22 @@ class AppleEngine : BlueFalconEngine, CBCentralManagerCallback, CBPeripheralCall
         }
     }
     
-    override fun onL2CAPChannelOpened(peripheral: CBPeripheral, channel: CBL2CAPChannel?, error: NSError?) {
+    override fun onL2CAPChannelOpened(
+        peripheral: CBPeripheral,
+        channel: CBL2CAPChannel?,
+        error: NSError?,
+    ) {
         val token = nativeConnectionOwnership.capture(peripheral.identifier.UUIDString, peripheral)
             ?: return
+        onL2CAPChannelOpened(token, peripheral, channel, error)
+    }
+
+    private fun onL2CAPChannelOpened(
+        token: AppleNativeConnectionToken<CBPeripheral>,
+        peripheral: CBPeripheral,
+        channel: CBL2CAPChannel?,
+        error: NSError?,
+    ) {
         callbackDispatcher.dispatch {
             activeConnection(token) ?: return@dispatch
             val deferred = l2capDeferreds[peripheral.identifier.UUIDString] ?: return@dispatch
@@ -759,7 +927,22 @@ class AppleEngine : BlueFalconEngine, CBCentralManagerCallback, CBPeripheralCall
         }
     }
     
-    override fun onDescriptorWritten(peripheral: CBPeripheral, descriptor: CBDescriptor, error: NSError?) {
+    override fun onDescriptorWritten(
+        peripheral: CBPeripheral,
+        descriptor: CBDescriptor,
+        error: NSError?,
+    ) {
+        val token = nativeConnectionOwnership.capture(peripheral.identifier.UUIDString, peripheral)
+            ?: return
+        onDescriptorWritten(token, peripheral, descriptor, error)
+    }
+
+    private fun onDescriptorWritten(
+        token: AppleNativeConnectionToken<CBPeripheral>,
+        peripheral: CBPeripheral,
+        descriptor: CBDescriptor,
+        error: NSError?,
+    ) {
         // Descriptor written - could expose this through a callback if needed
     }
 
