@@ -218,6 +218,14 @@ suspend fun readCharacteristic(
 
 Read a characteristic value. Result is stored in `characteristic.value`.
 
+On Apple platforms, disable notifications and await `Updated(false)` before
+reading the same characteristic. CoreBluetooth uses `didUpdateValueFor` for both
+read responses and notifications without identifying the cause. Blue Falcon
+rejects reads while notifications are enabled or a subscription change is pending,
+and rejects subscription changes while a read is pending. A cancelled or timed-out
+read retains ownership until its callback drains or the connection disconnects.
+Read responses are not also emitted as characteristic notifications.
+
 **Example**:
 
 ```kotlin

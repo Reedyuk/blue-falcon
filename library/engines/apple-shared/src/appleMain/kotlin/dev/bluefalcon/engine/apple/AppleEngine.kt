@@ -532,12 +532,18 @@ class AppleEngine : BlueFalconEngine, CBCentralManagerCallback, CBPeripheralCall
             val uuid = peripheral.identifier.UUIDString
             val existingConnection = connectedPeripherals[uuid]
             if (existingConnection?.ownership === token) return@dispatch
-            // Reuse the existing device wrapper (updating its native reference in-place so
-            // callers that hold a reference to the old object continue to work), but always
-            // create a fresh write-peer so it holds the current CBPeripheral instance.
-            val device = existingConnection?.device?.also {
-                it.updatePeripheral(peripheral)
-            } ?: AppleBluetoothPeripheral(peripheral, null)
+            val scannedDevice = _peripherals.value
+                .filterIsInstance<AppleBluetoothPeripheral>()
+                .firstOrNull { device -> device.uuid == uuid }
+            // Prefer the wrapper previously emitted by scanning so its advertisement metadata
+            // (manufacturer data, RSSI, and advertised identity) survives the transition to a
+            // GATT connection. CoreBluetooth's connected CBPeripheral does not carry that data.
+            val device = selectConnectionPeripheral(
+                connected = existingConnection?.device,
+                scanned = scannedDevice,
+                create = { AppleBluetoothPeripheral(peripheral, null) },
+                updateNativePeripheral = { selected -> selected.updatePeripheral(peripheral) },
+            )
             val connection = centralWriteController.connected(CoreBluetoothWritePeer(peripheral))
             connectedPeripherals[uuid] = ActiveAppleConnection(
                 peripheral = peripheral,
@@ -636,6 +642,7 @@ class AppleEngine : BlueFalconEngine, CBCentralManagerCallback, CBPeripheralCall
         } else {
             null
         }
+        val isNotifying = characteristic.isNotifying
         // This callback fires for both solicited reads (readValueForCharacteristic) and
         // unsolicited notifications - resolve any pending read for this exact characteristic
         // (ADR 0014) without disturbing the notification flow below, which must keep firing
@@ -649,7 +656,7 @@ class AppleEngine : BlueFalconEngine, CBCentralManagerCallback, CBPeripheralCall
                 failure = error?.let { IllegalStateException(it.localizedDescription) },
             )
         }
-        if (error != null) return
+        if (error != null || !isNotifying) return
         val safeValue = value ?: return
         val bluetoothCharacteristic = AppleBluetoothCharacteristic(
             cbCharacteristic = characteristic,
@@ -805,6 +812,17 @@ private class CoreBluetoothWriteTarget(
     }
 }
 
+internal fun <T> selectConnectionPeripheral(
+    connected: T?,
+    scanned: T?,
+    create: () -> T,
+    updateNativePeripheral: (T) -> Unit,
+): T {
+    val selected = connected ?: scanned ?: create()
+    updateNativePeripheral(selected)
+    return selected
+}
+
 private class CoreBluetoothNotificationTarget(
     private val peripheral: CBPeripheral,
     private val characteristic: CBCharacteristic,
@@ -829,6 +847,8 @@ private class CoreBluetoothReadTarget(
     private val peripheral: CBPeripheral,
     private val characteristic: CBCharacteristic,
 ) : AppleCentralReadTarget {
+    override val isNotifying: Boolean
+        get() = characteristic.isNotifying
     override val peripheralUuid: String
         get() = peripheral.identifier.UUIDString
     override val characteristicUuid: String
