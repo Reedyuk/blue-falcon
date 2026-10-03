@@ -201,6 +201,9 @@ internal class DefaultBlueFalconPeripheral(
                     } catch (cause: Throwable) {
                         overflow.cause.addSuppressed(cause)
                     }
+                    // No new generation can start while lifecycleMutex is held.
+                    // Free the failed run's capacity before publishing Failed.
+                    while (backendEventChannel.tryReceive().isSuccess) { }
                     mutableState.value = PeripheralManagerState.Failed(overflow.cause)
                     eventChannel.trySend(PeripheralEvent.PlatformFailure(overflow.cause))
                 }
@@ -761,7 +764,7 @@ internal class DefaultBlueFalconPeripheral(
                 } catch (_: Throwable) {
                     // A stale platform responder may already be closed.
                 }
-                emitRequestDropped(request)
+                if (generation == activeGeneration) emitRequestDropped(request)
                 return
             }
             val responseHandle = request.responder?.let { responder ->
@@ -789,7 +792,7 @@ internal class DefaultBlueFalconPeripheral(
                 } catch (_: Throwable) {
                     // The manager is already closed, so there is no live event stream to report to.
                 }
-                emitRequestDropped(request)
+                if (generation == activeGeneration) emitRequestDropped(request)
             }
         }
 
