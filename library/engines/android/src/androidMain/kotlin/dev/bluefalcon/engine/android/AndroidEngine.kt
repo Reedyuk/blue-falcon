@@ -1135,13 +1135,13 @@ class AndroidEngine(
             )
         }
 
-        fun scheduleDisconnectTimeout(gatt: BluetoothGatt) {
+        fun scheduleDisconnectTimeout(gatt: BluetoothGatt) = ownership.withCurrent(gatt) {
             val address = gatt.device.address
             cancelDisconnectTimeout(address)
-            val timeoutRunnable = Runnable {
-                pendingTimeouts.remove(address)
-                synchronized(gattLock) {
-                    if (gatts.contains(gatt)) {
+            lateinit var timeoutRunnable: Runnable
+            timeoutRunnable = Runnable {
+                ownership.withCurrent(gatt) {
+                    if (pendingTimeouts.remove(address, timeoutRunnable)) {
                         logger?.warn("Disconnect timeout for $address — forcing close")
                         closeAndForget(gatt)
                     }

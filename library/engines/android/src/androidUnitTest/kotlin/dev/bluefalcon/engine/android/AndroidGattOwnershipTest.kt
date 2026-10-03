@@ -8,6 +8,27 @@ import kotlin.test.assertTrue
 
 class AndroidGattOwnershipTest {
     @Test
+    fun `delayed disconnect cannot replace or remove the successor watchdog`() {
+        val ownership = AndroidGattOwnership<Any>()
+        val old = Any()
+        val current = Any()
+        var watchdog: Any? = null
+        fun schedule(owner: Any) = ownership.withCurrent(owner) { watchdog = owner }
+        fun fire(owner: Any) = ownership.withCurrent(owner) { watchdog = null }
+
+        ownership.track("address", old)
+        schedule(old)
+        ownership.track("address", current)
+        schedule(current)
+        assertFalse(schedule(old))
+        assertSame(current, watchdog)
+        assertFalse(fire(old))
+        assertSame(current, watchdog)
+        assertTrue(fire(current))
+        assertEquals(null, watchdog)
+    }
+
+    @Test
     fun `late connection and data callbacks cannot replace or affect the current GATT`() {
         val ownership = AndroidGattOwnership<Any>()
         val old = Any()
