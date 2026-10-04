@@ -70,13 +70,35 @@ internal class CentralGattOperationGate(
     val isPoisoned: Boolean
         get() = synchronized(lock) { poisoned }
 
+    // Includes active work: moving a closure out of the queue does not release its payload.
+    val retainedOperationCount: Int get() = synchronized(lock) { legacyPending.size + if (current == null) 0 else 1 }
+    val retainedPayloadBytes: Long get() = synchronized(lock) { retainedPayloadBytesLocked() }
+    private fun retainedPayloadBytesLocked(): Long =
+        (current?.payloadBytes?.toLong() ?: 0L) + legacyPending.sumOf { it.payloadBytes.toLong() }
+
     fun enqueueLegacy(
         key: CentralGattOperationKey,
         label: String,
+        payloadBytes: Int = 0,
         action: () -> Boolean,
     ) {
         val postActions = synchronized(lock) {
             if (poisoned) return
+            require(payloadBytes >= 0) { "Negative GATT payload byte count" }
+            if (legacyPending.size + (if (current == null) 0 else 1) >= MAX_RETAINED_OPERATIONS ||
+                payloadBytes.toLong() > MAX_RETAINED_PAYLOAD_BYTES - retainedPayloadBytesLocked()) {
+                val operation = current
+                current = null
+                legacyPending.clear()
+                operation?.timeoutHandle?.cancel()
+                poisoned = true
+                return@synchronized PostActions(
+                    completion = operation?.onComplete?.let { callback ->
+                        { callback(CentralGattOperationOutcome.Rejected(IllegalStateException("GATT operation storage capacity exceeded"))) }
+                    },
+                    notifyPoisoned = true,
+                )
+            }
             val wasIdle = current == null && legacyPending.isEmpty()
             // Reserve before invoking native code: a synchronous callback may
             // complete this operation and publish newer replacement readiness.
@@ -86,6 +108,7 @@ internal class CentralGattOperationGate(
                 label = label,
                 action = action,
                 onComplete = null,
+                payloadBytes = payloadBytes,
             )
             dispatchNextLocked().withBusy(wasIdle, busyRevision).ordered()
         }
@@ -296,11 +319,17 @@ internal class CentralGattOperationGate(
         callback()
     }
 
+    private companion object {
+        const val MAX_RETAINED_OPERATIONS = 128
+        const val MAX_RETAINED_PAYLOAD_BYTES = 1024L * 1024L
+    }
+
     private data class Operation(
         val key: CentralGattOperationKey,
         val label: String,
         val action: () -> Boolean,
         var onComplete: ((CentralGattOperationOutcome) -> Unit)?,
         var timeoutHandle: CentralGattTimeoutHandle? = null,
+        val payloadBytes: Int = 0,
     )
 }
