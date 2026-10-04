@@ -2,6 +2,15 @@ package dev.bluefalcon.core
 
 import dev.bluefalcon.core.plugin.*
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.Deferred
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.async
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -13,16 +22,106 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 
 /**
+ * Read-only observation of one facade teardown. [await] preserves cleanup failures;
+ * cancelling its caller ends only that wait and cannot cancel the underlying cleanup.
+ */
+class BlueFalconCloseCompletion internal constructor(private val cleanup: Deferred<Unit>) {
+    val isCompleted: Boolean get() = cleanup.isCompleted
+    suspend fun await() { cleanup.await() }
+}
+
+/**
  * Main Blue Falcon client that wraps an engine and provides plugin support
+ *
+ * [close] stops this facade's collectors, derived flows, and forwarded suspend tasks.
+ * [ownsEngine] defaults to false so externally shared engines remain available to other clients.
+ * Set it to true only for a final engine owner; the engine must implement [ClosableBlueFalconEngine].
  */
 class BlueFalcon(
-    val engine: BlueFalconEngine
+    val engine: BlueFalconEngine,
+    val ownsEngine: Boolean = false,
 ) : BlueFalconClient {
+    constructor(engine: BlueFalconEngine) : this(engine, ownsEngine = false)
+    private val ownedEngine = if (ownsEngine) {
+        require(engine is ClosableBlueFalconEngine) { "Owned engine must implement ClosableBlueFalconEngine" }
+        engine
+    } else null
+    private val facadeJob = SupervisorJob(engine.scope.coroutineContext[Job])
+    private val facadeScope = CoroutineScope(engine.scope.coroutineContext + facadeJob)
+    private data class Admission(val closing: Boolean = false, val active: Int = 0)
+    private val synchronousAdmission = MutableStateFlow(Admission())
+    private val closeCompletion = MutableStateFlow<BlueFalconCloseCompletion?>(null)
+    // Cleanup cannot be a child of the facade it joins, the engine it closes, or its caller.
+    private val closeScope = object : CoroutineScope {
+        override val coroutineContext = engine.scope.coroutineContext.minusKey(Job)
+    }
+
+    private fun ensureOpen() {
+        check(!synchronousAdmission.value.closing && facadeJob.isActive) { "BlueFalcon is closing or closed" }
+    }
+
+    private fun <T> synchronous(block: () -> T): T {
+        while (true) {
+            val current = synchronousAdmission.value
+            check(!current.closing && facadeJob.isActive) { "BlueFalcon is closing or closed" }
+            if (synchronousAdmission.compareAndSet(current, current.copy(active = current.active + 1))) break
+        }
+        return try { block() } finally {
+            synchronousAdmission.update { it.copy(active = it.active - 1) }
+        }
+    }
+
+    /**
+     * Start terminal cleanup without awaiting it. Use this from a plugin/event callback:
+     * cancelling the facade also cancels that callback, so awaiting close there cancels its waiter.
+     * The returned completion is shared by concurrent requests and retains cleanup failures.
+     */
+    fun requestClose(): BlueFalconCloseCompletion {
+        synchronousAdmission.update { it.copy(closing = true) }
+        closeCompletion.value?.let { return it }
+        val cleanup = closeScope.async(start = CoroutineStart.LAZY) {
+            facadeJob.cancel()
+            try {
+                synchronousAdmission.first { it.active == 0 }
+                ownedEngine?.close()
+            } finally {
+                facadeJob.join()
+            }
+            Unit
+        }
+        val completion = BlueFalconCloseCompletion(cleanup)
+        if (closeCompletion.compareAndSet(null, completion)) {
+            cleanup.start()
+            return completion
+        }
+        cleanup.cancel()
+        return checkNotNull(closeCompletion.value)
+    }
+
+    /** Await terminal cleanup. Caller cancellation stops only this wait, not cleanup. */
+    suspend fun close() { requestClose().await() }
+
+    private suspend fun <T> owned(block: suspend () -> T): T {
+        currentCoroutineContext().ensureActive()
+        ensureOpen()
+        val task = facadeScope.async {
+            ensureOpen()
+            val result = block()
+            currentCoroutineContext().ensureActive()
+            result
+        }
+        return try { task.await() } finally { task.cancel() }
+    }
+
+    private suspend fun <T> engineResult(block: suspend () -> T): Result<T> =
+        try { Result.success(block()) }
+        catch (cancelled: CancellationException) { throw cancelled }
+        catch (failure: Throwable) { Result.failure(failure) }
 
     /**
      * Plugin registry for managing installed plugins
      */
-    val plugins: PluginRegistry = PluginRegistry(this)
+    val plugins: PluginRegistry = PluginRegistry(this).also { it.aroundInstall = { action -> synchronous(action) } }
 
     /**
      * Backing store for the structured per-peripheral connection state machine (ADR 0008),
@@ -31,7 +130,7 @@ class BlueFalcon(
     private val _connectionStates = MutableStateFlow<Map<String, PeripheralConnectionState>>(emptyMap())
 
     init {
-        engine.scope.launch {
+        facadeScope.launch {
             engine.characteristicNotifications.collect { notification ->
                 plugins.dispatchNotification(
                     NotificationCall(
@@ -43,7 +142,7 @@ class BlueFalcon(
             }
         }
 
-        engine.scope.launch {
+        facadeScope.launch {
             engine.connectionStateUpdates.collect { update ->
                 val uuid = update.peripheral.uuid
                 when (update.state) {
@@ -79,7 +178,7 @@ class BlueFalcon(
             }
         }
 
-        engine.scope.launch {
+        facadeScope.launch {
             engine.serviceDiscoveryUpdates.collect { update ->
                 if (update.phase != ServiceDiscoveryPhase.ServicesDiscovered) return@collect
                 val uuid = update.peripheral.uuid
@@ -199,10 +298,12 @@ class BlueFalcon(
      * }
      * ```
      */
-    fun connectionStateFlow(peripheral: BluetoothPeripheral): StateFlow<PeripheralConnectionState> =
-        _connectionStates
+    fun connectionStateFlow(peripheral: BluetoothPeripheral): StateFlow<PeripheralConnectionState> {
+        ensureOpen()
+        return _connectionStates
             .map { it[peripheral.uuid] ?: PeripheralConnectionState.Disconnected() }
-            .stateIn(engine.scope, SharingStarted.Eagerly, peripheralState(peripheral))
+            .stateIn(facadeScope, SharingStarted.Eagerly, peripheralState(peripheral))
+    }
     
     /**
      * Whether the underlying platform can enumerate Bluetooth adapters and switch between them.
@@ -227,7 +328,7 @@ class BlueFalcon(
      * }
      * ```
      */
-    suspend fun adapters(): List<BluetoothAdapter> = engine.adapters()
+    suspend fun adapters(): List<BluetoothAdapter> = owned { engine.adapters() }
 
     /**
      * Select the adapter that subsequent Bluetooth operations should use.
@@ -235,12 +336,12 @@ class BlueFalcon(
      * @param identifier The [BluetoothAdapter.identifier] of an adapter returned by [adapters]
      */
     suspend fun selectAdapter(identifier: String): AdapterSelectionResult =
-        engine.selectAdapter(identifier)
+        owned { engine.selectAdapter(identifier) }
 
     /**
      * Scan for BLE devices
      */
-    suspend fun scan(filters: List<ServiceFilter> = emptyList()) {
+    suspend fun scan(filters: List<ServiceFilter> = emptyList()): Unit = owned {
         plugins.interceptScan(ScanCall(filters)) { call ->
             engine.scan(call.filters)
         }
@@ -249,7 +350,7 @@ class BlueFalcon(
     /**
      * Stop scanning
      */
-    suspend fun stopScanning() {
+    suspend fun stopScanning(): Unit = owned {
         engine.stopScanning()
     }
     
@@ -257,21 +358,22 @@ class BlueFalcon(
      * Clear discovered peripherals
      */
     fun clearPeripherals() {
-        engine.clearPeripherals()
+        synchronous { engine.clearPeripherals() }
     }
     
     /**
      * Connect to a peripheral
      */
-    suspend fun connect(peripheral: BluetoothPeripheral, autoConnect: Boolean = false) {
+    suspend fun connect(peripheral: BluetoothPeripheral, autoConnect: Boolean = false): Unit = owned {
         _connectionStates.update {
             it + (peripheral.uuid to PeripheralConnectionState.Connecting)
         }
         val result = plugins.interceptConnect(ConnectCall(peripheral, autoConnect)) { call ->
-            runCatching {
+            engineResult {
                 engine.connect(call.peripheral, call.autoConnect)
             }
         }
+        currentCoroutineContext().ensureActive()
         result.exceptionOrNull()?.let { cause ->
             _connectionStates.update {
                 it + (peripheral.uuid to PeripheralConnectionState.Disconnected(DisconnectReason.ConnectFailed(cause)))
@@ -282,12 +384,12 @@ class BlueFalcon(
     /**
      * Disconnect from a peripheral
      */
-    suspend fun disconnect(peripheral: BluetoothPeripheral) {
+    suspend fun disconnect(peripheral: BluetoothPeripheral): Unit = owned {
         _connectionStates.update {
             it + (peripheral.uuid to PeripheralConnectionState.Disconnecting)
         }
         plugins.interceptDisconnect(DisconnectCall(peripheral)) { call ->
-            runCatching {
+            engineResult {
                 engine.disconnect(call.peripheral)
             }
         }
@@ -311,13 +413,13 @@ class BlueFalcon(
      * Request connection priority
      */
     fun requestConnectionPriority(peripheral: BluetoothPeripheral, priority: ConnectionPriority) {
-        engine.requestConnectionPriority(peripheral, priority)
+        synchronous { engine.requestConnectionPriority(peripheral, priority) }
     }
     
     /**
      * Discover services
      */
-    suspend fun discoverServices(peripheral: BluetoothPeripheral, serviceUUIDs: List<Uuid> = emptyList()) {
+    suspend fun discoverServices(peripheral: BluetoothPeripheral, serviceUUIDs: List<Uuid> = emptyList()): Unit = owned {
         engine.discoverServices(peripheral, serviceUUIDs)
     }
     
@@ -328,7 +430,7 @@ class BlueFalcon(
         peripheral: BluetoothPeripheral,
         service: BluetoothService,
         characteristicUUIDs: List<Uuid> = emptyList()
-    ) {
+    ): Unit = owned {
         engine.discoverCharacteristics(peripheral, service, characteristicUUIDs)
     }
     
@@ -342,13 +444,13 @@ class BlueFalcon(
     suspend fun readCharacteristic(
         peripheral: BluetoothPeripheral,
         characteristic: BluetoothCharacteristic
-    ): CharacteristicReadResult {
+    ): CharacteristicReadResult = owned {
         val result = plugins.interceptRead(ReadCall(peripheral, characteristic)) { call ->
-            runCatching {
+            engineResult {
                 engine.readCharacteristic(call.peripheral, call.characteristic)
             }
         }
-        return result.fold(
+        return@owned result.fold(
             onSuccess = { CharacteristicReadResult.Success(it) },
             onFailure = { CharacteristicReadResult.Failed(it) }
         )
@@ -362,7 +464,7 @@ class BlueFalcon(
         characteristic: BluetoothCharacteristic,
         value: String,
         writeType: Int? = null
-    ) {
+    ): Unit = owned {
         writeCharacteristic(peripheral, characteristic, value.encodeToByteArray(), writeType)
     }
     
@@ -374,9 +476,9 @@ class BlueFalcon(
         characteristic: BluetoothCharacteristic,
         value: ByteArray,
         writeType: Int? = null
-    ) {
+    ): Unit = owned {
         plugins.interceptWrite(WriteCall(peripheral, characteristic, value, writeType)) { call ->
-            runCatching {
+            engineResult {
                 engine.writeCharacteristic(call.peripheral, call.characteristic, call.value, call.writeType)
             }
         }
@@ -388,21 +490,23 @@ class BlueFalcon(
         value: ByteArray,
         writeType: CharacteristicWriteType,
     ): CharacteristicWriteResult =
-        try {
-            plugins.interceptCentralWrite(
-                CentralWriteCall(peripheral, characteristic, value, writeType)
-            ) { call ->
-                engine.writeCharacteristic(
-                    call.peripheral,
-                    call.characteristic,
-                    call.value,
-                    call.writeType,
-                )
+        owned {
+            try {
+                plugins.interceptCentralWrite(
+                    CentralWriteCall(peripheral, characteristic, value, writeType)
+                ) { call ->
+                    engine.writeCharacteristic(
+                        call.peripheral,
+                        call.characteristic,
+                        call.value,
+                        call.writeType,
+                    )
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (failure: Throwable) {
+                CharacteristicWriteResult.Failed(failure)
             }
-        } catch (cancelled: CancellationException) {
-            throw cancelled
-        } catch (failure: Throwable) {
-            CharacteristicWriteResult.Failed(failure)
         }
 
     suspend fun setNotificationSubscription(
@@ -410,12 +514,14 @@ class BlueFalcon(
         characteristic: BluetoothCharacteristic,
         enabled: Boolean,
     ): NotificationSubscriptionResult =
-        try {
-            engine.setNotificationSubscription(peripheral, characteristic, enabled)
-        } catch (cancelled: CancellationException) {
-            throw cancelled
-        } catch (failure: Throwable) {
-            NotificationSubscriptionResult.Failed(failure)
+        owned {
+            try {
+                engine.setNotificationSubscription(peripheral, characteristic, enabled)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (failure: Throwable) {
+                NotificationSubscriptionResult.Failed(failure)
+            }
         }
 
     fun maximumWriteValueLength(
@@ -430,7 +536,7 @@ class BlueFalcon(
         peripheral: BluetoothPeripheral,
         characteristic: BluetoothCharacteristic,
         notify: Boolean
-    ) {
+    ): Unit = owned {
         engine.notifyCharacteristic(peripheral, characteristic, notify)
     }
     
@@ -441,7 +547,7 @@ class BlueFalcon(
         peripheral: BluetoothPeripheral,
         characteristic: BluetoothCharacteristic,
         indicate: Boolean
-    ) {
+    ): Unit = owned {
         engine.indicateCharacteristic(peripheral, characteristic, indicate)
     }
     
@@ -452,7 +558,7 @@ class BlueFalcon(
         peripheral: BluetoothPeripheral,
         characteristic: BluetoothCharacteristic,
         descriptor: BluetoothCharacteristicDescriptor
-    ) {
+    ): Unit = owned {
         engine.readDescriptor(peripheral, characteristic, descriptor)
     }
     
@@ -463,14 +569,14 @@ class BlueFalcon(
         peripheral: BluetoothPeripheral,
         descriptor: BluetoothCharacteristicDescriptor,
         value: ByteArray
-    ) {
+    ): Unit = owned {
         engine.writeDescriptor(peripheral, descriptor, value)
     }
     
     /**
      * Change MTU
      */
-    suspend fun changeMTU(peripheral: BluetoothPeripheral, mtuSize: Int) {
+    suspend fun changeMTU(peripheral: BluetoothPeripheral, mtuSize: Int): Unit = owned {
         engine.changeMTU(peripheral, mtuSize)
     }
     
@@ -478,7 +584,7 @@ class BlueFalcon(
      * Refresh GATT cache
      */
     fun refreshGattCache(peripheral: BluetoothPeripheral): Boolean {
-        return engine.refreshGattCache(peripheral)
+        return synchronous { engine.refreshGattCache(peripheral) }
     }
     
     /**
@@ -488,21 +594,21 @@ class BlueFalcon(
         peripheral: BluetoothPeripheral,
         psm: Int,
         secure: Boolean = false
-    ): BluetoothSocket {
-        return engine.openL2capChannel(peripheral, psm, secure)
+    ): BluetoothSocket = owned {
+        return@owned engine.openL2capChannel(peripheral, psm, secure)
     }
     
     /**
      * Create bond
      */
-    suspend fun createBond(peripheral: BluetoothPeripheral) {
+    suspend fun createBond(peripheral: BluetoothPeripheral): Unit = owned {
         engine.createBond(peripheral)
     }
     
     /**
      * Remove bond
      */
-    suspend fun removeBond(peripheral: BluetoothPeripheral) {
+    suspend fun removeBond(peripheral: BluetoothPeripheral): Unit = owned {
         engine.removeBond(peripheral)
     }
 }
@@ -512,6 +618,7 @@ class BlueFalcon(
  */
 class BlueFalconConfig {
     lateinit var engine: BlueFalconEngine
+    var ownsEngine: Boolean = false
     internal val pluginConfigs = mutableListOf<Pair<BlueFalconPlugin, PluginConfig.() -> Unit>>()
     
     /**
@@ -527,7 +634,7 @@ class BlueFalconConfig {
  */
 fun BlueFalcon(block: BlueFalconConfig.() -> Unit): BlueFalcon {
     val config = BlueFalconConfig().apply(block)
-    val client = BlueFalcon(config.engine)
+    val client = BlueFalcon(config.engine, config.ownsEngine)
     
     // Install all configured plugins (PluginRegistry.install invokes plugin.install(client, ...) internally)
     config.pluginConfigs.forEach { (plugin, configure) ->
