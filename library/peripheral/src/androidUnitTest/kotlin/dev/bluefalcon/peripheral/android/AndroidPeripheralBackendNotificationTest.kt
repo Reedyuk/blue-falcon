@@ -232,7 +232,7 @@ class AndroidPeripheralBackendNotificationTest {
     }
 
     @Test
-    fun notificationCallbackAfterDisconnectStillPublishesReadiness() = runTest {
+    fun notificationCallbackAfterDisconnectDoesNotPublishReadiness() = runTest {
         val fixture = startedFixture()
         fixture.subscribe(SessionId, NotificationMode.Notification)
         assertEquals(
@@ -250,7 +250,7 @@ class AndroidPeripheralBackendNotificationTest {
         fixture.stack.emit(AndroidGattEvent.NotificationSent(SessionId, BluetoothGatt.GATT_SUCCESS))
 
         assertEquals(
-            listOf<NotificationReadiness>(NotificationReadiness.Session(SessionId)),
+            emptyList<NotificationReadiness>(),
             fixture.sink.readiness,
         )
     }

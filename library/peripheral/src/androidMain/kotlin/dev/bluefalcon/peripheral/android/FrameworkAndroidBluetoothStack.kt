@@ -56,6 +56,7 @@ internal class FrameworkAndroidBluetoothStack(
     private var currentAdvertiser: BluetoothLeAdvertiser? = null
     private var currentAdvertiseCallback: AdvertiseCallback? = null
     private var pendingAdvertising: CompletableDeferred<Unit>? = null
+    private val targetsBySession = mutableMapOf<PeripheralSessionId, FrameworkSessionTarget>()
     private val devicesBySession = mutableMapOf<PeripheralSessionId, BluetoothDevice>()
     private val characteristicsById =
         mutableMapOf<GattCharacteristicId, BluetoothGattCharacteristic>()
@@ -218,6 +219,40 @@ internal class FrameworkAndroidBluetoothStack(
         }
     }
 
+    /** Captures the server and connection identity; invalidation and native submission share the lock. */
+    private inner class FrameworkSessionTarget(
+        val sessionId: PeripheralSessionId,
+        val server: BluetoothGattServer,
+        val device: BluetoothDevice,
+    ) : AndroidSessionTarget {
+        override fun isCurrent(): Boolean = synchronized(lock) {
+            gattServer === server && targetsBySession[sessionId] === this
+        }
+        override fun sendResponse(response: AndroidGattResponse): Boolean = synchronized(lock) {
+            if (!isCurrent()) return@synchronized false
+            try {
+                server.sendResponse(device, response.requestId, response.status.toAndroidGattStatus(), response.offset, response.value)
+            } catch (cause: Throwable) {
+                logger?.warn("Failed to send Android GATT response", cause)
+                false
+            }
+        }
+        override fun notify(request: AndroidNotificationRequest): AndroidNotificationStartResult = synchronized(lock) {
+            if (!isCurrent()) AndroidNotificationStartResult.Rejected(IllegalStateException("Android notification connection has retired"))
+            else sendTargetedNotification(request)
+        }
+        override fun disconnect(): Boolean = synchronized(lock) {
+            if (!isCurrent()) return@synchronized false
+            try {
+                server.cancelConnection(device)
+                true
+            } catch (cause: Throwable) {
+                logger?.warn("Failed to disconnect Android GATT session", cause)
+                false
+            }
+        }
+    }
+
     private fun sendTargetedResponse(response: AndroidGattResponse): Boolean {
         val target = synchronized(lock) {
             val server = gattServer ?: return@synchronized null
@@ -325,6 +360,7 @@ internal class FrameworkAndroidBluetoothStack(
             val serviceCompletion = serviceGate.close()?.payload?.completion
             lifecycleState.close()
             gattServer = null
+            targetsBySession.clear()
             devicesBySession.clear()
             characteristicsById.clear()
             ClosedGattServer(server, serviceCompletion)
@@ -358,31 +394,28 @@ internal class FrameworkAndroidBluetoothStack(
                 val sessionId = device.toSessionId()
                 when (newState) {
                     BluetoothProfile.STATE_CONNECTED -> {
-                        val active = synchronized(lock) {
+                        val target = synchronized(lock) {
                             if (lifecycleState.isActive(generation)) {
+                                val server = gattServer ?: return@synchronized null
+                                if (sessionId !in targetsBySession && targetsBySession.size >= 256) {
+                                    server.cancelConnection(device)
+                                    throw IllegalStateException("Android native connection owner capacity exceeded")
+                                }
                                 devicesBySession[sessionId] = device
-                                true
-                            } else {
-                                false
-                            }
+                                targetsBySession[sessionId] ?: FrameworkSessionTarget(sessionId, server, device).also { targetsBySession[sessionId] = it }
+                            } else null
                         }
-                        if (active) {
-                            listener.onEvent(AndroidGattEvent.Connected(sessionId))
-                        }
+                        if (target != null) listener.onEvent(AndroidGattEvent.Connected(sessionId, target))
                     }
 
                     BluetoothProfile.STATE_DISCONNECTED -> {
-                        val active = synchronized(lock) {
+                        val target = synchronized(lock) {
                             if (lifecycleState.isActive(generation)) {
                                 devicesBySession.remove(sessionId)
-                                true
-                            } else {
-                                false
-                            }
+                                targetsBySession.remove(sessionId)
+                            } else null
                         }
-                        if (active) {
-                            listener.onEvent(AndroidGattEvent.Disconnected(sessionId, status))
-                        }
+                        if (target != null) listener.onEvent(AndroidGattEvent.Disconnected(sessionId, status, target))
                     }
                 }
             }
@@ -390,9 +423,11 @@ internal class FrameworkAndroidBluetoothStack(
 
         override fun onMtuChanged(device: BluetoothDevice, mtu: Int) {
             dispatchAndroidGattCallback(listener) {
-                val sessionId = connectedSessionId(generation, device)
-                    ?: return@dispatchAndroidGattCallback
-                listener.onEvent(AndroidGattEvent.MtuChanged(sessionId, mtu))
+                val target = synchronized(lock) {
+                    if (lifecycleState.isActive(generation)) targetsBySession[device.toSessionId()]?.takeIf { it.device === device || it.device == device } else null
+                } ?: return@dispatchAndroidGattCallback
+                val sessionId = target.sessionId
+                listener.onEvent(AndroidGattEvent.MtuChanged(sessionId, mtu, target))
             }
         }
 
@@ -403,8 +438,10 @@ internal class FrameworkAndroidBluetoothStack(
             characteristic: BluetoothGattCharacteristic,
         ) {
             dispatchAndroidGattCallback(listener) {
-                val sessionId = connectedSessionId(generation, device)
-                    ?: return@dispatchAndroidGattCallback
+                val target = synchronized(lock) {
+                    if (lifecycleState.isActive(generation)) targetsBySession[device.toSessionId()]?.takeIf { it.device === device || it.device == device } else null
+                } ?: return@dispatchAndroidGattCallback
+                val sessionId = target.sessionId
                 val identity = characteristic.identityOrNull()
                     ?: return@dispatchAndroidGattCallback
                 listener.onEvent(
@@ -414,6 +451,7 @@ internal class FrameworkAndroidBluetoothStack(
                         serviceId = identity.serviceId,
                         characteristicId = identity.characteristicId,
                         offset = offset,
+                        target = target,
                     ),
                 )
             }
@@ -429,8 +467,10 @@ internal class FrameworkAndroidBluetoothStack(
             value: ByteArray?,
         ) {
             dispatchAndroidGattCallback(listener) {
-                val sessionId = connectedSessionId(generation, device)
-                    ?: return@dispatchAndroidGattCallback
+                val target = synchronized(lock) {
+                    if (lifecycleState.isActive(generation)) targetsBySession[device.toSessionId()]?.takeIf { it.device === device || it.device == device } else null
+                } ?: return@dispatchAndroidGattCallback
+                val sessionId = target.sessionId
                 val identity = characteristic.identityOrNull()
                     ?: return@dispatchAndroidGattCallback
                 listener.onEvent(
@@ -443,6 +483,7 @@ internal class FrameworkAndroidBluetoothStack(
                         preparedWrite = preparedWrite,
                         responseNeeded = responseNeeded,
                         value = value ?: ByteArray(0),
+                        target = target,
                     ),
                 )
             }
@@ -455,8 +496,10 @@ internal class FrameworkAndroidBluetoothStack(
             descriptor: BluetoothGattDescriptor,
         ) {
             dispatchAndroidGattCallback(listener) {
-                val sessionId = connectedSessionId(generation, device)
-                    ?: return@dispatchAndroidGattCallback
+                val target = synchronized(lock) {
+                    if (lifecycleState.isActive(generation)) targetsBySession[device.toSessionId()]?.takeIf { it.device === device || it.device == device } else null
+                } ?: return@dispatchAndroidGattCallback
+                val sessionId = target.sessionId
                 val identity = descriptor.identityOrNull()
                     ?: return@dispatchAndroidGattCallback
                 listener.onEvent(
@@ -467,6 +510,7 @@ internal class FrameworkAndroidBluetoothStack(
                         characteristicId = identity.characteristicId,
                         descriptorId = identity.descriptorId,
                         offset = offset,
+                        target = target,
                     ),
                 )
             }
@@ -482,8 +526,10 @@ internal class FrameworkAndroidBluetoothStack(
             value: ByteArray?,
         ) {
             dispatchAndroidGattCallback(listener) {
-                val sessionId = connectedSessionId(generation, device)
-                    ?: return@dispatchAndroidGattCallback
+                val target = synchronized(lock) {
+                    if (lifecycleState.isActive(generation)) targetsBySession[device.toSessionId()]?.takeIf { it.device === device || it.device == device } else null
+                } ?: return@dispatchAndroidGattCallback
+                val sessionId = target.sessionId
                 val identity = descriptor.identityOrNull()
                     ?: return@dispatchAndroidGattCallback
                 listener.onEvent(
@@ -497,6 +543,7 @@ internal class FrameworkAndroidBluetoothStack(
                         preparedWrite = preparedWrite,
                         responseNeeded = responseNeeded,
                         value = value ?: ByteArray(0),
+                        target = target,
                     ),
                 )
             }
@@ -508,17 +555,19 @@ internal class FrameworkAndroidBluetoothStack(
             execute: Boolean,
         ) {
             dispatchAndroidGattCallback(listener) {
-                val sessionId = connectedSessionId(generation, device)
-                    ?: return@dispatchAndroidGattCallback
-                listener.onEvent(AndroidGattEvent.ExecuteWrite(sessionId, requestId, execute))
+                val target = synchronized(lock) {
+                    if (lifecycleState.isActive(generation)) targetsBySession[device.toSessionId()]?.takeIf { it.device === device || it.device == device } else null
+                } ?: return@dispatchAndroidGattCallback
+                val sessionId = target.sessionId
+                listener.onEvent(AndroidGattEvent.ExecuteWrite(sessionId, requestId, execute, target))
             }
         }
 
         override fun onNotificationSent(device: BluetoothDevice, status: Int) {
             dispatchAndroidGattCallback(listener) {
-                val sessionId = connectedSessionId(generation, device)
-                    ?: return@dispatchAndroidGattCallback
-                listener.onEvent(AndroidGattEvent.NotificationSent(sessionId, status))
+                if (synchronized(lock) { lifecycleState.isActive(generation) }) {
+                    listener.onEvent(AndroidGattEvent.NotificationSent(device.toSessionId(), status))
+                }
             }
         }
     }
