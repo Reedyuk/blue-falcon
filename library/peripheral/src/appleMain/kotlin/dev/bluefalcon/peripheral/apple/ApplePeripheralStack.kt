@@ -7,6 +7,11 @@ import dev.bluefalcon.peripheral.NotificationMode
 import dev.bluefalcon.peripheral.PeripheralConfig
 import dev.bluefalcon.peripheral.PeripheralSessionId
 
+internal interface AppleSessionTarget {
+    fun isCurrent(): Boolean
+    fun retire()
+}
+
 internal interface ApplePeripheralStack {
     suspend fun open(
         config: PeripheralConfig,
@@ -21,11 +26,15 @@ internal interface ApplePeripheralStack {
 
     fun clearServices()
 
+    fun retireSession(sessionId: PeripheralSessionId) {}
+
     fun close()
 }
 
 internal interface ApplePeripheralStackListener {
     fun onEvent(event: AppleGattEvent)
+
+    fun onResourceOverflow(cause: Throwable) = onPlatformFailure(cause)
 
     fun onPlatformFailure(cause: Throwable)
 }
@@ -45,6 +54,7 @@ internal class AppleRestoredSession(
     val sessionId: PeripheralSessionId,
     val maximumUpdateValueLength: Int,
     subscriptions: Set<GattCharacteristicId>,
+    val target: AppleSessionTarget? = null,
 ) {
     private val copiedSubscriptions = subscriptions.toSet()
 
@@ -55,12 +65,14 @@ internal class AppleRestoredSession(
         sessionId = sessionId,
         maximumUpdateValueLength = maximumUpdateValueLength,
         subscriptions = subscriptions,
+        target = target,
     )
 }
 
 internal data class AppleRequestToken(val value: Long)
 
 internal sealed interface AppleGattEvent {
+    val target: AppleSessionTarget? get() = null
     class CharacteristicRead(
         val sessionId: PeripheralSessionId,
         val maximumUpdateValueLength: Int,
@@ -68,6 +80,7 @@ internal sealed interface AppleGattEvent {
         val serviceId: GattServiceId,
         val characteristicId: GattCharacteristicId,
         val offset: Int,
+        override val target: AppleSessionTarget? = null,
     ) : AppleGattEvent
 
     class CharacteristicWrite(
@@ -75,7 +88,9 @@ internal sealed interface AppleGattEvent {
         val maximumUpdateValueLength: Int,
         val requestToken: AppleRequestToken,
         val write: AppleCharacteristicWrite,
+        override val target: AppleSessionTarget? = null,
     ) : AppleGattEvent {
+        val payloadBytes: Long get() = write.payloadBytes
         val copiedWrite: AppleCharacteristicWrite
             get() = write.copyForBoundary()
     }
@@ -85,9 +100,11 @@ internal sealed interface AppleGattEvent {
         val maximumUpdateValueLength: Int,
         val requestToken: AppleRequestToken,
         writes: List<AppleCharacteristicWrite>,
+        override val target: AppleSessionTarget? = null,
     ) : AppleGattEvent {
         private val copiedWrites = writes.map { write -> write.copyForBoundary() }
 
+        val payloadBytes: Long get() = copiedWrites.sumOf { it.payloadBytes }
         val writes: List<AppleCharacteristicWrite>
             get() = copiedWrites.map { write -> write.copyForBoundary() }
 
@@ -102,12 +119,14 @@ internal sealed interface AppleGattEvent {
         val sessionId: PeripheralSessionId,
         val maximumUpdateValueLength: Int,
         val characteristicId: GattCharacteristicId,
+        override val target: AppleSessionTarget? = null,
     ) : AppleGattEvent
 
     class Unsubscribed(
         val sessionId: PeripheralSessionId,
         val maximumUpdateValueLength: Int,
         val characteristicId: GattCharacteristicId,
+        override val target: AppleSessionTarget? = null,
     ) : AppleGattEvent
 
     data object NotificationReady : AppleGattEvent
@@ -121,6 +140,7 @@ internal class AppleCharacteristicWrite(
 ) {
     private val copiedValue = value.copyOf()
 
+    val payloadBytes: Long get() = copiedValue.size.toLong()
     val value: ByteArray
         get() = copiedValue.copyOf()
 

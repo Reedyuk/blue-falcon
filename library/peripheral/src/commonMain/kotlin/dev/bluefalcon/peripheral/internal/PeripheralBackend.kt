@@ -36,6 +36,8 @@ internal interface PeripheralBackend {
 
     suspend fun close()
 
+    suspend fun retireSession(token: BackendSessionToken) { token.retire() }
+
     suspend fun notify(
         sessionId: PeripheralSessionId,
         characteristic: GattCharacteristicId,
@@ -87,6 +89,8 @@ internal interface PeripheralBackendEventSink {
 
     fun onPlatformFailure(token: BackendSessionToken, cause: Throwable) = onPlatformFailure(cause)
 
+    fun onResourceOverflow(cause: Throwable) = onPlatformFailure(cause)
+
     fun onPlatformFailure(cause: Throwable)
 }
 
@@ -98,6 +102,7 @@ internal sealed interface BackendGattServerRequest {
     val sessionId: PeripheralSessionId
     val requestType: GattRequestType
     val responder: BackendGattResponder?
+    val payloadBytes: Long get() = 0
 }
 
 internal sealed interface BackendGattAttributeRequest : BackendGattServerRequest {
@@ -134,6 +139,7 @@ internal class BackendCharacteristicWriteRequest(
     override val descriptorId: GattDescriptorId? = null
     val value: ByteArray
         get() = copiedValue.copyOf()
+    override val payloadBytes: Long get() = copiedValue.size.toLong()
 
     init {
         require(!preparedWrite || responder != null) {
@@ -150,6 +156,8 @@ internal class BackendCharacteristicWrite(
 ) {
     private val copiedValue = value.copyOf()
 
+    val payloadBytes: Long get() = copiedValue.size.toLong()
+
     val value: ByteArray
         get() = copiedValue.copyOf()
 }
@@ -161,6 +169,7 @@ internal class BackendCharacteristicWriteBatchRequest(
 ) : BackendGattServerRequest {
     private val copiedWrites = writes.map { write -> write.copyForRequest() }
 
+    override val payloadBytes: Long get() = copiedWrites.sumOf { it.payloadBytes }
     override val requestType = GattRequestType.CharacteristicWriteBatch
 
     val writes: List<BackendCharacteristicWrite>
@@ -205,6 +214,7 @@ internal class BackendDescriptorWriteRequest(
     override val requestType = GattRequestType.DescriptorWrite
     val value: ByteArray
         get() = copiedValue.copyOf()
+    override val payloadBytes: Long get() = copiedValue.size.toLong()
 
     init {
         require(!preparedWrite || responder != null) {
