@@ -13,9 +13,10 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 
-internal class AndroidCentralWriteState {
+internal class AndroidCentralWriteState(initialGeneration: Long = 0) {
     private val lock = Any()
-    private val lastGenerations = mutableMapOf<String, Long>()
+    init { require(initialGeneration >= 0) }
+    private var lastGeneration = initialGeneration
     private val activeGenerations = mutableMapOf<String, Long>()
 
     private val _capabilities = MutableStateFlow<
@@ -31,8 +32,8 @@ internal class AndroidCentralWriteState {
     val writeReady: SharedFlow<CharacteristicWriteReady> = _writeReady.asSharedFlow()
 
     fun onConnected(peripheralUuid: String): Long = synchronized(lock) {
-        val generation = (lastGenerations[peripheralUuid] ?: 0L) + 1L
-        lastGenerations[peripheralUuid] = generation
+        check(lastGeneration < Long.MAX_VALUE) { "Android connection generation exhausted" }
+        val generation = ++lastGeneration
         activeGenerations[peripheralUuid] = generation
         replaceCapabilities(
             peripheralUuid = peripheralUuid,

@@ -48,6 +48,10 @@ class AndroidEngine(
     private val lifetime = AndroidEngineLifecycle(SupervisorJob())
     override val scope: CoroutineScope = CoroutineScope(lifetime.job + Dispatchers.Default)
     
+    private val peripheralRetention = AndroidPeripheralRetention<BluetoothPeripheral>(lock = lifetime.lock)
+    /** Maximum 256 retained peers; oversize/newest scan rejection and inactive connection eviction counters. */
+    val discoveryRetentionStatus = peripheralRetention.status
+
     private val _peripherals = MutableStateFlow<Set<BluetoothPeripheral>>(emptySet())
     override val peripherals: StateFlow<Set<BluetoothPeripheral>> = _peripherals.asStateFlow()
     
@@ -142,6 +146,7 @@ class AndroidEngine(
             }
         }
         lifetime.retain(centralWriteState) {
+            peripheralRetention.clear()
             _peripherals.value = emptySet()
             _managerState.value = BluetoothManagerState.NotReady
         }
@@ -207,7 +212,10 @@ class AndroidEngine(
     }
 
     override fun clearPeripherals() {
-        _peripherals.value = emptySet()
+        synchronized(lifetime.lock) {
+            peripheralRetention.clearInactive(gattCallback.gatts.map { it.device.address }.toSet())
+            _peripherals.value = peripheralRetention.snapshot().toSet()
+        }
     }
 
     override suspend fun connect(peripheral: BluetoothPeripheral, autoConnect: Boolean) {
@@ -216,6 +224,7 @@ class AndroidEngine(
 
             logger?.debug("Connecting to ${peripheral.name ?: peripheral.uuid}")
             val androidPeripheral = (peripheral as? AndroidBluetoothPeripheral) ?: return
+            gattCallback.checkCapacity(androidPeripheral.device.address)
             // Ensure the peripheral we're about to connect is tracked in [_peripherals] *before*
             // issuing connectGatt. Callers may hand us an AndroidBluetoothPeripheral that was never
             // discovered via an active scan (e.g. reconstructed from a previously-known address), in
@@ -242,7 +251,7 @@ class AndroidEngine(
             // wedge it (it stops completing any new connection until power-cycled). Registering here lets
             // the next connect()/disconnect() tear the orphan down, so at most one initiation is ever
             // outstanding per address.
-            if (gatt == null) logger?.warn("connectGatt returned null for ${androidPeripheral.device.address}")
+            if (gatt == null) throw BluetoothUnknownException("connectGatt returned null for ${androidPeripheral.device.address}")
         }
     }
 
@@ -257,7 +266,8 @@ class AndroidEngine(
     // manufacturer data, etc.), instance is left in place rather than being replaced.
     private fun registerPeripheralIfNeeded(peripheral: AndroidBluetoothPeripheral) {
         if (peripheralFor(peripheral.device.address) == null) {
-            _peripherals.value = _peripherals.value + setOf(peripheral)
+            peripheralRetention.ensureActive(peripheral.uuid, peripheral, gattCallback.gatts.map { it.device.address }.toSet())
+            _peripherals.value = peripheralRetention.snapshot().toSet()
         }
     }
 
@@ -931,15 +941,25 @@ class AndroidEngine(
 
                 logger?.debug("addScanResult $result")
                 result?.device?.let { device ->
+                    val rawSize = result.scanRecord?.bytes?.size ?: 0
+                    val record = result.scanRecord
+                    val uuidCount = (record?.serviceUuids?.size ?: 0).toLong() + (record?.serviceData?.size ?: 0)
+                    if (rawSize > MAX_SCAN_RECORD_BYTES || uuidCount > MAX_SCAN_RECORD_BYTES / 2) {
+                        peripheralRetention.reject()
+                        return
+                    }
                     val advertisedServiceUUIDs = extractServiceUuids(result)
                     if (!matchesActiveFilters(advertisedServiceUUIDs)) return
                     val bluetoothPeripheral = AndroidBluetoothPeripheral(device)
                     val newRssi = result.rssi.toFloat()
                     bluetoothPeripheral.rssi = newRssi
-                    bluetoothPeripheral.manufacturerData = extractManufacturerData(result)
+                    val manufacturer = extractManufacturerData(result) ?: run { peripheralRetention.reject(); return }
+                    val retainedBytes = manufacturer.values.sumOf { it.size.toLong() } + advertisedServiceUUIDs.size * 16L
+                    val existing = peripheralFor(device.address)
+                    if (!peripheralRetention.offer(device.address, existing ?: bluetoothPeripheral, retainedBytes.toInt())) return
+                    bluetoothPeripheral.manufacturerData = manufacturer
                     bluetoothPeripheral.advertisedServiceUUIDs = advertisedServiceUUIDs
                     bluetoothPeripheral.isConnectable = extractConnectable(result)
-                    val existing = _peripherals.value.find { it.uuid == bluetoothPeripheral.uuid }
                     if (existing != null) {
                         (existing as? AndroidBluetoothPeripheral)?.rssi = newRssi
                         (existing as? AndroidBluetoothPeripheral)?.manufacturerData =
@@ -950,7 +970,7 @@ class AndroidEngine(
                             bluetoothPeripheral.isConnectable
                         _rssiUpdates.tryEmit(bluetoothPeripheral.uuid to newRssi)
                     } else {
-                        _peripherals.value = _peripherals.value + setOf(bluetoothPeripheral)
+                        _peripherals.value = peripheralRetention.snapshot().toSet()
                     }
                 }
             }
@@ -980,11 +1000,17 @@ class AndroidEngine(
         private fun extractConnectable(result: ScanResult): Boolean? =
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) result.isConnectable else null
 
-        private fun extractManufacturerData(result: ScanResult): Map<Int, ByteArray> {
+        private fun extractManufacturerData(result: ScanResult): Map<Int, ByteArray>? {
             val scanRecord = result.scanRecord ?: return emptyMap()
             return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                 val sparse = scanRecord.manufacturerSpecificData ?: return emptyMap()
-                (0 until sparse.size()).associate { i -> sparse.keyAt(i) to sparse.valueAt(i) }
+                if (sparse.size() > MAX_SCAN_RECORD_BYTES / 2) return null
+                var bytes = 0L
+                for (i in 0 until sparse.size()) {
+                    bytes += sparse.valueAt(i).size
+                    if (bytes > MAX_SCAN_RECORD_BYTES) return null
+                }
+                (0 until sparse.size()).associate { i -> sparse.keyAt(i) to sparse.valueAt(i).copyOf() }
             } else {
                 @Suppress("DEPRECATION")
                 val raw = scanRecord.bytes ?: return emptyMap()
@@ -1028,11 +1054,10 @@ class AndroidEngine(
         // platform delivered - stash the value onCharacteristicRead observed for a given operation
         // key here so readCharacteristic()'s suspend point can retrieve it once trySubmitTyped's
         // onComplete callback fires.
-        private val pendingReadValues =
-            java.util.concurrent.ConcurrentHashMap<CentralGattOperationKey, ByteArray?>()
+        private val pendingReadValues = AndroidReadCallbackValues()
 
         fun takePendingReadValue(key: CentralGattOperationKey): ByteArray? =
-            pendingReadValues.remove(key)
+            pendingReadValues.take(key)
 
         // Guards every compound read-modify-write over [gatts]/[operationGates] and the "is this the
         // last gatt for the address?" reset decision. These run on three different threads — GATT
@@ -1045,34 +1070,30 @@ class AndroidEngine(
         fun connect(device: BluetoothDevice, autoConnect: Boolean): BluetoothGatt? =
             synchronized(gattLock) {
                 if (lifetime.isClosed) return@synchronized null
-                // Binder callbacks cannot run before the returned handle is registered.
-                device.connectGatt(context, autoConnect, this, transportMethod)?.also(::trackConnecting)
+                // Admission is checked before native allocation. Retire same-address owners
+                // first, so replacement never exceeds the native handle capacity transiently.
+                cancelDisconnectTimeout(device.address)
+                ownership.open(device.address,
+                    create = { device.connectGatt(context, autoConnect, this, transportMethod) },
+                    retire = { check(closeAndForget(it)) { "Previous native GATT could not be retired" } },
+                )
             }
 
-        /**
-         * Register a freshly issued connectGatt handle before it reaches STATE_CONNECTED, closing any
-         * earlier handle for the same address first. This is the in-flight counterpart to [addGatt]
-         * (which only runs once a connection is actually established): it guarantees that an orphaned
-         * direct-connect — one that never establishes and therefore never produces a callback — is
-         * still tracked, so the next connect()/disconnect() can close it. Without it those orphaned
-         * initiations accumulate and wedge a single-connection peripheral.
-         */
-        fun trackConnecting(gatt: BluetoothGatt) = synchronized(gattLock) {
-            if (lifetime.isClosed) {
-                gatt.close()
-                return@synchronized
-            }
-            val address = gatt.device.address
-            cancelDisconnectTimeout(address)
-            ownership.track(address, gatt)?.let { closeAndForget(it) }
-        }
+        fun checkCapacity(address: String) = ownership.checkCapacity(address)
 
-        private fun addGatt(gatt: BluetoothGatt) = synchronized(gattLock) {
-            // Only connect() registers ownership. A late CONNECTED callback must
-            // never reinsert a superseded handle or close the replacement.
-            if (gatts.none { it === gatt }) return@synchronized
-            gattGenerations.computeIfAbsent(gatt) {
-                centralWriteState.onConnected(gatt.device.address)
+        private fun addGatt(gatt: BluetoothGatt): Boolean = synchronized(gattLock) {
+            if (gatts.none { it === gatt }) return@synchronized false
+            try {
+                gattGenerations.computeIfAbsent(gatt) { centralWriteState.onConnected(gatt.device.address) }
+                true
+            } catch (failure: IllegalStateException) {
+                // Never wrap/reuse generation identities if the scalar sequence is exhausted.
+                closeAndForget(gatt)
+                logger?.error("Connection generation exhausted for ${gatt.device.address}", failure)
+                peripheralFor(gatt.device.address)?.let { peer ->
+                    _connectionStateUpdates.tryEmit(ConnectionStateUpdate(peer, BluetoothPeripheralState.Disconnected))
+                }
+                false
             }
         }
 
@@ -1081,7 +1102,7 @@ class AndroidEngine(
          * gatt for the same address remains tracked — the reused peripheral's stale connection state.
          * Idempotent, so it is safe if both STATE_DISCONNECTED and the force-close watchdog fire.
          */
-        private fun closeAndForget(gatt: BluetoothGatt) = synchronized(gattLock) {
+        private fun closeAndForget(gatt: BluetoothGatt): Boolean = synchronized(gattLock) {
             val wasCurrent = ownership.forget(gatt)
             if (wasCurrent) cancelDisconnectTimeout(gatt.device.address)
             val generation = gattGenerations.remove(gatt)
@@ -1089,15 +1110,19 @@ class AndroidEngine(
             if (generation != null) {
                 centralWriteState.onDisconnected(gatt.device.address, generation)
             }
+            var nativeClosed = true
             try {
                 gatt.close()
             } catch (e: Exception) {
+                nativeClosed = false
+                ownership.refuseNewOwners(e)
                 lifetime.recordCleanupFailure(e)
                 logger?.error("Error closing gatt for ${gatt.device.address}: ${e.message}")
             }
             if (gattsForDevice(gatt.device).isEmpty()) {
                 resetPeripheralState(gatt.device.address)
             }
+            nativeClosed
         }
 
         fun withCurrent(gatt: BluetoothGatt, action: () -> Unit): Boolean =
@@ -1273,7 +1298,7 @@ class AndroidEngine(
                 gatt.device.let { device ->
                     if (newState == BluetoothProfile.STATE_CONNECTED) {
                         logger?.info("Connected to ${device.address}")
-                        addGatt(gatt)
+                        if (!addGatt(gatt)) return@withCurrent
                         peripheralFor(device.address)?.let { peripheral ->
                             _connectionStateUpdates.tryEmit(
                                 ConnectionStateUpdate(peripheral, BluetoothPeripheralState.Connected)
@@ -1395,17 +1420,11 @@ class AndroidEngine(
                         characteristic?.service?.uuid?.toString(),
                         characteristic?.uuid?.toString(),
                     )
-                    gattGenerations[it]?.let { generation ->
-                        pendingReadValues[
-                            CentralGattOperationKey(generation, CentralGattOperationType.ReadCharacteristic, identity)
-                        ] = characteristic?.value?.copyOf()
+                    val generation = gattGenerations[it] ?: return@withCurrent
+                    val key = CentralGattOperationKey(generation, CentralGattOperationType.ReadCharacteristic, identity)
+                    pendingReadValues.withValue(key, characteristic?.value?.copyOf()) {
+                        completeOperation(it, CentralGattOperationType.ReadCharacteristic, identity, status)
                     }
-                    completeOperation(
-                        it,
-                        CentralGattOperationType.ReadCharacteristic,
-                        identity,
-                        status,
-                    )
                 }
             }
         }
@@ -1500,6 +1519,8 @@ class AndroidEngine(
     }
 
     companion object {
+        // ScanResult combines advertisement and scan response, each allowing 1650 extended bytes.
+        private const val MAX_SCAN_RECORD_BYTES = 3_300
         private const val DISCONNECT_TIMEOUT_MS = 5_000L
         private val CLIENT_CHARACTERISTIC_CONFIG_UUID =
             java.util.UUID.fromString("00002902-0000-1000-8000-00805f9b34fb")
