@@ -3,7 +3,6 @@ package dev.bluefalcon.engine.apple
 import kotlinx.cinterop.ObjCSignatureOverride
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withTimeout
 import platform.CoreBluetooth.*
 import platform.Foundation.NSError
@@ -29,6 +28,7 @@ class BluetoothPeripheralManager(
     private val callback: CBCentralManagerCallback
 ) : NSObject(), CBCentralManagerDelegateProtocol {
     
+    private val owner = AppleNativeManagerOwner()
     private val _managerState = MutableStateFlow<CBManagerState>(CBManagerStateUnknown)
     val managerState: StateFlow<CBManagerState> = _managerState
 
@@ -41,23 +41,30 @@ class BluetoothPeripheralManager(
     // (FrameworkApplePeripheralStack), which already does this correctly.
     private val delegateQueue = dispatch_queue_create("dev.bluefalcon.engine.apple.central", null)
 
-    val centralManager: CBCentralManager = CBCentralManager(this, delegateQueue)
+    private var nativeManager: CBCentralManager? = CBCentralManager(this, delegateQueue)
+    val centralManager: CBCentralManager
+        get() = checkNotNull(nativeManager) { "Apple native manager is closed" }
     
     suspend fun awaitPoweredOn() {
-        withTimeout(10_000L) { managerState.first { it == CBManagerStatePoweredOn } }
+        withTimeout(10_000L) { owner.awaitReady(managerState) { it == CBManagerStatePoweredOn } }
     }
 
     fun close(peripheral: CBPeripheral?) {
-        // Invalidate callback forwarding before best-effort native cancellation.
-        runCatching { centralManager.delegate = null }
-        if (peripheral != null) {
-            runCatching { peripheral.delegate = null }
-            runCatching { centralManager.cancelPeripheralConnection(peripheral) }
-        }
-        runCatching { centralManager.stopScan() }
+        val manager = nativeManager
+        owner.close(buildList {
+            if (manager != null) {
+                add { manager.delegate = null }
+                if (peripheral != null) {
+                    add { peripheral.delegate = null }
+                    add { manager.cancelPeripheralConnection(peripheral) }
+                }
+                add { manager.stopScan() }
+            }
+            add { nativeManager = null }
+        })
     }
 
-    override fun centralManagerDidUpdateState(central: CBCentralManager) {
+    override fun centralManagerDidUpdateState(central: CBCentralManager) = owner.forward {
         _managerState.value = central.state
         callback.onStateUpdated(central.state)
     }
@@ -68,11 +75,11 @@ class BluetoothPeripheralManager(
         advertisementData: Map<Any?, *>,
         RSSI: NSNumber
     ) {
-        callback.onPeripheralDiscovered(didDiscoverPeripheral, advertisementData, RSSI)
+        owner.forward { callback.onPeripheralDiscovered(didDiscoverPeripheral, advertisementData, RSSI) }
     }
     
     override fun centralManager(central: CBCentralManager, didConnectPeripheral: CBPeripheral) {
-        callback.onPeripheralConnected(didConnectPeripheral)
+        owner.forward { callback.onPeripheralConnected(didConnectPeripheral) }
     }
     
     @ObjCSignatureOverride
@@ -81,7 +88,7 @@ class BluetoothPeripheralManager(
         didDisconnectPeripheral: CBPeripheral,
         error: NSError?
     ) {
-        callback.onPeripheralDisconnected(didDisconnectPeripheral, error)
+        owner.forward { callback.onPeripheralDisconnected(didDisconnectPeripheral, error) }
     }
     
     @ObjCSignatureOverride
@@ -90,6 +97,6 @@ class BluetoothPeripheralManager(
         didFailToConnectPeripheral: CBPeripheral,
         error: NSError?
     ) {
-        callback.onPeripheralConnectionFailed(didFailToConnectPeripheral, error)
+        owner.forward { callback.onPeripheralConnectionFailed(didFailToConnectPeripheral, error) }
     }
 }

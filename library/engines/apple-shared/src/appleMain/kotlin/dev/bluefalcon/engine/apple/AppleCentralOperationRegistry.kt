@@ -41,6 +41,7 @@ internal class AppleCentralOperationRegistry(
     private val maximumAttributes: Int = 256,
 ) {
     private val mutex = Mutex()
+    private var closed = false
     // Registry-wide sequence preserves ABA fencing without retaining departed peer IDs.
     private var nextGeneration = 0L
     private val activeConnections = mutableMapOf<String, AppleCentralConnectionKey>()
@@ -70,6 +71,7 @@ internal class AppleCentralOperationRegistry(
                 "Apple central peer capacity reached ($maximumPeers)"
             }
             check(nextGeneration < Long.MAX_VALUE) { "Apple central generation capacity exhausted" }
+            check(!closed) { "Apple central registry is closed" }
             val completions = activeConnections[peripheralUuid]
                 ?.let(::removeConnectionLocked)
                 .orEmpty()
@@ -244,8 +246,18 @@ internal class AppleCentralOperationRegistry(
         return true
     }
 
+    suspend fun close() {
+        val completions = mutex.withLock {
+            if (closed) return
+            closed = true
+            val pending = activeConnections.values.toList().flatMap(::removeConnectionLocked)
+            pending
+        }
+        completions.forEach { it() }
+    }
+
     private fun isActiveLocked(connection: AppleCentralConnectionKey): Boolean =
-        activeConnections[connection.peripheralUuid] == connection && connection !in quarantined
+        !closed && activeConnections[connection.peripheralUuid] == connection && connection !in quarantined
 
     // One slot follows an attribute across pending and enabled states. A disable at
     // capacity must remain possible; admission cannot prevent releasing its own slot.

@@ -74,6 +74,8 @@ internal class AppleNativeConnectionOwnership<T : Any> {
     fun beginRetirement(token: AppleNativeConnectionToken<T>): Boolean =
         owners.value[token.peripheralUuid] === token && token.acceptingCallbacks.compareAndSet(true, false)
 
+    fun snapshot(): List<AppleNativeConnectionToken<T>> = owners.value.values.toList()
+
     fun current(peripheralUuid: String): AppleNativeConnectionToken<T>? =
         owners.value[peripheralUuid]
 

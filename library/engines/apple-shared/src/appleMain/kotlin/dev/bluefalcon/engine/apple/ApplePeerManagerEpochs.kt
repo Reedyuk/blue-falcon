@@ -45,6 +45,10 @@ internal class ApplePeerManagerEpochs<M : Any>(private val maximumPeers: Int = 3
         val terminated = CompletableDeferred<Unit>()
     }
     private val owners = MutableStateFlow<Map<String, Epoch<M>>>(emptyMap())
+    fun closeAdmission(): List<Epoch<M>> {
+        admissionClosed.value = true
+        return owners.value.values.toList().also { epochs -> epochs.forEach { it.retiring.value = true } }
+    }
     fun current(uuid: String): Epoch<M>? = owners.value[uuid]
     fun isCurrent(epoch: Epoch<M>): Boolean = owners.value[epoch.uuid] === epoch && !epoch.retiring.value
     fun <T : Any> capture(epoch: Epoch<M>, ownership: AppleNativeConnectionOwnership<T>, native: T): AppleNativeConnectionToken<T>? {
@@ -55,6 +59,7 @@ internal class ApplePeerManagerEpochs<M : Any>(private val maximumPeers: Int = 3
         val epoch = Epoch<M>(uuid)
         while (true) {
             val current = owners.value
+            check(!admissionClosed.value) { "Apple peer manager ownership is closed" }
             check(uuid !in current) { "Apple peer manager already reserved" }
             check(current.size < maximumPeers) { "Apple central peer manager limit reached ($maximumPeers)" }
             if (owners.compareAndSet(current, current + (uuid to epoch))) return epoch
