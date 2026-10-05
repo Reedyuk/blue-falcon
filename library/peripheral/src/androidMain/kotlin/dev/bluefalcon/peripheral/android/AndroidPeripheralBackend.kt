@@ -18,6 +18,8 @@ import dev.bluefalcon.peripheral.PeripheralConfig
 import dev.bluefalcon.peripheral.PeripheralLifecycleException
 import dev.bluefalcon.peripheral.PeripheralSessionId
 import dev.bluefalcon.peripheral.PeripheralUnsupportedException
+import dev.bluefalcon.peripheral.internal.PeripheralRequestAdmission
+import dev.bluefalcon.peripheral.internal.PeripheralResourceOverflowException
 import dev.bluefalcon.peripheral.internal.PeripheralBackend
 import dev.bluefalcon.peripheral.internal.BackendSessionToken
 import dev.bluefalcon.peripheral.internal.BackendCharacteristicReadRequest
@@ -77,6 +79,10 @@ internal class AndroidPeripheralBackend(
     private var supportedNotificationModes = emptyMap<GattCharacteristicId, Set<NotificationMode>>()
     private val eventDeliveries = ArrayDeque<EventDelivery>()
     private var eventDeliveryOwner = false
+    private val deliveryAdmission = PeripheralRequestAdmission()
+    private val notificationWatchdogAdmission = PeripheralRequestAdmission(maximumBytes = 0)
+    private var resourceFailureGeneration: Long? = null
+    private var pendingResourceFailure: Pair<PeripheralBackendEventSink, Throwable>? = null
 
     private val platformSupported =
         stack.capabilities.localGattServer && stack.capabilities.connectableAdvertising
@@ -124,6 +130,7 @@ internal class AndroidPeripheralBackend(
                 )
             }
             val allocatedGeneration = ++generation
+            resourceFailureGeneration = null
             state = BackendState.Starting(allocatedGeneration)
             this.eventSink = eventSink
             startupEvents.clear()
@@ -139,6 +146,14 @@ internal class AndroidPeripheralBackend(
 
             override fun onPlatformFailure(cause: Throwable) {
                 publishPlatformFailure(startGeneration, cause)
+            }
+            override fun onResourceOverflow(cause: Throwable) {
+                synchronized(lock) {
+                    if (state == BackendState.Starting(startGeneration) || state == BackendState.Running(startGeneration)) {
+                        eventSink.let { markResourceFailureLocked(startGeneration, it) }
+                    }
+                }
+                dispatchDeliveries(false)
             }
         }
 
@@ -167,9 +182,7 @@ internal class AndroidPeripheralBackend(
                     state = BackendState.Running(startGeneration)
                     while (startupEvents.isNotEmpty()) {
                         val staged = startupEvents.removeFirst()
-                        handleEventLocked(startGeneration, staged, eventSink)?.let {
-                            enqueueEventDeliveryLocked(EventDelivery(startGeneration, it))
-                        }
+                        stageEventDeliveryLocked(startGeneration, staged, eventSink)
                     }
                     startupBytes = 0
                     true
@@ -177,7 +190,7 @@ internal class AndroidPeripheralBackend(
                     false
                 }
             }
-            if (published) drainEventDeliveries()
+            if (published) dispatchDeliveries(true)
             if (!published) {
                 throw PeripheralLifecycleException(
                     "Android peripheral start was superseded by shutdown",
@@ -249,7 +262,9 @@ internal class AndroidPeripheralBackend(
             if (pendingNotifications.size >= MaximumTrackedSessions) {
                 return NotificationResult.Failed(PeripheralLifecycleException("Android notification owner capacity exceeded"))
             }
-            val pending = PendingNotification(requireNotNull(sessionTokens[sessionId]), timeSource.markNow() + operationTimeout, generation)
+            val permit = notificationWatchdogAdmission.acquire(0, false)
+                ?: return NotificationResult.Failed(PeripheralLifecycleException("Android notification watchdog capacity exceeded"))
+            val pending = PendingNotification(requireNotNull(sessionTokens[sessionId]), timeSource.markNow() + operationTimeout, generation, permit)
             pendingNotifications[sessionId] = pending
             Triple(AndroidNotificationRequest(sessionId, characteristic, mode, value), sessionTargets[sessionId], pending)
         }
@@ -286,8 +301,11 @@ internal class AndroidPeripheralBackend(
                     sink.onNotificationReady(token)
                 })
             }
-            if (owner) drainEventDeliveries()
+            dispatchDeliveries(owner)
         }
+        // LAZY cancellation before execution never enters the body. Completion
+        // includes that path and waits for a started canceled continuation to run.
+        watchdog.invokeOnCompletion { pending.permit.delivered() }
         val scheduled = synchronized(lock) {
             if (state == BackendState.Running(pending.generation) &&
                 pendingNotifications[sessionId] === pending
@@ -307,6 +325,16 @@ internal class AndroidPeripheralBackend(
 
     override suspend fun disconnect(token: BackendSessionToken): DisconnectResult = platformOperationMutex.withLock {
         disconnectPlatformSerialized(token.sessionId, token)
+    }
+
+    override suspend fun retireSession(token: BackendSessionToken) = platformOperationMutex.withLock {
+        val target = synchronized(lock) {
+            if (sessionTokens[token.sessionId] !== token.backendToken) return@withLock
+            val owned = sessionTargets[token.sessionId]
+            removeSessionStateLocked(token.sessionId)
+            owned
+        }
+        if (target != null) target.retire() else stack.disconnect(token.sessionId)
     }
 
     private fun disconnectPlatformSerialized(sessionId: PeripheralSessionId, expectedToken: BackendSessionToken?): DisconnectResult {
@@ -430,7 +458,7 @@ internal class AndroidPeripheralBackend(
     ): BackendState.ShuttingDown {
         eventSink = null
         clearSessionStateLocked()
-        eventDeliveries.clear()
+        clearEventDeliveriesLocked()
         return BackendState.ShuttingDown(
             generation = shutdownGeneration,
             terminal = terminal,
@@ -522,9 +550,10 @@ internal class AndroidPeripheralBackend(
         val owner = synchronized(lock) {
             when (state) {
                 BackendState.Starting(eventGeneration) -> {
+                    if (resourceFailureGeneration == eventGeneration) return@synchronized false
                     val bytes = when (event) {
-                        is AndroidGattEvent.CharacteristicWrite -> event.value.size
-                        is AndroidGattEvent.DescriptorWrite -> event.value.size
+                        is AndroidGattEvent.CharacteristicWrite -> event.payloadBytes.toInt()
+                        is AndroidGattEvent.DescriptorWrite -> event.payloadBytes.toInt()
                         else -> 0
                     }
                     if (startupEvents.size >= 256 || bytes > 65536 - startupBytes) {
@@ -536,14 +565,8 @@ internal class AndroidPeripheralBackend(
                     false
                 }
                 BackendState.Running(eventGeneration) -> {
-                    val delivery = eventSink?.let { sink ->
-                        handleEventLocked(eventGeneration, event, sink)
-                    }
-                    if (delivery == null) {
-                        false
-                    } else {
-                        enqueueEventDeliveryLocked(EventDelivery(eventGeneration, delivery))
-                    }
+                    if (resourceFailureGeneration == eventGeneration) false
+                    else eventSink?.let { stageEventDeliveryLocked(eventGeneration, event, it) } ?: false
                 }
 
                 is BackendState.ShuttingDown -> {
@@ -558,7 +581,7 @@ internal class AndroidPeripheralBackend(
             }
         }
         shutdownResponse?.let(::sendShutdownFailureResponse)
-        if (owner) drainEventDeliveries()
+        dispatchDeliveries(owner)
     }
 
     private fun AndroidGattEvent.shutdownFailureResponse(): AndroidGattResponse? {
@@ -603,8 +626,51 @@ internal class AndroidPeripheralBackend(
             }
     }
 
+    private fun eventPayloadBytes(event: AndroidGattEvent): Long = when (event) {
+        is AndroidGattEvent.CharacteristicWrite -> event.payloadBytes
+        is AndroidGattEvent.DescriptorWrite -> event.payloadBytes
+        else -> 0
+    }
+
+    private fun stageEventDeliveryLocked(generation: Long, event: AndroidGattEvent, sink: PeripheralBackendEventSink): Boolean {
+        val permit = deliveryAdmission.acquire(eventPayloadBytes(event), false)
+        if (permit == null) {
+            markResourceFailureLocked(generation, sink)
+            return false
+        }
+        val callback = try { handleEventLocked(generation, event, sink) }
+        catch (cause: Throwable) { permit.delivered(); throw cause }
+        if (callback == null) { permit.delivered(); return false }
+        return enqueueEventDeliveryLocked(EventDelivery(generation, permit, callback))
+    }
+
+    private fun markResourceFailureLocked(generation: Long, sink: PeripheralBackendEventSink) {
+        if (resourceFailureGeneration == generation) return
+        resourceFailureGeneration = generation
+        sessionTokens.values.forEach { it.retire() }
+        clearEventDeliveriesLocked()
+        pendingResourceFailure = sink to PeripheralResourceOverflowException()
+    }
+
+    private fun clearEventDeliveriesLocked() {
+        eventDeliveries.forEach { it.permit?.delivered() }
+        eventDeliveries.clear()
+    }
+
+    private fun dispatchDeliveries(owner: Boolean) {
+        val failure = synchronized(lock) { pendingResourceFailure.also { pendingResourceFailure = null } }
+        failure?.let { it.first.onResourceOverflow(it.second) }
+        if (owner) drainEventDeliveries()
+    }
+
     private fun enqueueEventDeliveryLocked(delivery: EventDelivery): Boolean {
-        eventDeliveries.addLast(delivery)
+        if (resourceFailureGeneration == delivery.generation) { delivery.permit?.delivered(); return false }
+        val admitted = delivery.permit ?: deliveryAdmission.acquire(0, false)
+        if (admitted == null) {
+            eventSink?.let { markResourceFailureLocked(delivery.generation, it) }
+            return false
+        }
+        eventDeliveries.addLast(delivery.copy(permit = admitted))
         if (eventDeliveryOwner) return false
         eventDeliveryOwner = true
         return true
@@ -618,12 +684,12 @@ internal class AndroidPeripheralBackend(
                 }
             } ?: return
             val current = synchronized(lock) {
-                state == BackendState.Running(delivery.generation)
+                state == BackendState.Running(delivery.generation) && resourceFailureGeneration != delivery.generation
             }
-            if (current) {
-                runCatching(delivery.callback)
+            try {
+                if (current) runCatching(delivery.callback)
                     .onFailure { logger?.warn("Android peripheral event delivery failed", it) }
-            }
+            } finally { delivery.permit?.delivered() }
         }
     }
 
@@ -772,6 +838,13 @@ internal class AndroidPeripheralBackend(
                 } else {
                     val cccdWrite = event.takeIf {
                         it.descriptorId.uuid.toString() == CccdUuid
+                    }
+                    if (cccdWrite?.preparedWrite == true &&
+                        (event.offset !in 0 until CccdValueLength || event.payloadBytes == 0L || event.payloadBytes > CccdValueLength - event.offset)) {
+                        preparedCccdWrites.remove(event.sessionId)
+                        val reject = createGattResponder(eventGeneration, event.sessionId, event.requestId, event.offset)
+                        val status = if (event.offset !in 0 until CccdValueLength) GattResponseStatus.InvalidOffset else GattResponseStatus.InvalidAttributeValueLength
+                        return { reject.respond(status, null) }
                     }
                     val responder = if (event.responseNeeded || event.preparedWrite) {
                         createGattResponder(
@@ -946,7 +1019,7 @@ internal class AndroidPeripheralBackend(
                 },
             )
         }
-        if (owner) drainEventDeliveries()
+        dispatchDeliveries(owner)
     }
 
     private fun commitCccdWrite(
@@ -967,7 +1040,7 @@ internal class AndroidPeripheralBackend(
                 },
             )
         }
-        if (owner) drainEventDeliveries()
+        dispatchDeliveries(owner)
     }
 
     private fun commitCccdWriteLocked(
@@ -1069,7 +1142,7 @@ internal class AndroidPeripheralBackend(
                 )
             }
         }
-        if (owner) drainEventDeliveries()
+        dispatchDeliveries(owner)
     }
 
     private fun removeSessionStateLocked(sessionId: PeripheralSessionId): Boolean {
@@ -1103,6 +1176,7 @@ internal class AndroidPeripheralBackend(
         val token: BackendSessionToken,
         val deadline: TimeMark,
         val generation: Long,
+        val permit: PeripheralRequestAdmission.Permit,
         var watchdog: Job? = null,
         var expired: Boolean = false,
     )
@@ -1122,6 +1196,7 @@ internal class AndroidPeripheralBackend(
 
     private data class EventDelivery(
         val generation: Long,
+        val permit: PeripheralRequestAdmission.Permit? = null,
         val callback: () -> Unit,
     )
 

@@ -51,6 +51,7 @@ class BlueFalcon(
     private data class Admission(val closing: Boolean = false, val active: Int = 0)
     private val synchronousAdmission = MutableStateFlow(Admission())
     private val closeCompletion = MutableStateFlow<BlueFalconCloseCompletion?>(null)
+    private val storageFailure = MutableStateFlow<IllegalStateException?>(null)
     // Cleanup cannot be a child of the facade it joins, the engine it closes, or its caller.
     private val closeScope = object : CoroutineScope {
         override val coroutineContext = engine.scope.coroutineContext.minusKey(Job)
@@ -85,8 +86,9 @@ class BlueFalcon(
                 synchronousAdmission.first { it.active == 0 }
                 ownedEngine?.close()
             } finally {
-                facadeJob.join()
+                try { facadeJob.join() } finally { connectionStateStore.clear() }
             }
+            storageFailure.value?.let { throw it }
             Unit
         }
         val completion = BlueFalconCloseCompletion(cleanup)
@@ -127,7 +129,17 @@ class BlueFalcon(
      * Backing store for the structured per-peripheral connection state machine (ADR 0008),
      * keyed by [BluetoothPeripheral.uuid].
      */
-    private val _connectionStates = MutableStateFlow<Map<String, PeripheralConnectionState>>(emptyMap())
+    private val connectionStateStore = ConnectionStateStore()
+    private val _connectionStates = connectionStateStore.states
+    /** Retained state keys (maximum256) and rejected updates; inactive history is evicted oldest first. */
+    val connectionStateStorageStatus: ConnectionStateStorageStatus get() = connectionStateStore.status
+
+    private fun publishConnectionState(uuid: String, retireOnOverflow: Boolean = true, transform: (PeripheralConnectionState?) -> PeripheralConnectionState?) {
+        if (!connectionStateStore.update(uuid, transform) && retireOnOverflow) {
+            storageFailure.compareAndSet(null, IllegalStateException("Connection state storage capacity exceeded"))
+            requestClose()
+        }
+    }
 
     init {
         facadeScope.launch {
@@ -147,15 +159,15 @@ class BlueFalcon(
                 val uuid = update.peripheral.uuid
                 when (update.state) {
                     BluetoothPeripheralState.Connected -> {
-                        _connectionStates.update { it + (uuid to PeripheralConnectionState.Connected) }
+                        publishConnectionState(uuid) { PeripheralConnectionState.Connected }
                     }
                     BluetoothPeripheralState.Disconnected -> {
                         // Derive the reason inside update() so the read-modify-write is
                         // atomic: the lambda is re-run if another updater wins the CAS,
                         // which matters now that engine work is no longer serialised
                         // onto a single thread.
-                        _connectionStates.update { current ->
-                            val reason = when (current[uuid]) {
+                        publishConnectionState(uuid, retireOnOverflow = false) { current ->
+                            val reason = when (current) {
                                 is PeripheralConnectionState.Disconnecting -> DisconnectReason.UserInitiated
                                 is PeripheralConnectionState.Connecting -> DisconnectReason.ConnectFailed(
                                     BluetoothUnknownException()
@@ -164,14 +176,14 @@ class BlueFalcon(
                                 is PeripheralConnectionState.Ready -> DisconnectReason.Unexpected
                                 else -> null
                             }
-                            current + (uuid to PeripheralConnectionState.Disconnected(reason))
+                            PeripheralConnectionState.Disconnected(reason)
                         }
                     }
                     BluetoothPeripheralState.Connecting -> {
-                        _connectionStates.update { it + (uuid to PeripheralConnectionState.Connecting) }
+                        publishConnectionState(uuid) { PeripheralConnectionState.Connecting }
                     }
                     BluetoothPeripheralState.Disconnecting -> {
-                        _connectionStates.update { it + (uuid to PeripheralConnectionState.Disconnecting) }
+                        publishConnectionState(uuid) { PeripheralConnectionState.Disconnecting }
                     }
                     BluetoothPeripheralState.Unknown -> Unit
                 }
@@ -182,12 +194,8 @@ class BlueFalcon(
             engine.serviceDiscoveryUpdates.collect { update ->
                 if (update.phase != ServiceDiscoveryPhase.ServicesDiscovered) return@collect
                 val uuid = update.peripheral.uuid
-                _connectionStates.update { current ->
-                    if (current[uuid] == PeripheralConnectionState.Connected) {
-                        current + (uuid to PeripheralConnectionState.Ready)
-                    } else {
-                        current
-                    }
+                publishConnectionState(uuid) { current ->
+                    if (current == PeripheralConnectionState.Connected) PeripheralConnectionState.Ready else current
                 }
             }
         }
@@ -264,10 +272,15 @@ class BlueFalcon(
     /**
      * Structured, per-peripheral connection state (ADR 0008), keyed by [BluetoothPeripheral.uuid].
      *
+     * Retains at most256 peer keys. Oldest disconnected history is evicted first;
+     * active states are never evicted. A new connect operation rejects when all slots
+     * are active; callback overflow terminally closes this facade and its owned engine,
+     * with failure observable from [close]. Successful teardown clears retained history.
+     *
      * Derived from [connectionStateUpdates] and [serviceDiscoveryUpdates]. Prefer
      * [connectionStateFlow] or [peripheralState] for working with a single peripheral.
      */
-    val connectionStates: StateFlow<Map<String, PeripheralConnectionState>> = _connectionStates.asStateFlow()
+    val connectionStates: StateFlow<Map<String, PeripheralConnectionState>> = _connectionStates
 
     /**
      * The current, structured connection state of [peripheral] (ADR 0008).
@@ -365,8 +378,8 @@ class BlueFalcon(
      * Connect to a peripheral
      */
     suspend fun connect(peripheral: BluetoothPeripheral, autoConnect: Boolean = false): Unit = owned {
-        _connectionStates.update {
-            it + (peripheral.uuid to PeripheralConnectionState.Connecting)
+        check(connectionStateStore.update(peripheral.uuid) { PeripheralConnectionState.Connecting }) {
+            "Connection state storage capacity exceeded"
         }
         val result = plugins.interceptConnect(ConnectCall(peripheral, autoConnect)) { call ->
             engineResult {
@@ -375,8 +388,8 @@ class BlueFalcon(
         }
         currentCoroutineContext().ensureActive()
         result.exceptionOrNull()?.let { cause ->
-            _connectionStates.update {
-                it + (peripheral.uuid to PeripheralConnectionState.Disconnected(DisconnectReason.ConnectFailed(cause)))
+            connectionStateStore.update(peripheral.uuid) {
+                PeripheralConnectionState.Disconnected(DisconnectReason.ConnectFailed(cause))
             }
         }
     }
@@ -385,9 +398,8 @@ class BlueFalcon(
      * Disconnect from a peripheral
      */
     suspend fun disconnect(peripheral: BluetoothPeripheral): Unit = owned {
-        _connectionStates.update {
-            it + (peripheral.uuid to PeripheralConnectionState.Disconnecting)
-        }
+        // Diagnostic capacity must not prevent releasing a shared-engine native peer.
+        connectionStateStore.update(peripheral.uuid) { PeripheralConnectionState.Disconnecting }
         plugins.interceptDisconnect(DisconnectCall(peripheral)) { call ->
             engineResult {
                 engine.disconnect(call.peripheral)

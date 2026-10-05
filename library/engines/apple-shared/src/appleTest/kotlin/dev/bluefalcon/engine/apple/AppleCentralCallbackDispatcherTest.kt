@@ -2,6 +2,8 @@ package dev.bluefalcon.engine.apple
 
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import platform.Foundation.NSData
@@ -12,6 +14,127 @@ import kotlin.test.assertTrue
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class AppleCentralCallbackDispatcherTest {
+    @Test
+    fun `terminal retirement remains admissible after callback payload storage is full`() = runTest {
+        val dispatcher = AppleCentralCallbackDispatcher(backgroundScope, 2, 512)
+        val release = CompletableDeferred<Unit>()
+        val order = mutableListOf<String>()
+        assertTrue(dispatcher.dispatch(512) { release.await() })
+        runCurrent()
+        assertTrue(dispatcher.dispatch { order += "queued data" })
+        assertFalse(dispatcher.dispatch {})
+        assertTrue(dispatcher.dispatchTerminal { order += "terminal cleanup" })
+        release.complete(Unit); runCurrent()
+        assertEquals(listOf("terminal cleanup", "queued data"), order)
+        assertEquals(0, dispatcher.status.value.retainedCallbacks)
+        dispatcher.close()
+        assertFalse(dispatcher.dispatchTerminal {})
+    }
+
+    @Test fun `terminal slots include active cleanup and close discards bounded pending cleanups`() = runTest {
+        val dispatcher = AppleCentralCallbackDispatcher(backgroundScope, maximumTerminalCallbacks = 2)
+        val release = CompletableDeferred<Unit>()
+        assertTrue(dispatcher.dispatchTerminal { release.await() })
+        runCurrent()
+        assertTrue(dispatcher.dispatchTerminal {})
+        assertFalse(dispatcher.dispatchTerminal {})
+        assertEquals(2, dispatcher.status.value.retainedTerminalCallbacks)
+        dispatcher.close()
+        assertEquals(0, dispatcher.status.value.retainedTerminalCallbacks)
+        assertFalse(dispatcher.dispatchTerminal {})
+    }
+
+    @Test fun `rejected stale callback does not retire replacement token`() = runTest {
+        val dispatcher = AppleCentralCallbackDispatcher(backgroundScope, maximumCallbacks = 1)
+        val ownership = AppleNativeConnectionOwnership<Any>()
+        val old = ownership.connected("peer", Any())
+        val replacement = ownership.connected("peer", Any())
+        assertTrue(dispatcher.dispatch {})
+        assertFalse(dispatcher.dispatchOwned(old, ownership, onRejected = { error("Old callback retired replacement") }) {})
+        assertTrue(ownership.isActive(replacement))
+        dispatcher.close()
+    }
+
+    @Test
+    fun `payload byte admission includes stalled callback and is observable`() = runTest {
+        val dispatcher = AppleCentralCallbackDispatcher(backgroundScope, 10, 1024)
+        val release = CompletableDeferred<Unit>()
+        val first = ByteArray(512)
+        assertTrue(dispatcher.dispatch(first.size) { release.await(); first[0] = 1 })
+        runCurrent()
+        val second = ByteArray(512)
+        assertTrue(dispatcher.dispatch(second.size) { second[0] = 1 })
+        assertFalse(dispatcher.dispatch(1) {})
+        assertFalse(dispatcher.dispatch(1025) {})
+        assertEquals(2, dispatcher.status.value.retainedCallbacks)
+        assertEquals(1024, dispatcher.status.value.retainedPayloadBytes)
+        assertEquals(2, dispatcher.status.value.rejectedCallbacks)
+        release.complete(Unit)
+        runCurrent()
+        assertEquals(0, dispatcher.status.value.retainedCallbacks)
+        assertEquals(0, dispatcher.status.value.retainedPayloadBytes)
+        assertTrue(dispatcher.dispatch(1024) {})
+    }
+
+    @Test
+    fun `failed and reentrant callbacks release admission without a staging queue`() = runTest {
+        val dispatcher = AppleCentralCallbackDispatcher(backgroundScope, 1, 512)
+        assertTrue(dispatcher.dispatch(512) {
+            assertFalse(dispatcher.dispatch {})
+            error("malformed callback")
+        })
+        runCurrent()
+        assertEquals(0, dispatcher.status.value.retainedCallbacks)
+        assertEquals(0, dispatcher.status.value.retainedPayloadBytes)
+        assertEquals(1, dispatcher.status.value.rejectedCallbacks)
+        assertTrue(dispatcher.dispatch(512) {})
+        runCurrent()
+    }
+
+    @Test
+    fun `close releases running and queued payloads and rejects later ingress`() = runTest {
+        val dispatcher = AppleCentralCallbackDispatcher(backgroundScope, 2, 1024)
+        val never = CompletableDeferred<Unit>()
+        assertTrue(dispatcher.dispatch(512) { never.await() })
+        runCurrent()
+        assertTrue(dispatcher.dispatch(512) { error("Queued callback must be discarded") })
+        dispatcher.close()
+        dispatcher.close()
+        assertTrue(dispatcher.status.value.closed)
+        assertEquals(0, dispatcher.status.value.retainedCallbacks)
+        assertEquals(0, dispatcher.status.value.retainedPayloadBytes)
+        assertFalse(dispatcher.dispatch {})
+    }
+
+    @Test
+    fun `cancelled parent before worker starts still closes ingress`() = runTest {
+        val parent = Job()
+        val dispatcher = AppleCentralCallbackDispatcher(CoroutineScope(coroutineContext + parent))
+        assertTrue(dispatcher.dispatch(512) { error("Worker must not start") })
+        parent.cancel()
+        runCurrent()
+        assertTrue(dispatcher.status.value.closed)
+        assertEquals(0, dispatcher.status.value.retainedPayloadBytes)
+        assertEquals(0, dispatcher.status.value.retainedCallbacks)
+        assertFalse(dispatcher.dispatch {})
+    }
+
+    @Test
+    fun `stalled callback worker cannot retain arbitrary callback items`() = runTest {
+        val dispatcher = AppleCentralCallbackDispatcher(backgroundScope)
+        val release = CompletableDeferred<Unit>()
+        assertTrue(dispatcher.dispatch { release.await() })
+        runCurrent()
+        var accepted = 1
+        repeat(10_000) {
+            if (dispatcher.dispatch {}) accepted++
+        }
+        assertTrue(accepted <= 256, "Retained $accepted callbacks while the worker was stalled")
+        release.complete(Unit)
+        runCurrent()
+        assertTrue(dispatcher.dispatch {})
+    }
+
     @Test
     fun `empty native notification snapshot reaches callback worker`() = runTest {
         val dispatcher = AppleCentralCallbackDispatcher(backgroundScope)
