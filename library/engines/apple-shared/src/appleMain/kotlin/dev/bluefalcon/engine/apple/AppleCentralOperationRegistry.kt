@@ -36,15 +36,24 @@ internal sealed interface AppleReadOutcome {
     data class Failed(val cause: Throwable) : AppleReadOutcome
 }
 
-internal class AppleCentralOperationRegistry {
+internal class AppleCentralOperationRegistry(
+    private val maximumPeers: Int = 32,
+    private val maximumAttributes: Int = 256,
+) {
     private val mutex = Mutex()
-    private val lastGenerations = mutableMapOf<String, Long>()
+    // Registry-wide sequence preserves ABA fencing without retaining departed peer IDs.
+    private var nextGeneration = 0L
     private val activeConnections = mutableMapOf<String, AppleCentralConnectionKey>()
     private val writes = mutableMapOf<AppleCentralConnectionKey, PendingWrite>()
     private val subscriptions = mutableMapOf<AppleCentralOperationKey, PendingSubscription>()
     private val reads = mutableMapOf<AppleCentralOperationKey, PendingRead>()
     private val quarantined = mutableSetOf<AppleCentralConnectionKey>()
     private val notifying = mutableSetOf<AppleCentralOperationKey>()
+
+    /** Counts retained peer identities, including inactive history, for resource diagnostics. */
+    internal suspend fun retainedPeerCount(): Int = mutex.withLock {
+        activeConnections.size
+    }
 
     private val _readiness =
         MutableStateFlow<Map<AppleCentralConnectionKey, Boolean>>(emptyMap())
@@ -57,11 +66,14 @@ internal class AppleCentralOperationRegistry {
 
     suspend fun connected(peripheralUuid: String): AppleCentralConnectionKey {
         val transition = mutex.withLock {
+            check(peripheralUuid in activeConnections || activeConnections.size < maximumPeers) {
+                "Apple central peer capacity reached ($maximumPeers)"
+            }
+            check(nextGeneration < Long.MAX_VALUE) { "Apple central generation capacity exhausted" }
             val completions = activeConnections[peripheralUuid]
                 ?.let(::removeConnectionLocked)
                 .orEmpty()
-            val generation = (lastGenerations[peripheralUuid] ?: 0L) + 1L
-            lastGenerations[peripheralUuid] = generation
+            val generation = ++nextGeneration
             val connection = AppleCentralConnectionKey(peripheralUuid, generation)
             activeConnections[peripheralUuid] = connection
             _readiness.value = _readiness.value
@@ -111,7 +123,9 @@ internal class AppleCentralOperationRegistry {
         enabled: Boolean,
         onComplete: (NotificationSubscriptionResult) -> Unit,
     ): Boolean = mutex.withLock {
-        if (!isActiveLocked(key.connection) || subscriptions.containsKey(key) || reads.containsKey(key)) {
+        if (!isActiveLocked(key.connection) || subscriptions.containsKey(key) || reads.containsKey(key) ||
+            !canRetainAttributeLocked(key)
+        ) {
             return@withLock false
         }
         subscriptions[key] = PendingSubscription(
@@ -155,7 +169,7 @@ internal class AppleCentralOperationRegistry {
     ): Boolean = mutex.withLock {
         // CoreBluetooth does not distinguish a read response from a notification.
         if (!isActiveLocked(key.connection) || reads.containsKey(key) ||
-            key in notifying || subscriptions.containsKey(key)
+            key in notifying || subscriptions.containsKey(key) || !canRetainAttributeLocked(key)
         ) {
             return@withLock false
         }
@@ -232,6 +246,13 @@ internal class AppleCentralOperationRegistry {
 
     private fun isActiveLocked(connection: AppleCentralConnectionKey): Boolean =
         activeConnections[connection.peripheralUuid] == connection && connection !in quarantined
+
+    // One slot follows an attribute across pending and enabled states. A disable at
+    // capacity must remain possible; admission cannot prevent releasing its own slot.
+    private fun canRetainAttributeLocked(key: AppleCentralOperationKey): Boolean {
+        val retained = reads.keys + subscriptions.keys + notifying
+        return key in retained || retained.size < maximumAttributes
+    }
 
     private fun removeConnectionLocked(
         connection: AppleCentralConnectionKey,
