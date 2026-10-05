@@ -78,10 +78,18 @@ internal interface AppleCentralReadTarget {
 }
 
 internal class AppleCentralWriteController(
-    scope: CoroutineScope,
+    private val scope: CoroutineScope,
     internal val registry: AppleCentralOperationRegistry = AppleCentralOperationRegistry(),
+    private val onQuarantine: suspend (AppleCentralConnectionKey) -> Unit = {},
+    private val scheduleTimeout: (suspend () -> Unit) -> kotlinx.coroutines.Job = { action ->
+        scope.launch { kotlinx.coroutines.delay(10_000L); action() }
+    },
 ) {
     private val mutex = Mutex()
+    private val quarantined = mutableSetOf<AppleCentralConnectionKey>()
+    private data class WatchKey(val key: AppleCentralOperationKey, val kind: String)
+    private class Watch(val key: WatchKey) { var job: kotlinx.coroutines.Job? = null }
+    private val watches = mutableMapOf<WatchKey, Watch>()
     private val connections = mutableMapOf<String, AppleCentralConnectionKey>()
 
     private val _capabilities =
@@ -124,6 +132,9 @@ internal class AppleCentralWriteController(
             peer.maximumWriteValueLength(CharacteristicWriteType.WithoutResponse)
         val connection = registry.connected(peer.peripheralUuid)
         mutex.withLock {
+            watches.filterKeys { it.key.peripheralUuid == peer.peripheralUuid }.values.forEach { it.job?.cancel() }
+            watches.keys.removeAll { it.key.peripheralUuid == peer.peripheralUuid }
+            quarantined.removeAll { it.peripheralUuid == peer.peripheralUuid }
             connections[peer.peripheralUuid] = connection
             _capabilities.value = _capabilities.value
                 .filterKeys { it.peripheralUuid != peer.peripheralUuid } +
@@ -157,6 +168,9 @@ internal class AppleCentralWriteController(
     suspend fun disconnected(connection: AppleCentralConnectionKey): Boolean {
         val removedConnection = mutex.withLock {
             if (connections[connection.peripheralUuid] != connection) return false
+            quarantined.remove(connection)
+            watches.filterKeys { it.key.connection == connection }.values.forEach { it.job?.cancel() }
+            watches.keys.removeAll { it.key.connection == connection }
             val removed = connections.remove(connection.peripheralUuid) ?: return false
             _capabilities.value =
                 _capabilities.value.filterKeys {
@@ -242,6 +256,7 @@ internal class AppleCentralWriteController(
             generation = connection.generation,
             characteristicUuid = characteristicUuid,
         )
+        stopWatch(key, "write")
         val completed = registry.completeWrite(
             key,
             failure?.let(CharacteristicWriteResult::Failed)
@@ -292,12 +307,17 @@ internal class AppleCentralWriteController(
                 )
             )
         }
+        if (!startWatch(key, "subscription")) {
+            registry.completeSubscription(key, NotificationSubscriptionResult.Failed(IllegalStateException("Apple operation capacity unavailable")))
+            return result.await()
+        }
         try {
             target.setNotifyValue(enabled)
         } catch (cancellation: CancellationException) {
             registry.abandonSubscription(key)
             throw cancellation
         } catch (failure: Throwable) {
+            stopWatch(key, "subscription")
             registry.completeSubscription(
                 key,
                 NotificationSubscriptionResult.Failed(failure),
@@ -348,6 +368,7 @@ internal class AppleCentralWriteController(
             )
             else -> NotificationSubscriptionResult.Updated(expectedState)
         }
+        stopWatch(key, "subscription")
         return registry.completeSubscription(key, result)
     }
 
@@ -387,22 +408,22 @@ internal class AppleCentralWriteController(
                 )
             )
         }
+        if (!startWatch(key, "read")) {
+            registry.completeRead(key, AppleReadOutcome.Failed(IllegalStateException("Apple operation capacity unavailable")))
+            return result.await()
+        }
         try {
             target.readValue()
         } catch (cancellation: CancellationException) {
             registry.abandonRead(key)
             throw cancellation
         } catch (failure: Throwable) {
+            stopWatch(key, "read")
             registry.completeRead(key, AppleReadOutcome.Failed(failure))
         }
 
         return try {
-            withTimeout(READ_TIMEOUT_MILLIS) { result.await() }
-        } catch (timeout: TimeoutCancellationException) {
-            registry.abandonRead(key)
-            AppleReadOutcome.Failed(
-                IllegalStateException("Characteristic read timed out")
-            )
+            result.await()
         } catch (cancellation: CancellationException) {
             registry.abandonRead(key)
             throw cancellation
@@ -432,6 +453,7 @@ internal class AppleCentralWriteController(
         )
         val outcome = failure?.let(AppleReadOutcome::Failed)
             ?: AppleReadOutcome.Success(value)
+        stopWatch(key, "read")
         return registry.completeRead(key, outcome)
     }
 
@@ -453,7 +475,7 @@ internal class AppleCentralWriteController(
     internal suspend fun currentConnection(
         peripheralUuid: String,
     ): AppleCentralConnectionKey? = mutex.withLock {
-        connections[peripheralUuid]
+        connections[peripheralUuid]?.takeUnless { it in quarantined }
     }
 
     private suspend fun writeWithoutResponse(
@@ -492,6 +514,10 @@ internal class AppleCentralWriteController(
         if (!registry.registerWrite(key, result::complete)) {
             return CharacteristicWriteResult.Backpressured
         }
+        if (!startWatch(key, "write")) {
+            registry.completeWrite(key, CharacteristicWriteResult.Backpressured)
+            return result.await()
+        }
         updateCapabilityReady(
             target.peripheralUuid,
             CharacteristicWriteType.WithResponse,
@@ -499,7 +525,11 @@ internal class AppleCentralWriteController(
         )
         try {
             target.writeValue(payload, CharacteristicWriteType.WithResponse)
+        } catch (cancelled: CancellationException) {
+            registry.abandonWrite(key)
+            throw cancelled
         } catch (failure: Throwable) {
+            stopWatch(key, "write")
             registry.completeWrite(key, CharacteristicWriteResult.Failed(failure))
             updateCapabilityReady(
                 target.peripheralUuid,
@@ -514,6 +544,39 @@ internal class AppleCentralWriteController(
             registry.abandonWrite(key)
             throw cancellation
         }
+    }
+
+    private suspend fun startWatch(key: AppleCentralOperationKey, kind: String): Boolean {
+        val watch = Watch(WatchKey(key, kind))
+        return kotlinx.coroutines.withContext(kotlinx.coroutines.NonCancellable) { mutex.withLock {
+            if (watches.size >= 256 || key.connection in quarantined) return@withLock false
+            watches[watch.key] = watch
+            watch.job = scheduleTimeout {
+                val won = mutex.withLock {
+                    if (watches[watch.key] !== watch || connections[key.peripheralUuid] != key.connection ||
+                        !quarantined.add(key.connection)) false
+                    else {
+                        _capabilities.value = _capabilities.value.mapValues { (capabilityKey, value) ->
+                            if (capabilityKey.peripheralUuid == key.peripheralUuid) value.copy(ready = false) else value
+                        }
+                        watches.filterKeys { it.key.connection == key.connection }.values.forEach {
+                            if (it !== watch) it.job?.cancel()
+                        }
+                        watches.keys.removeAll { it.key.connection == key.connection }
+                        true
+                    }
+                }
+                if (won) {
+                    registry.quarantine(key.connection, IllegalStateException("Apple $kind callback timed out"))
+                    onQuarantine(key.connection)
+                }
+            }
+            true
+        } }
+    }
+
+    private suspend fun stopWatch(key: AppleCentralOperationKey, kind: String) {
+        mutex.withLock { watches.remove(WatchKey(key, kind))?.job?.cancel() }
     }
 
     private suspend fun updateCapabilityReady(

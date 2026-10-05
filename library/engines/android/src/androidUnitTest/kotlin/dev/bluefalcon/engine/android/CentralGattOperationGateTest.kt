@@ -1,5 +1,10 @@
 package dev.bluefalcon.engine.android
 
+import dev.bluefalcon.core.CharacteristicWriteResult
+import dev.bluefalcon.core.CharacteristicWriteType
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicReference
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -286,6 +291,312 @@ class CentralGattOperationGateTest {
         assertFalse(gate.isIdle)
     }
 
+    @Test
+    fun `completion cannot publish ready before an earlier busy publication finishes`() {
+        val state = AndroidCentralWriteState()
+        val generation = state.onConnected("peer")
+        val enteredBusy = CountDownLatch(1)
+        val releaseBusy = CountDownLatch(1)
+        val completed = CountDownLatch(1)
+        val failure = AtomicReference<Throwable?>()
+        val gate = CentralGattOperationGate(
+            timeoutMillis = 10_000,
+            timeoutScheduler = FakeTimeoutScheduler(),
+            onBusy = {
+                enteredBusy.countDown()
+                check(releaseBusy.await(5, TimeUnit.SECONDS))
+                state.onBusy("peer", generation)
+            },
+            onReady = { state.onReady("peer", generation) },
+        )
+        val operationKey = key(generation)
+        val submitter = Thread {
+            try {
+                assertTrue(gate.trySubmitTyped(operationKey, "write", { true }) { completed.countDown() })
+            } catch (throwable: Throwable) {
+                failure.set(throwable)
+            }
+        }
+        val completer = Thread {
+            try {
+                assertTrue(gate.complete(operationKey, status = 0, successful = true))
+            } catch (throwable: Throwable) {
+                failure.set(throwable)
+            }
+        }
+        submitter.start()
+        try {
+            assertTrue(enteredBusy.await(5, TimeUnit.SECONDS))
+            completer.start()
+            assertTrue(completed.await(5, TimeUnit.SECONDS))
+            assertTrue(gate.isIdle)
+        } finally {
+            releaseBusy.countDown()
+            submitter.join(5_000)
+            completer.join(5_000)
+        }
+        assertFalse(submitter.isAlive)
+        assertFalse(completer.isAlive)
+        failure.get()?.let { throw it }
+        assertNull(state.validateWrite("peer", generation, CharacteristicWriteType.WithResponse, 1))
+    }
+
+    @Test
+    fun `next operation busy publication follows the previous ready publication`() {
+        val state = AndroidCentralWriteState()
+        val generation = state.onConnected("peer")
+        val enteredReady = CountDownLatch(1)
+        val releaseReady = CountDownLatch(1)
+        val secondStarted = CountDownLatch(1)
+        val failure = AtomicReference<Throwable?>()
+        val gate = CentralGattOperationGate(
+            timeoutMillis = 10_000,
+            timeoutScheduler = FakeTimeoutScheduler(),
+            onBusy = { state.onBusy("peer", generation) },
+            onReady = {
+                enteredReady.countDown()
+                check(releaseReady.await(5, TimeUnit.SECONDS))
+                state.onReady("peer", generation)
+            },
+        )
+        val first = key(generation, "first")
+        val second = key(generation, "second")
+        assertTrue(gate.trySubmitTyped(first, "first", { true }) {})
+        val completer = Thread {
+            try {
+                assertTrue(gate.complete(first, status = 0, successful = true))
+            } catch (throwable: Throwable) {
+                failure.set(throwable)
+            }
+        }
+        val submitter = Thread {
+            try {
+                assertTrue(gate.trySubmitTyped(second, "second", {
+                    secondStarted.countDown()
+                    true
+                }) {})
+            } catch (throwable: Throwable) {
+                failure.set(throwable)
+            }
+        }
+        completer.start()
+        try {
+            assertTrue(enteredReady.await(5, TimeUnit.SECONDS))
+            submitter.start()
+            assertTrue(secondStarted.await(5, TimeUnit.SECONDS))
+            assertFalse(gate.isIdle)
+        } finally {
+            releaseReady.countDown()
+            completer.join(5_000)
+            submitter.join(5_000)
+        }
+        assertFalse(completer.isAlive)
+        assertFalse(submitter.isAlive)
+        failure.get()?.let { throw it }
+        assertEquals(CharacteristicWriteResult.Backpressured,
+            state.validateWrite("peer", generation, CharacteristicWriteType.WithResponse, 1))
+        assertTrue(gate.complete(second, status = 0, successful = true))
+    }
+
+    @Test
+    fun `started cancelled watchdog cannot time out a replacement with the same key`() {
+        val scheduler = FakeTimeoutScheduler()
+        val firstOutcomes = mutableListOf<CentralGattOperationOutcome>()
+        val secondOutcomes = mutableListOf<CentralGattOperationOutcome>()
+        val gate = CentralGattOperationGate(10_000, scheduler)
+        val operationKey = key(generation = 9)
+        assertTrue(gate.trySubmitTyped(operationKey, "same", { true }, firstOutcomes::add))
+        // Capture an invocation that has started before cancellation. Removing a pending
+        // Handler callback cannot revoke this invocation while it waits for the gate monitor.
+        val startedTimeout = scheduler.captureNextInvocation()
+        assertTrue(gate.complete(operationKey, status = 0, successful = true))
+        assertTrue(gate.trySubmitTyped(operationKey, "same", { true }, secondOutcomes::add))
+
+        startedTimeout()
+
+        assertFalse(gate.isPoisoned)
+        assertTrue(secondOutcomes.isEmpty())
+        assertFalse(gate.isIdle)
+        scheduler.fireNext()
+        assertTrue(gate.isPoisoned)
+        assertEquals(listOf<CentralGattOperationOutcome>(CentralGattOperationOutcome.Success(0)), firstOutcomes)
+        assertEquals(listOf<CentralGattOperationOutcome>(CentralGattOperationOutcome.TimedOut), secondOutcomes)
+    }
+
+    @Test
+    fun `completion callback can reenter submission without old ready overwriting new busy`() {
+        val state = AndroidCentralWriteState()
+        val generation = state.onConnected("peer")
+        val gate = CentralGattOperationGate(
+            10_000, FakeTimeoutScheduler(),
+            onBusy = { state.onBusy("peer", generation) },
+            onReady = { state.onReady("peer", generation) },
+        )
+        val first = key(generation, "first")
+        val second = key(generation, "second")
+        assertTrue(gate.trySubmitTyped(first, "first", { true }) {
+            assertTrue(gate.trySubmitTyped(second, "second", { true }) {})
+        })
+
+        assertTrue(gate.complete(first, status = 0, successful = true))
+
+        assertFalse(gate.isIdle)
+        assertEquals(CharacteristicWriteResult.Backpressured,
+            state.validateWrite("peer", generation, CharacteristicWriteType.WithResponse, 1))
+        assertTrue(gate.complete(second, status = 0, successful = true))
+        assertNull(state.validateWrite("peer", generation, CharacteristicWriteType.WithResponse, 1))
+    }
+
+    @Test
+    fun `disconnect terminalizes waiter while earlier busy publication is pending`() {
+        val state = AndroidCentralWriteState()
+        val generation = state.onConnected("peer")
+        val enteredBusy = CountDownLatch(1)
+        val releaseBusy = CountDownLatch(1)
+        val outcomes = mutableListOf<CentralGattOperationOutcome>()
+        val failure = AtomicReference<Throwable?>()
+        val gate = CentralGattOperationGate(
+            10_000, FakeTimeoutScheduler(),
+            onBusy = {
+                enteredBusy.countDown()
+                check(releaseBusy.await(5, TimeUnit.SECONDS))
+                state.onBusy("peer", generation)
+            },
+            onReady = { state.onReady("peer", generation) },
+        )
+        val operationKey = key(generation)
+        val submitter = Thread {
+            try {
+                assertTrue(gate.trySubmitTyped(operationKey, "first", { true }, outcomes::add))
+            } catch (throwable: Throwable) {
+                failure.set(throwable)
+            }
+        }
+        submitter.start()
+        try {
+            assertTrue(enteredBusy.await(5, TimeUnit.SECONDS))
+            gate.disconnect()
+            state.onDisconnected("peer", generation)
+            assertEquals(listOf<CentralGattOperationOutcome>(CentralGattOperationOutcome.Disconnected), outcomes)
+            assertFalse(gate.complete(operationKey, 0, true))
+        } finally {
+            releaseBusy.countDown()
+            submitter.join(5_000)
+        }
+        assertFalse(submitter.isAlive)
+        failure.get()?.let { throw it }
+        assertTrue(state.capabilities.value.isEmpty())
+        assertEquals(CharacteristicWriteResult.Disconnected,
+            state.validateWrite("peer", generation, CharacteristicWriteType.WithResponse, 1))
+    }
+
+    @Test
+    fun `synchronous native completion leaves idle gate ready without a watchdog`() {
+        val state = AndroidCentralWriteState()
+        val generation = state.onConnected("peer")
+        val scheduler = FakeTimeoutScheduler()
+        val outcomes = mutableListOf<CentralGattOperationOutcome>()
+        val gate = CentralGattOperationGate(
+            10_000, scheduler,
+            onBusy = { state.onBusy("peer", generation) },
+            onReady = { state.onReady("peer", generation) },
+        )
+        val operationKey = key(generation)
+
+        assertTrue(gate.trySubmitTyped(operationKey, "synchronous", {
+            assertTrue(gate.complete(operationKey, 0, true))
+            true
+        }, outcomes::add))
+
+        assertTrue(gate.isIdle)
+        assertNull(state.validateWrite("peer", generation, CharacteristicWriteType.WithResponse, 1))
+        assertEquals(listOf<CentralGattOperationOutcome>(CentralGattOperationOutcome.Success(0)), outcomes)
+        assertEquals(0, scheduler.scheduledCount)
+    }
+
+    @Test
+    fun `synchronous completion replacement survives original action rejection`() {
+        val state = AndroidCentralWriteState()
+        val generation = state.onConnected("peer")
+        val scheduler = FakeTimeoutScheduler()
+        val firstOutcomes = mutableListOf<CentralGattOperationOutcome>()
+        val secondOutcomes = mutableListOf<CentralGattOperationOutcome>()
+        val gate = CentralGattOperationGate(
+            10_000, scheduler,
+            onBusy = { state.onBusy("peer", generation) },
+            onReady = { state.onReady("peer", generation) },
+        )
+        val first = key(generation, "first")
+        val second = key(generation, "second")
+
+        assertTrue(gate.trySubmitTyped(first, "synchronous", {
+            assertTrue(gate.complete(first, 0, true))
+            // A synchronous callback is authoritative even if native submission
+            // subsequently returns false. It must not clear its replacement.
+            false
+        }) { outcome ->
+            firstOutcomes += outcome
+            assertTrue(gate.trySubmitTyped(second, "replacement", { true }, secondOutcomes::add))
+        })
+
+        assertFalse(gate.isIdle)
+        assertEquals(1, scheduler.scheduledCount)
+        assertEquals(listOf<CentralGattOperationOutcome>(CentralGattOperationOutcome.Success(0)), firstOutcomes)
+        assertTrue(secondOutcomes.isEmpty())
+        assertEquals(CharacteristicWriteResult.Backpressured,
+            state.validateWrite("peer", generation, CharacteristicWriteType.WithResponse, 1))
+        assertTrue(gate.complete(second, 0, true))
+        assertEquals(listOf<CentralGattOperationOutcome>(CentralGattOperationOutcome.Success(0)), secondOutcomes)
+        assertNull(state.validateWrite("peer", generation, CharacteristicWriteType.WithResponse, 1))
+    }
+
+    @Test
+    fun `rejected native action publishes busy then ready before returning`() {
+        val publications = mutableListOf<String>()
+        val gate = CentralGattOperationGate(
+            10_000, FakeTimeoutScheduler(),
+            onBusy = { publications += "busy" },
+            onReady = { publications += "ready" },
+        )
+        assertTrue(gate.trySubmitTyped(key(10), "rejected", { false }) {})
+        assertTrue(gate.isIdle)
+        assertEquals(listOf("busy", "ready"), publications)
+    }
+
+    @Test
+    fun `legacy native reentry cannot publish busy after nested replacement completes`() {
+        val state = AndroidCentralWriteState()
+        val generation = state.onConnected("peer")
+        val scheduler = FakeTimeoutScheduler()
+        val publications = mutableListOf<String>()
+        val gate = CentralGattOperationGate(
+            10_000, scheduler,
+            onBusy = {
+                publications += "busy"
+                state.onBusy("peer", generation)
+            },
+            onReady = {
+                publications += "ready"
+                state.onReady("peer", generation)
+            },
+        )
+        val first = key(generation, "legacy")
+        val second = key(generation, "replacement")
+        gate.enqueueLegacy(first, "legacy") {
+            assertTrue(gate.complete(first, 0, true))
+            assertTrue(gate.trySubmitTyped(second, "replacement", { true }) {})
+            assertTrue(gate.complete(second, 0, true))
+            true
+        }
+
+        assertTrue(gate.isIdle)
+        assertNull(state.validateWrite("peer", generation, CharacteristicWriteType.WithResponse, 1))
+        assertEquals(1, publications.count { it == "busy" })
+        assertEquals("ready", publications.last())
+        assertEquals(1, scheduler.scheduledCount)
+        assertTrue(scheduler.allCancelled)
+    }
+
     private fun key(
         generation: Long,
         identity: String = "characteristic",
@@ -297,6 +608,8 @@ class CentralGattOperationGateTest {
 
     private class FakeTimeoutScheduler : CentralGattTimeoutScheduler {
         private val scheduled = ArrayDeque<Scheduled>()
+
+        val scheduledCount: Int get() = scheduled.size
 
         val allCancelled: Boolean
             get() = scheduled.all { it.cancelled }
@@ -311,6 +624,9 @@ class CentralGattOperationGateTest {
                 scheduledTimeout.cancelled = true
             }
         }
+
+        fun captureNextInvocation(): () -> Unit =
+            assertNotNull(scheduled.firstOrNull { !it.cancelled }).onTimeout
 
         fun fireNext() {
             val scheduledTimeout = assertNotNull(scheduled.firstOrNull { !it.cancelled })
