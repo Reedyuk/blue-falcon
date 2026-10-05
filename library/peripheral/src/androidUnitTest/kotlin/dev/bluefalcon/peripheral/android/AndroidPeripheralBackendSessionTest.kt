@@ -22,7 +22,7 @@ import kotlin.concurrent.thread
 
 class AndroidPeripheralBackendSessionTest {
     @Test
-    fun failedDisconnectionStatusClosesSessionAndPublishesPlatformFailure() = runTest {
+    fun failedDisconnectionStatusClosesSessionWithItsCause() = runTest {
         val stack = FakeAndroidBluetoothStack()
         val sink = RecordingBackendSink()
         val backend = AndroidPeripheralBackend(stack, NoOpLogger)
@@ -32,14 +32,12 @@ class AndroidPeripheralBackendSessionTest {
 
         stack.emit(AndroidGattEvent.Disconnected(sessionId, status = 133))
 
-        assertEquals(
-            listOf<Pair<PeripheralSessionId, Throwable?>>(sessionId to null),
-            sink.closedSessions,
-        )
-        with(assertIs<AndroidConnectionStateException>(sink.platformFailures.single())) {
+        assertEquals(sessionId, sink.closedSessions.single().first)
+        with(assertIs<AndroidConnectionStateException>(sink.closedSessions.single().second)) {
             assertEquals(sessionId, this.sessionId)
             assertEquals(133, status)
         }
+        assertTrue(sink.platformFailures.isEmpty())
         backend.close()
     }
 
