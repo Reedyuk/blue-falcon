@@ -42,6 +42,18 @@ import kotlin.test.assertTrue
 class FrameworkAppleGattMappingsTest {
 
     @Test
+    fun sameUuidFromRetiredNativeServiceDoesNotBelongToReplacement() {
+        val config = GattServiceConfig("180d", listOf(GattCharacteristicConfig("2a37", setOf(CharacteristicProperty.READ))))
+        @Suppress("UNCHECKED_CAST")
+        val old = (config.toAppleMutableService().characteristics as List<CBMutableCharacteristic>).single()
+        @Suppress("UNCHECKED_CAST")
+        val replacement = (config.toAppleMutableService().characteristics as List<CBMutableCharacteristic>).single()
+        assertEquals(old.UUID, replacement.UUID)
+        assertTrue(belongsToAppleCharacteristicIncarnation(old, old))
+        assertFalse(belongsToAppleCharacteristicIncarnation(replacement, old))
+    }
+
+    @Test
     fun everyGattStatusMapsToClosestCoreBluetoothError() {
         val expected = mapOf(
             GattResponseStatus.Success to CBATTErrorSuccess,

@@ -19,6 +19,7 @@ import dev.bluefalcon.peripheral.PeripheralLifecycleException
 import dev.bluefalcon.peripheral.PeripheralSessionId
 import dev.bluefalcon.peripheral.PeripheralUnsupportedException
 import dev.bluefalcon.peripheral.internal.PeripheralBackend
+import dev.bluefalcon.peripheral.internal.BackendSessionToken
 import dev.bluefalcon.peripheral.internal.BackendCharacteristicReadRequest
 import dev.bluefalcon.peripheral.internal.BackendCharacteristicWriteRequest
 import dev.bluefalcon.peripheral.internal.BackendDescriptorReadRequest
@@ -26,6 +27,11 @@ import dev.bluefalcon.peripheral.internal.BackendDescriptorWriteRequest
 import dev.bluefalcon.peripheral.internal.BackendExecuteWriteRequest
 import dev.bluefalcon.peripheral.internal.BackendGattResponder
 import dev.bluefalcon.peripheral.internal.PeripheralBackendEventSink
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.NonCancellable
@@ -34,6 +40,8 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import kotlin.time.Duration
+import kotlin.time.TimeSource
+import kotlin.time.TimeMark
 import kotlin.time.Duration.Companion.seconds
 
 internal class AndroidPeripheralBackend(
@@ -41,7 +49,10 @@ internal class AndroidPeripheralBackend(
     private val logger: Logger?,
     private val operationTimeout: Duration = 10.seconds,
     private val allowAdvertisingWithoutGattServer: Boolean = false,
+    private val timeSource: TimeSource = TimeSource.Monotonic,
+    private val watchdogDispatcher: kotlinx.coroutines.CoroutineDispatcher = kotlinx.coroutines.Dispatchers.Default,
 ) : PeripheralBackend {
+    private val MaximumTrackedSessions = 256
     private val lock = Any()
     private val platformOperationMutex = Mutex()
     private var state: BackendState = BackendState.Stopped
@@ -53,7 +64,16 @@ internal class AndroidPeripheralBackend(
     private val subscriptions =
         mutableMapOf<PeripheralSessionId, MutableMap<GattCharacteristicId, NotificationMode>>()
     private val preparedCccdWrites = mutableMapOf<PeripheralSessionId, PreparedCccdWrite>()
-    private val pendingNotifications = mutableSetOf<PeripheralSessionId>()
+    private val sessionTokens = mutableMapOf<PeripheralSessionId, BackendSessionToken>()
+    private val sessionTargets = mutableMapOf<PeripheralSessionId, AndroidSessionTarget>()
+    // Android reports completion by address only. Keep the exact accepted owner even
+    // after disconnect, and never let a replacement submit until that callback arrives.
+    // Both the deadline and watchdog belong to the exact accepted operation. A timed-out
+    // address-only lane stays quarantined until stop/start retires the native server.
+    private val pendingNotifications = mutableMapOf<PeripheralSessionId, PendingNotification>()
+    private val startupEvents = ArrayDeque<AndroidGattEvent>()
+    private var startupBytes = 0
+    private var startupFailure: Throwable? = null
     private var supportedNotificationModes = emptyMap<GattCharacteristicId, Set<NotificationMode>>()
     private val eventDeliveries = ArrayDeque<EventDelivery>()
     private var eventDeliveryOwner = false
@@ -106,6 +126,9 @@ internal class AndroidPeripheralBackend(
             val allocatedGeneration = ++generation
             state = BackendState.Starting(allocatedGeneration)
             this.eventSink = eventSink
+            startupEvents.clear()
+            startupBytes = 0
+            startupFailure = null
             supportedNotificationModes = configuredNotificationModes
             allocatedGeneration
         }
@@ -140,12 +163,21 @@ internal class AndroidPeripheralBackend(
 
             val published = synchronized(lock) {
                 if (state == BackendState.Starting(startGeneration)) {
+                    startupFailure?.let { throw it }
                     state = BackendState.Running(startGeneration)
+                    while (startupEvents.isNotEmpty()) {
+                        val staged = startupEvents.removeFirst()
+                        handleEventLocked(startGeneration, staged, eventSink)?.let {
+                            enqueueEventDeliveryLocked(EventDelivery(startGeneration, it))
+                        }
+                    }
+                    startupBytes = 0
                     true
                 } else {
                     false
                 }
             }
+            if (published) drainEventDeliveries()
             if (!published) {
                 throw PeripheralLifecycleException(
                     "Android peripheral start was superseded by shutdown",
@@ -173,7 +205,11 @@ internal class AndroidPeripheralBackend(
         value: ByteArray,
         mode: NotificationMode,
     ): NotificationResult = platformOperationMutex.withLock {
-        notifyPlatformSerialized(sessionId, characteristic, value, mode)
+        notifyPlatformSerialized(sessionId, characteristic, value, mode, null)
+    }
+
+    override suspend fun notify(token: BackendSessionToken, characteristic: GattCharacteristicId, value: ByteArray, mode: NotificationMode): NotificationResult = platformOperationMutex.withLock {
+        notifyPlatformSerialized(token.sessionId, characteristic, value, mode, token)
     }
 
     private fun notifyPlatformSerialized(
@@ -181,9 +217,10 @@ internal class AndroidPeripheralBackend(
         characteristic: GattCharacteristicId,
         value: ByteArray,
         mode: NotificationMode,
+        expectedToken: BackendSessionToken?,
     ): NotificationResult {
         val request = synchronized(lock) {
-            if (sessionId !in connectedSessions) {
+            if (sessionId !in connectedSessions || (expectedToken != null && (sessionTokens[sessionId] !== expectedToken.backendToken || !expectedToken.isCurrent())) || sessionTokens[sessionId]?.isCurrent() != true) {
                 return NotificationResult.Disconnected
             }
             if (supportedNotificationModes[characteristic]?.contains(mode) != true) {
@@ -199,43 +236,89 @@ internal class AndroidPeripheralBackend(
                     AndroidNotificationValueTooLongException(value.size, maximumLength),
                 )
             }
-            if (!pendingNotifications.add(sessionId)) {
+            pendingNotifications[sessionId]?.let { pending ->
+                if (pending.token !== sessionTokens[sessionId]) {
+                    return NotificationResult.Failed(AndroidNotificationCompletionAmbiguousException())
+                }
+                if (pending.expired || pending.deadline.hasPassedNow()) {
+                    pending.expired = true
+                    return NotificationResult.Failed(AndroidNotificationCompletionAmbiguousException())
+                }
                 return NotificationResult.Busy
             }
-            AndroidNotificationRequest(sessionId, characteristic, mode, value)
+            if (pendingNotifications.size >= MaximumTrackedSessions) {
+                return NotificationResult.Failed(PeripheralLifecycleException("Android notification owner capacity exceeded"))
+            }
+            val pending = PendingNotification(requireNotNull(sessionTokens[sessionId]), timeSource.markNow() + operationTimeout, generation)
+            pendingNotifications[sessionId] = pending
+            Triple(AndroidNotificationRequest(sessionId, characteristic, mode, value), sessionTargets[sessionId], pending)
         }
 
+        scheduleNotificationWatchdog(sessionId, request.third)
         return try {
-            when (val result = stack.notify(request)) {
+            when (val result = request.second?.notify(request.first) ?: stack.notify(request.first)) {
                 AndroidNotificationStartResult.Accepted -> NotificationResult.Sent
                 is AndroidNotificationStartResult.Rejected -> {
-                    synchronized(lock) { pendingNotifications.remove(sessionId) }
+                    synchronized(lock) { if (pendingNotifications[sessionId] === request.third) { pendingNotifications.remove(sessionId)?.watchdog?.cancel() } }
                     if (result.cause is CancellationException) throw result.cause
                     NotificationResult.Failed(result.cause)
                 }
             }
         } catch (cause: Throwable) {
-            synchronized(lock) { pendingNotifications.remove(sessionId) }
+            synchronized(lock) { if (pendingNotifications[sessionId] === request.third) { pendingNotifications.remove(sessionId)?.watchdog?.cancel() } }
             if (cause is CancellationException) throw cause
             NotificationResult.Failed(cause)
         }
     }
 
+    private fun scheduleNotificationWatchdog(sessionId: PeripheralSessionId, pending: PendingNotification) {
+        val watchdog = CoroutineScope(watchdogDispatcher).launch(start = CoroutineStart.LAZY) {
+            delay(operationTimeout)
+            val owner = synchronized(lock) {
+                if (state != BackendState.Running(pending.generation) ||
+                    pendingNotifications[sessionId] !== pending
+                ) return@synchronized false
+                pending.expired = true
+                val sink = eventSink ?: return@synchronized false
+                val token = pending.token
+                if (sessionTokens[sessionId] !== token || !token.isCurrent()) return@synchronized false
+                enqueueEventDeliveryLocked(EventDelivery(pending.generation) {
+                    sink.onNotificationReady(token)
+                })
+            }
+            if (owner) drainEventDeliveries()
+        }
+        val scheduled = synchronized(lock) {
+            if (state == BackendState.Running(pending.generation) &&
+                pendingNotifications[sessionId] === pending
+            ) {
+                pending.watchdog = watchdog
+                true
+            } else false
+        }
+        if (scheduled) watchdog.start() else watchdog.cancel()
+    }
+
     override suspend fun disconnect(
         sessionId: PeripheralSessionId,
     ): DisconnectResult = platformOperationMutex.withLock {
-        disconnectPlatformSerialized(sessionId)
+        disconnectPlatformSerialized(sessionId, null)
     }
 
-    private fun disconnectPlatformSerialized(sessionId: PeripheralSessionId): DisconnectResult {
-        synchronized(lock) {
-            if (sessionId !in connectedSessions) {
+    override suspend fun disconnect(token: BackendSessionToken): DisconnectResult = platformOperationMutex.withLock {
+        disconnectPlatformSerialized(token.sessionId, token)
+    }
+
+    private fun disconnectPlatformSerialized(sessionId: PeripheralSessionId, expectedToken: BackendSessionToken?): DisconnectResult {
+        val target = synchronized(lock) {
+            if (sessionId !in connectedSessions || (expectedToken != null && (sessionTokens[sessionId] !== expectedToken.backendToken || !expectedToken.isCurrent())) || sessionTokens[sessionId]?.isCurrent() != true) {
                 return DisconnectResult.AlreadyDisconnected
             }
+            sessionTargets[sessionId]
         }
 
         return try {
-            if (stack.disconnect(sessionId)) {
+            if (target?.disconnect() ?: stack.disconnect(sessionId)) {
                 DisconnectResult.Disconnected
             } else {
                 DisconnectResult.Failed(AndroidDisconnectException(sessionId))
@@ -435,9 +518,23 @@ internal class AndroidPeripheralBackend(
     }
 
     private fun onStackEvent(eventGeneration: Long, event: AndroidGattEvent) {
-        var shutdownResponse: AndroidGattResponse? = null
+        var shutdownResponse: ShutdownResponse? = null
         val owner = synchronized(lock) {
             when (state) {
+                BackendState.Starting(eventGeneration) -> {
+                    val bytes = when (event) {
+                        is AndroidGattEvent.CharacteristicWrite -> event.value.size
+                        is AndroidGattEvent.DescriptorWrite -> event.value.size
+                        else -> 0
+                    }
+                    if (startupEvents.size >= 256 || bytes > 65536 - startupBytes) {
+                        startupFailure = PeripheralLifecycleException("Android peripheral startup callback capacity exceeded")
+                    } else if (startupFailure == null) {
+                        startupEvents.addLast(event)
+                        startupBytes += bytes
+                    }
+                    false
+                }
                 BackendState.Running(eventGeneration) -> {
                     val delivery = eventSink?.let { sink ->
                         handleEventLocked(eventGeneration, event, sink)
@@ -452,7 +549,7 @@ internal class AndroidPeripheralBackend(
                 is BackendState.ShuttingDown -> {
                     val shuttingDown = state as BackendState.ShuttingDown
                     if (shuttingDown.generation == eventGeneration) {
-                        shutdownResponse = event.shutdownFailureResponse()
+                        shutdownResponse = event.shutdownFailureResponse()?.let { ShutdownResponse(eventGeneration, it, event.target) }
                     }
                     false
                 }
@@ -484,8 +581,23 @@ internal class AndroidPeripheralBackend(
         )
     }
 
-    private fun sendShutdownFailureResponse(response: AndroidGattResponse) {
-        runCatching { stack.sendResponse(response) }
+    private class ShutdownResponse(
+        val generation: Long,
+        val response: AndroidGattResponse,
+        val target: AndroidSessionTarget?,
+    )
+
+    private fun sendShutdownFailureResponse(owned: ShutdownResponse) {
+        runCatching {
+            if (owned.target != null) owned.target.sendResponse(owned.response)
+            else synchronized(lock) {
+                // Compatibility stacks have no native target. Serialize the final
+                // generation check with shutdown completion and replacement startup.
+                if ((state as? BackendState.ShuttingDown)?.generation == owned.generation) {
+                    stack.sendResponse(owned.response)
+                } else false
+            }
+        }
             .onFailure {
                 logger?.warn("Failed to reject Android GATT request during shutdown", it)
             }
@@ -519,234 +631,255 @@ internal class AndroidPeripheralBackend(
         eventGeneration: Long,
         event: AndroidGattEvent,
         sink: PeripheralBackendEventSink,
-    ): (() -> Unit)? = when (event) {
-        is AndroidGattEvent.Connected -> {
-            if (!connectedSessions.add(event.sessionId)) {
-                null
-            } else {
-                maximumUpdateLengths[event.sessionId] = DefaultMaximumUpdateValueLength
-                subscriptions[event.sessionId] = mutableMapOf()
-                val delivery = {
-                    sink.onSessionOpened(event.sessionId, DefaultMaximumUpdateValueLength)
-                }
-                delivery
-            }
-        }
-
-        is AndroidGattEvent.MtuChanged -> {
-            if (event.sessionId !in connectedSessions) {
-                null
-            } else {
-                val maximumUpdateValueLength =
-                    (event.mtu - AttHeaderLength).coerceAtLeast(0)
-                maximumUpdateLengths[event.sessionId] = maximumUpdateValueLength
-                val delivery = {
-                    sink.onMaximumUpdateValueLengthChanged(
-                        event.sessionId,
-                        maximumUpdateValueLength,
-                    )
-                }
-                delivery
-            }
-        }
-
-        is AndroidGattEvent.Disconnected -> {
-            if (!removeSessionStateLocked(event.sessionId)) {
-                null
-            } else {
-                val delivery = {
-                    try {
-                        sink.onSessionClosed(event.sessionId)
-                    } finally {
-                        if (event.status != BluetoothGatt.GATT_SUCCESS) {
-                            sink.onPlatformFailure(
-                                AndroidConnectionStateException(event.sessionId, event.status),
-                            )
-                        }
+    ): (() -> Unit)? {
+        if (event !is AndroidGattEvent.Connected && event !is AndroidGattEvent.NotificationSent && event.target != null && sessionTargets[event.sessionId] !== event.target) return null
+        return when (event) {
+            is AndroidGattEvent.Connected -> {
+                if (event.sessionId !in connectedSessions && connectedSessions.size >= MaximumTrackedSessions) {
+                    val delivery = {
+                        event.target?.disconnect() ?: stack.disconnect(event.sessionId)
+                        sink.onPlatformFailure(PeripheralLifecycleException("Android connection owner capacity exceeded"))
                     }
-                }
-                delivery
-            }
-        }
-
-        is AndroidGattEvent.CharacteristicRead -> {
-            if (event.sessionId !in connectedSessions) {
-                null
-            } else {
-                val request = BackendCharacteristicReadRequest(
-                    sessionId = event.sessionId,
-                    serviceId = event.serviceId,
-                    characteristicId = event.characteristicId,
-                    offset = event.offset,
-                    responder = createGattResponder(
-                        eventGeneration = eventGeneration,
-                        sessionId = event.sessionId,
-                        requestId = event.requestId,
-                        offset = event.offset,
-                    ),
-                )
-                val delivery = { sink.onRequest(request) }
-                delivery
-            }
-        }
-
-        is AndroidGattEvent.CharacteristicWrite -> {
-            if (event.sessionId !in connectedSessions) {
-                null
-            } else {
-                val responder = if (event.responseNeeded || event.preparedWrite) {
-                    createGattResponder(
-                        eventGeneration = eventGeneration,
-                        sessionId = event.sessionId,
-                        requestId = event.requestId,
-                        offset = event.offset,
-                    )
-                } else {
+                    delivery
+                } else if (!connectedSessions.add(event.sessionId)) {
                     null
+                } else {
+                    val target = event.target
+                    lateinit var token: BackendSessionToken
+                    token = BackendSessionToken(event.sessionId) {
+                        synchronized(lock) { state == BackendState.Running(eventGeneration) && sessionTokens[event.sessionId] === token && (target?.isCurrent() != false) }
+                    }
+                    sessionTokens[event.sessionId] = token
+                    if (target != null) sessionTargets[event.sessionId] = target
+                    maximumUpdateLengths[event.sessionId] = DefaultMaximumUpdateValueLength
+                    subscriptions[event.sessionId] = mutableMapOf()
+                    val delivery = {
+                        sink.onSessionOpened(token, DefaultMaximumUpdateValueLength)
+                    }
+                    delivery
                 }
-                val request = BackendCharacteristicWriteRequest(
-                    sessionId = event.sessionId,
-                    serviceId = event.serviceId,
-                    characteristicId = event.characteristicId,
-                    offset = event.offset,
-                    value = event.value,
-                    preparedWrite = event.preparedWrite,
-                    responder = responder,
-                    requestId = if (event.responseNeeded) event.requestId else -1,
-                )
-                val delivery = { sink.onRequest(request) }
-                delivery
             }
-        }
 
-        is AndroidGattEvent.DescriptorRead -> {
-            if (event.sessionId !in connectedSessions) {
-                null
-            } else {
-                val request = BackendDescriptorReadRequest(
-                    sessionId = event.sessionId,
-                    serviceId = event.serviceId,
-                    characteristicId = event.characteristicId,
-                    descriptorId = event.descriptorId,
-                    offset = event.offset,
-                    responder = createGattResponder(
-                        eventGeneration = eventGeneration,
-                        sessionId = event.sessionId,
-                        requestId = event.requestId,
-                        offset = event.offset,
-                    ),
-                )
-                val delivery = { sink.onRequest(request) }
-                delivery
-            }
-        }
-
-        is AndroidGattEvent.DescriptorWrite -> {
-            if (event.sessionId !in connectedSessions) {
-                null
-            } else {
-                val cccdWrite = event.takeIf {
-                    it.descriptorId.uuid.toString() == CccdUuid
+            is AndroidGattEvent.MtuChanged -> {
+                if (event.sessionId !in connectedSessions) {
+                    null
+                } else {
+                    val maximumUpdateValueLength =
+                        (event.mtu - AttHeaderLength).coerceAtLeast(0)
+                    maximumUpdateLengths[event.sessionId] = maximumUpdateValueLength
+                    val token = sessionTokens[event.sessionId] ?: return null
+                    val delivery = {
+                        sink.onMaximumUpdateValueLengthChanged(
+                            token,
+                            maximumUpdateValueLength,
+                        )
+                    }
+                    delivery
                 }
-                val responder = if (event.responseNeeded || event.preparedWrite) {
-                    createGattResponder(
-                        eventGeneration = eventGeneration,
+            }
+
+            is AndroidGattEvent.Disconnected -> {
+                val token = sessionTokens[event.sessionId] ?: return null
+                if (!removeSessionStateLocked(event.sessionId)) {
+                    null
+                } else {
+                    val cause = if (event.status != BluetoothGatt.GATT_SUCCESS) {
+                        AndroidConnectionStateException(event.sessionId, event.status)
+                    } else null
+                    val delivery = { sink.onSessionClosed(token, cause) }
+                    delivery
+                }
+            }
+
+            is AndroidGattEvent.CharacteristicRead -> {
+                if (event.sessionId !in connectedSessions) {
+                    null
+                } else {
+                    val request = BackendCharacteristicReadRequest(
                         sessionId = event.sessionId,
-                        requestId = event.requestId,
+                        serviceId = event.serviceId,
+                        characteristicId = event.characteristicId,
                         offset = event.offset,
-                        onResponse = cccdWrite?.let { write ->
-                            { status ->
-                                when {
-                                    write.preparedWrite && status == GattResponseStatus.Success ->
-                                        stagePreparedCccdWrite(eventGeneration, write)
+                        responder = createGattResponder(
+                            eventGeneration = eventGeneration,
+                            sessionId = event.sessionId,
+                            requestId = event.requestId,
+                            offset = event.offset,
+                        ),
+                    )
+                    val token = sessionTokens[event.sessionId] ?: return null
+                    val delivery = { sink.onRequest(token, request) }
+                    delivery
+                }
+            }
 
-                                    write.preparedWrite ->
-                                        discardPreparedCccdWrite(eventGeneration, write.sessionId)
+            is AndroidGattEvent.CharacteristicWrite -> {
+                if (event.sessionId !in connectedSessions) {
+                    null
+                } else {
+                    val responder = if (event.responseNeeded || event.preparedWrite) {
+                        createGattResponder(
+                            eventGeneration = eventGeneration,
+                            sessionId = event.sessionId,
+                            requestId = event.requestId,
+                            offset = event.offset,
+                        )
+                    } else {
+                        null
+                    }
+                    val request = BackendCharacteristicWriteRequest(
+                        sessionId = event.sessionId,
+                        serviceId = event.serviceId,
+                        characteristicId = event.characteristicId,
+                        offset = event.offset,
+                        value = event.value,
+                        preparedWrite = event.preparedWrite,
+                        responder = responder,
+                        requestId = if (event.responseNeeded) event.requestId else -1,
+                    )
+                    val token = sessionTokens[event.sessionId] ?: return null
+                    val delivery = { sink.onRequest(token, request) }
+                    delivery
+                }
+            }
 
-                                    !write.preparedWrite && status == GattResponseStatus.Success ->
-                                        commitCccdWrite(
-                                            eventGeneration = eventGeneration,
-                                            sessionId = write.sessionId,
-                                            characteristicId = write.characteristicId,
-                                            value = write.value,
-                                        )
+            is AndroidGattEvent.DescriptorRead -> {
+                if (event.sessionId !in connectedSessions) {
+                    null
+                } else {
+                    val request = BackendDescriptorReadRequest(
+                        sessionId = event.sessionId,
+                        serviceId = event.serviceId,
+                        characteristicId = event.characteristicId,
+                        descriptorId = event.descriptorId,
+                        offset = event.offset,
+                        responder = createGattResponder(
+                            eventGeneration = eventGeneration,
+                            sessionId = event.sessionId,
+                            requestId = event.requestId,
+                            offset = event.offset,
+                        ),
+                    )
+                    val token = sessionTokens[event.sessionId] ?: return null
+                    val delivery = { sink.onRequest(token, request) }
+                    delivery
+                }
+            }
+
+            is AndroidGattEvent.DescriptorWrite -> {
+                if (event.sessionId !in connectedSessions) {
+                    null
+                } else {
+                    val cccdWrite = event.takeIf {
+                        it.descriptorId.uuid.toString() == CccdUuid
+                    }
+                    val responder = if (event.responseNeeded || event.preparedWrite) {
+                        createGattResponder(
+                            eventGeneration = eventGeneration,
+                            sessionId = event.sessionId,
+                            requestId = event.requestId,
+                            offset = event.offset,
+                            onResponse = cccdWrite?.let { write ->
+                                { status ->
+                                    when {
+                                        write.preparedWrite && status == GattResponseStatus.Success ->
+                                            stagePreparedCccdWrite(eventGeneration, write)
+
+                                        write.preparedWrite ->
+                                            discardPreparedCccdWrite(eventGeneration, write.sessionId)
+
+                                        !write.preparedWrite && status == GattResponseStatus.Success ->
+                                            commitCccdWrite(
+                                                eventGeneration = eventGeneration,
+                                                sessionId = write.sessionId,
+                                                characteristicId = write.characteristicId,
+                                                value = write.value,
+                                            )
+                                    }
                                 }
-                            }
-                        },
-                    )
-                } else {
-                    null
-                }
-                val request = BackendDescriptorWriteRequest(
-                    sessionId = event.sessionId,
-                    serviceId = event.serviceId,
-                    characteristicId = event.characteristicId,
-                    descriptorId = event.descriptorId,
-                    offset = event.offset,
-                    value = event.value,
-                    preparedWrite = event.preparedWrite,
-                    responder = responder,
-                )
-                val subscriptions = if (cccdWrite != null && responder == null) {
-                    commitCccdWriteLocked(
-                        sessionId = cccdWrite.sessionId,
-                        characteristicId = cccdWrite.characteristicId,
-                        value = cccdWrite.value,
-                    )
-                } else {
-                    null
-                }
-                val delivery = {
-                    sink.onRequest(request)
-                    subscriptions?.let { updated ->
-                        sink.onSubscriptionsChanged(event.sessionId, updated)
+                            },
+                        )
+                    } else {
+                        null
                     }
-                    Unit
-                }
-                delivery
-            }
-        }
-
-        is AndroidGattEvent.ExecuteWrite -> {
-            if (event.sessionId !in connectedSessions) {
-                null
-            } else {
-                val request = BackendExecuteWriteRequest(
-                    sessionId = event.sessionId,
-                    execute = event.execute,
-                    responder = createGattResponder(
-                        eventGeneration = eventGeneration,
+                    val request = BackendDescriptorWriteRequest(
                         sessionId = event.sessionId,
-                        requestId = event.requestId,
-                        offset = 0,
-                        onResponse = { status ->
-                            completePreparedCccdWrite(
-                                eventGeneration = eventGeneration,
-                                sessionId = event.sessionId,
-                                execute = event.execute,
-                                status = status,
-                            )
-                        },
-                    ),
-                )
-                val delivery = { sink.onRequest(request) }
-                delivery
-            }
-        }
-
-        is AndroidGattEvent.NotificationSent -> {
-            pendingNotifications.remove(event.sessionId)
-            val delivery = {
-                sink.onNotificationReady(NotificationReadiness.Session(event.sessionId))
-                if (event.status != BluetoothGatt.GATT_SUCCESS) {
-                    sink.onPlatformFailure(
-                        AndroidNotificationCallbackException(event.sessionId, event.status),
+                        serviceId = event.serviceId,
+                        characteristicId = event.characteristicId,
+                        descriptorId = event.descriptorId,
+                        offset = event.offset,
+                        value = event.value,
+                        preparedWrite = event.preparedWrite,
+                        responder = responder,
                     )
+                    val subscriptions = if (cccdWrite != null && responder == null) {
+                        commitCccdWriteLocked(
+                            sessionId = cccdWrite.sessionId,
+                            characteristicId = cccdWrite.characteristicId,
+                            value = cccdWrite.value,
+                        )
+                    } else {
+                        null
+                    }
+                    val token = sessionTokens[event.sessionId] ?: return null
+                    val delivery = {
+                        sink.onRequest(token, request)
+                        subscriptions?.let { updated ->
+                            sink.onSubscriptionsChanged(token, updated)
+                        }
+                        Unit
+                    }
+                    delivery
                 }
             }
-            delivery
-        }
 
+            is AndroidGattEvent.ExecuteWrite -> {
+                if (event.sessionId !in connectedSessions) {
+                    null
+                } else {
+                    val request = BackendExecuteWriteRequest(
+                        sessionId = event.sessionId,
+                        execute = event.execute,
+                        responder = createGattResponder(
+                            eventGeneration = eventGeneration,
+                            sessionId = event.sessionId,
+                            requestId = event.requestId,
+                            offset = 0,
+                            onResponse = { status ->
+                                completePreparedCccdWrite(
+                                    eventGeneration = eventGeneration,
+                                    sessionId = event.sessionId,
+                                    execute = event.execute,
+                                    status = status,
+                                )
+                            },
+                        ),
+                    )
+                    val token = sessionTokens[event.sessionId] ?: return null
+                    val delivery = { sink.onRequest(token, request) }
+                    delivery
+                }
+            }
+
+            is AndroidGattEvent.NotificationSent -> {
+                val pending = pendingNotifications[event.sessionId] ?: return null
+                if (pending.expired || pending.deadline.hasPassedNow()) {
+                    pending.expired = true
+                    return null
+                }
+                pendingNotifications.remove(event.sessionId)
+                pending.watchdog?.cancel()
+                val token = pending.token
+                if (sessionTokens[event.sessionId] !== token || !token.isCurrent()) null
+                else {
+                    val delivery = {
+                        sink.onNotificationReady(token)
+                        if (event.status != BluetoothGatt.GATT_SUCCESS) sink.onPlatformFailure(token, AndroidNotificationCallbackException(event.sessionId, event.status))
+                    }
+                    delivery
+                }
+            }
+        }
     }
 
     private fun stagePreparedCccdWrite(
@@ -806,9 +939,10 @@ internal class AndroidPeripheralBackend(
                 value = value,
             ) ?: return@synchronized false
             val sink = eventSink ?: return@synchronized false
+            val token = sessionTokens[sessionId] ?: return@synchronized false
             enqueueEventDeliveryLocked(
                 EventDelivery(eventGeneration) {
-                    sink.onSubscriptionsChanged(sessionId, updated)
+                    sink.onSubscriptionsChanged(token, updated)
                 },
             )
         }
@@ -826,9 +960,10 @@ internal class AndroidPeripheralBackend(
             val updated = commitCccdWriteLocked(sessionId, characteristicId, value)
                 ?: return@synchronized false
             val sink = eventSink ?: return@synchronized false
+            val token = sessionTokens[sessionId] ?: return@synchronized false
             enqueueEventDeliveryLocked(
                 EventDelivery(eventGeneration) {
-                    sink.onSubscriptionsChanged(sessionId, updated)
+                    sink.onSubscriptionsChanged(token, updated)
                 },
             )
         }
@@ -869,6 +1004,8 @@ internal class AndroidPeripheralBackend(
         offset: Int,
         onResponse: ((GattResponseStatus) -> Unit)? = null,
     ): BackendGattResponder {
+        val token = sessionTokens[sessionId]
+        val target = sessionTargets[sessionId]
         val responseLock = Any()
         var pending = true
         return BackendGattResponder { status, value ->
@@ -882,39 +1019,53 @@ internal class AndroidPeripheralBackend(
             }
             if (!accepted) return@BackendGattResponder
 
+            if (token == null || !token.isCurrent()) return@BackendGattResponder
             val sent = try {
-                stack.sendResponse(
+                val response =
                     AndroidGattResponse(
                         sessionId = sessionId,
                         requestId = requestId,
                         status = status,
                         offset = offset,
                         value = value,
-                    ),
-                )
+                    )
+                synchronized(lock) {
+                    if (sessionTokens[sessionId] !== token || !token.isCurrent()) return@BackendGattResponder
+                    target?.sendResponse(response) ?: stack.sendResponse(response)
+                }
             } catch (cause: Throwable) {
-                publishPlatformFailure(eventGeneration, cause)
+                publishPlatformFailure(eventGeneration, cause, token)
                 return@BackendGattResponder
             }
             if (sent) {
-                onResponse?.invoke(status)
+                synchronized(lock) {
+                    if (sessionTokens[sessionId] === token && token.isCurrent()) onResponse?.invoke(status)
+                }
             } else {
                 publishPlatformFailure(
                     eventGeneration,
                     AndroidGattResponseException(requestId),
+                    token,
                 )
             }
         }
     }
 
-    private fun publishPlatformFailure(eventGeneration: Long, cause: Throwable) {
+    private fun publishPlatformFailure(eventGeneration: Long, cause: Throwable, token: BackendSessionToken? = null) {
         val owner = synchronized(lock) {
             val sink = eventSink
-            if (state != BackendState.Running(eventGeneration) || sink == null) {
+            if (token != null && (sessionTokens[token.sessionId] !== token || !token.isCurrent())) return
+            if (state == BackendState.Starting(eventGeneration)) {
+                startupFailure = cause
+                false
+            } else if (state != BackendState.Running(eventGeneration) || sink == null) {
                 false
             } else {
                 enqueueEventDeliveryLocked(
-                    EventDelivery(eventGeneration) { sink.onPlatformFailure(cause) },
+                    EventDelivery(eventGeneration) {
+                        if (token == null) sink.onPlatformFailure(cause)
+                        else if (token.isCurrent()) sink.onPlatformFailure(token, cause)
+                    },
                 )
             }
         }
@@ -926,18 +1077,35 @@ internal class AndroidPeripheralBackend(
         maximumUpdateLengths.remove(sessionId)
         subscriptions.remove(sessionId)
         preparedCccdWrites.remove(sessionId)
-        pendingNotifications.remove(sessionId)
+        sessionTokens.remove(sessionId)?.retire()
+        sessionTargets.remove(sessionId)
+        // Retain an accepted notification until its ambiguous address-only completion is consumed.
         return true
     }
 
     private fun clearSessionStateLocked() {
+        sessionTokens.values.forEach { it.retire() }
+        sessionTokens.clear()
+        sessionTargets.clear()
+        startupEvents.clear()
+        startupBytes = 0
+        startupFailure = null
         connectedSessions.clear()
         maximumUpdateLengths.clear()
         subscriptions.clear()
         preparedCccdWrites.clear()
+        pendingNotifications.values.forEach { it.watchdog?.cancel() }
         pendingNotifications.clear()
         supportedNotificationModes = emptyMap()
     }
+
+    private class PendingNotification(
+        val token: BackendSessionToken,
+        val deadline: TimeMark,
+        val generation: Long,
+        var watchdog: Job? = null,
+        var expired: Boolean = false,
+    )
 
     private sealed interface BackendState {
         data object Stopped : BackendState
@@ -1027,4 +1195,8 @@ internal class AndroidConnectionStateException(
     val status: Int,
 ) : IllegalStateException(
     "Android GATT connection failed for session ${sessionId.value} with status $status",
+)
+
+internal class AndroidNotificationCompletionAmbiguousException : IllegalStateException(
+    "Android notification completion deadline elapsed; stop and start the peripheral to retire the ambiguous native callback lane",
 )
