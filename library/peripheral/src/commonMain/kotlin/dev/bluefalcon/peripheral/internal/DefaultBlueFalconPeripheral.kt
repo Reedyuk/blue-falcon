@@ -41,6 +41,7 @@ import kotlinx.coroutines.flow.channelFlow
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.receiveAsFlow
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -67,6 +68,8 @@ internal class DefaultBlueFalconPeripheral(
     private val lifecycleMutex = Mutex()
     private val sessionMutex = Mutex()
     private val pendingResponseMutex = Mutex()
+    private val requestAdmission = PeripheralRequestAdmission()
+    private var currentBackendSink: BackendEventSink? = null
     private val managerJob = SupervisorJob()
     private val managerScope = CoroutineScope(
         coroutineContext.minusKey(Job) + managerJob,
@@ -75,7 +78,8 @@ internal class DefaultBlueFalconPeripheral(
     private val sessionRegistry = mutableMapOf<PeripheralSessionId, DefaultPeripheralSession>()
     private val pendingResponses =
         mutableMapOf<PeripheralSessionId, MutableSet<DefaultGattResponseHandle>>()
-    private val inactivityJobs = mutableMapOf<PeripheralSessionId, Job>()
+    private val inactivityJobs = mutableMapOf<PeripheralSessionId, PeripheralInactivityWatchdog>()
+    private val inactivityAdmission = PeripheralRequestAdmission(maximumBytes = 0)
     private val inactivityTokens = mutableMapOf<PeripheralSessionId, Long>()
     private var nextGeneration = 0L
     private var nextInactivityToken = 0L
@@ -101,8 +105,13 @@ internal class DefaultBlueFalconPeripheral(
     private val mutableSessions = MutableStateFlow<Set<PeripheralSession>>(emptySet())
     override val sessions: StateFlow<Set<PeripheralSession>> = mutableSessions.asStateFlow()
 
-    private val requestChannel = Channel<GattServerRequest>(requestCapacity)
-    override val requests: Flow<GattServerRequest> = requestChannel.receiveAsFlow()
+    private val requestChannel = Channel<AdmittedPublicRequest>(requestCapacity)
+    override val requests: Flow<GattServerRequest> = flow {
+        for (admitted in requestChannel) {
+            admitted.permit.delivered()
+            if (admitted.token.isCurrent()) emit(admitted.request)
+        }
+    }
 
     private val requestIngressChannel = Channel<RegisteredBackendRequest>(requestCapacity)
     private val requestIngressProcessor = managerScope.launch(start = CoroutineStart.UNDISPATCHED) {
@@ -117,6 +126,8 @@ internal class DefaultBlueFalconPeripheral(
                 if (registeredRequest.generation == activeGeneration && registeredRequest.token.isCurrent()) {
                     eventChannel.trySend(PeripheralEvent.PlatformFailure(cause))
                 }
+            } finally {
+                if (!registeredRequest.publicQueued) registeredRequest.permit.delivered()
             }
         }
     }
@@ -190,6 +201,7 @@ internal class DefaultBlueFalconPeripheral(
             if (overflow.generation != activeGeneration) return
             withContext(NonCancellable) {
                 activeGeneration = NoGeneration
+                retireIngress()
                 activeConfig = null
                 mutableState.value = PeripheralManagerState.Stopping
                 val closingSessions = beginCloseAllSessions()
@@ -230,7 +242,7 @@ internal class DefaultBlueFalconPeripheral(
             try {
                 backend.start(
                     backendConfig,
-                    BackendEventSink(generation, backendConfig.responseDeadline),
+                    BackendEventSink(generation, backendConfig.responseDeadline).also { currentBackendSink = it },
                 )
                 mutableState.value = PeripheralManagerState.Running
             } catch (cause: Throwable) {
@@ -243,6 +255,7 @@ internal class DefaultBlueFalconPeripheral(
                     }
                     finishCloseAllSessions(closingSessions)
                     activeGeneration = NoGeneration
+                    retireIngress()
                     activeConfig = null
                     mutableState.value = PeripheralManagerState.Failed(cause)
                 }
@@ -261,6 +274,7 @@ internal class DefaultBlueFalconPeripheral(
                 else -> withContext(NonCancellable) {
                     mutableState.value = PeripheralManagerState.Stopping
                     activeGeneration = NoGeneration
+                    retireIngress()
                     activeConfig = null
                     val closingSessions = beginCloseAllSessions()
                     var failure: Throwable? = null
@@ -291,6 +305,7 @@ internal class DefaultBlueFalconPeripheral(
 
             val shouldStop = mutableState.value != PeripheralManagerState.Stopped
             activeGeneration = NoGeneration
+            retireIngress()
             activeConfig = null
             val closingSessions = beginCloseAllSessions()
 
@@ -414,7 +429,7 @@ internal class DefaultBlueFalconPeripheral(
 
                 is BackendEvent.InactivityExpired -> {
                     if (inactivityTokens[event.sessionId] != event.token) return
-                    inactivityJobs.remove(event.sessionId)
+                    inactivityJobs.remove(event.sessionId)?.cancel()
                     inactivityTokens.remove(event.sessionId)
                     if (isSessionInactive(event.sessionId)) {
                         closeSession(event.sessionId, null)
@@ -468,9 +483,27 @@ internal class DefaultBlueFalconPeripheral(
         } ?: return
 
         removeSessionReadinessState(sessionId)
+        currentBackendSink?.retireToken(session.token)
+        try { backend.retireSession(session.token.backendToken) }
+        catch (cause: Throwable) { eventChannel.trySend(PeripheralEvent.PlatformFailure(cause)) }
         session.beginClose()
         session.finishClose()
         eventChannel.trySend(PeripheralEvent.SessionClosed(sessionId, cause))
+    }
+
+    private fun retireIngress() {
+        currentBackendSink?.retireAllTokens()
+        currentBackendSink = null
+        while (true) {
+            val queued = requestIngressChannel.tryReceive().getOrNull() ?: break
+            queued.deadlineJob?.cancel()
+            queued.responseHandle?.tryExpire()
+            queued.permit.delivered()
+        }
+        while (true) {
+            val queued = requestChannel.tryReceive().getOrNull() ?: break
+            queued.permit.delivered()
+        }
     }
 
     private suspend fun beginCloseAllSessions(): List<DefaultPeripheralSession> {
@@ -528,7 +561,7 @@ internal class DefaultBlueFalconPeripheral(
         }
 
         val publicRequest = request.toPublicRequest(session, responseHandle)
-        if (requestChannel.trySend(publicRequest).isFailure) {
+        if (requestChannel.trySend(AdmittedPublicRequest(publicRequest, registeredRequest.token, registeredRequest.permit)).isFailure) {
             if (responseHandle != null) {
                 registeredRequest.deadlineJob?.cancel()
                 try {
@@ -542,6 +575,7 @@ internal class DefaultBlueFalconPeripheral(
             return@withLock
         }
 
+        registeredRequest.publicQueued = true
         if (responseHandle == null) {
             refreshInactivityDeadline(request.sessionId)
         }
@@ -582,53 +616,60 @@ internal class DefaultBlueFalconPeripheral(
         responseDeadline: Duration,
         token: BackendSessionToken,
         generation: Long,
+        permit: PeripheralRequestAdmission.Permit,
     ): Job = managerScope.launch(start = CoroutineStart.UNDISPATCHED) {
-        val completed = withTimeoutOrNull(responseDeadline) {
-            responseHandle.awaitTerminal()
-            true
-        } == true
+        try {
+            val completed = withTimeoutOrNull(responseDeadline) {
+                responseHandle.awaitTerminal()
+                true
+            } == true
 
-        if (!completed && generation == activeGeneration && token.isCurrent()) {
-            try {
-                if (responseHandle.expire(GattResponseStatus.UnlikelyError)) {
+            if (!completed && generation == activeGeneration && token.isCurrent()) {
+                try {
+                    if (responseHandle.expire(GattResponseStatus.UnlikelyError)) {
+                        eventChannel.trySend(
+                            PeripheralEvent.ResponseTimedOut(sessionId, requestType),
+                        )
+                    }
+                } catch (cause: Throwable) {
+                    eventChannel.trySend(PeripheralEvent.PlatformFailure(cause))
                     eventChannel.trySend(
                         PeripheralEvent.ResponseTimedOut(sessionId, requestType),
                     )
                 }
-            } catch (cause: Throwable) {
-                eventChannel.trySend(PeripheralEvent.PlatformFailure(cause))
-                eventChannel.trySend(
-                    PeripheralEvent.ResponseTimedOut(sessionId, requestType),
-                )
             }
-        }
 
-        unregisterPendingResponse(sessionId, responseHandle)
-        lifecycleMutex.withLock {
-            if (generation == activeGeneration && token.isCurrent() && sessionRegistry[sessionId]?.token === token) refreshInactivityDeadline(sessionId)
-        }
+            unregisterPendingResponse(sessionId, responseHandle)
+            lifecycleMutex.withLock {
+                if (generation == activeGeneration && token.isCurrent() && sessionRegistry[sessionId]?.token === token) refreshInactivityDeadline(sessionId)
+            }
+        } finally { permit.responseCompleted() }
     }
 
     private suspend fun refreshInactivityDeadline(sessionId: PeripheralSessionId) {
-        cancelInactivityDeadline(sessionId)
-        if (capabilities.connectionLifecycleVisibility) return
-        if (!isSessionInactive(sessionId)) return
-
+        if (capabilities.connectionLifecycleVisibility || !isSessionInactive(sessionId)) {
+            cancelInactivityDeadline(sessionId)
+            return
+        }
         val timeout = activeConfig?.inactiveSessionTimeout ?: return
         val generation = activeGeneration
         if (generation == NoGeneration) return
         val token = ++nextInactivityToken
         inactivityTokens[sessionId] = token
-        inactivityJobs[sessionId] = managerScope.launch {
-            delay(timeout)
-            submitBackendEvent(
-                BackendEvent.InactivityExpired(
-                    generation = generation,
-                    sessionId = sessionId,
-                    token = token,
-                ),
-            )
+        inactivityJobs[sessionId]?.takeIf { it.isActive }?.let {
+            it.refresh(token)
+            return
         }
+        cancelInactivityDeadline(sessionId)
+        val watch = PeripheralInactivityWatchdog.start(managerScope, timeout, token, inactivityAdmission) { expiredToken ->
+            submitBackendEvent(BackendEvent.InactivityExpired(generation, sessionId, expiredToken))
+        }
+        if (watch == null) {
+            backendEventOverflow.compareAndSet(null, BackendEventOverflow(generation, PeripheralLifecycleException("Peripheral inactivity watchdog capacity exceeded")))
+            return
+        }
+        inactivityTokens[sessionId] = token
+        inactivityJobs[sessionId] = watch
     }
 
     private suspend fun isSessionInactive(sessionId: PeripheralSessionId): Boolean {
@@ -733,6 +774,31 @@ internal class DefaultBlueFalconPeripheral(
         private val responseDeadline: Duration,
     ) : PeripheralBackendEventSink {
         private val tokens = MutableStateFlow<Map<PeripheralSessionId, BackendSessionToken>>(emptyMap())
+        private fun removeExactToken(token: BackendSessionToken) {
+            while (true) {
+                val current = tokens.value
+                if (current[token.sessionId] !== token) return
+                if (tokens.compareAndSet(current, current - token.sessionId)) return
+            }
+        }
+        fun retireToken(token: BackendSessionToken) {
+            token.retire()
+            token.backendToken.retire()
+            removeExactToken(token)
+        }
+        fun retireAllTokens() {
+            while (true) {
+                val old = tokens.value
+                if (tokens.compareAndSet(old, emptyMap())) {
+                    old.values.forEach { it.retire(); it.backendToken.retire() }
+                    return
+                }
+            }
+        }
+        private fun failPeerAdmission() {
+            val failure = BackendEventOverflow(generation, PeripheralLifecycleException("Peripheral peer owner capacity exceeded"))
+            if (generation == activeGeneration) backendEventOverflow.compareAndSet(null, failure)
+        }
         private fun wrap(source: BackendSessionToken): BackendSessionToken {
             lateinit var wrapped: BackendSessionToken
             wrapped = BackendSessionToken(source.sessionId, original = source.backendToken) {
@@ -747,8 +813,18 @@ internal class DefaultBlueFalconPeripheral(
                 }
                 val current = tokens.value
                 current[id]?.let { return it }
+                if (current.size >= MaximumSessions) {
+                    failPeerAdmission()
+                    return BackendSessionToken(id) { false }
+                }
                 val token = wrap(BackendSessionToken(id))
-                if (tokens.compareAndSet(current, current + (id to token))) return token
+                if (tokens.compareAndSet(current, current + (id to token))) {
+                    if (generation != activeGeneration || backendEventOverflow.value?.generation == generation) {
+                        retireToken(token)
+                        return BackendSessionToken(id) { false }
+                    }
+                    return token
+                }
             }
         }
         private fun resolve(source: BackendSessionToken): BackendSessionToken? {
@@ -762,6 +838,11 @@ internal class DefaultBlueFalconPeripheral(
             while (true) {
                 if (generation != activeGeneration || !source.isCurrent() || backendEventOverflow.value?.generation == generation) return
                 val current = tokens.value
+                if (source.sessionId !in current && current.size >= MaximumSessions) {
+                    source.retire()
+                    failPeerAdmission()
+                    return
+                }
                 installed = current[source.sessionId]?.takeIf { it.backendToken === source } ?: wrap(source)
                 val next = current + (source.sessionId to installed)
                 if (tokens.compareAndSet(current, next)) {
@@ -823,24 +904,37 @@ internal class DefaultBlueFalconPeripheral(
                 if (generation == activeGeneration && owned?.isCurrent() == true) emitRequestDropped(request)
                 return
             }
+            val permit = requestAdmission.acquire(request.payloadBytes, request.responder != null)
+            if (permit == null) {
+                runCatching { request.responder?.respond(GattResponseStatus.UnlikelyError, null) }
+                emitRequestDropped(request)
+                return
+            }
             val responseHandle = request.responder?.let { responder ->
                 DefaultGattResponseHandle { status, value ->
                     if (generation == activeGeneration && owned.isCurrent()) responder.respond(status, value)
                 }
             }
             val deadlineJob = responseHandle?.let {
-                scheduleResponseDeadline(request.sessionId, request.requestType, it, responseDeadline, owned, generation)
+                scheduleResponseDeadline(request.sessionId, request.requestType, it, responseDeadline, owned, generation, permit)
             }
-            val registeredRequest = RegisteredBackendRequest(generation, owned, request, responseHandle, deadlineJob)
+            val registeredRequest = RegisteredBackendRequest(generation, owned, request, responseHandle, deadlineJob, permit)
             if (requestIngressChannel.trySend(registeredRequest).isFailure) {
                 deadlineJob?.cancel()
                 responseHandle?.tryExpire(GattResponseStatus.UnlikelyError)
+                permit.delivered()
                 if (generation == activeGeneration && owned.isCurrent()) emitRequestDropped(request)
             }
         }
 
         override fun onPlatformFailure(token: BackendSessionToken, cause: Throwable) {
             resolve(token)?.let { submit(BackendEvent.PlatformFailure(generation, cause, it)) }
+        }
+
+        override fun onResourceOverflow(cause: Throwable) {
+            if (generation != activeGeneration) return
+            val failure = PeripheralLifecycleException("Peripheral backend resource capacity exceeded").also { it.addSuppressed(cause) }
+            backendEventOverflow.compareAndSet(null, BackendEventOverflow(generation, failure))
         }
 
         override fun onPlatformFailure(cause: Throwable) {
@@ -903,6 +997,7 @@ internal class DefaultBlueFalconPeripheral(
     }
 
     private companion object {
+        const val MaximumSessions = 256
         const val DefaultBufferCapacity = 64
         // Accommodates readiness bursts while keeping aggregate ingress finite.
         const val DefaultBackendEventCapacity = 256
@@ -914,11 +1009,19 @@ internal class DefaultBlueFalconPeripheral(
         val cause: PeripheralLifecycleException,
     )
 
+    private data class AdmittedPublicRequest(
+        val request: GattServerRequest,
+        val token: BackendSessionToken,
+        val permit: PeripheralRequestAdmission.Permit,
+    )
+
     private data class RegisteredBackendRequest(
         val generation: Long,
         val token: BackendSessionToken,
         val request: BackendGattServerRequest,
         val responseHandle: DefaultGattResponseHandle?,
         val deadlineJob: Job?,
+        val permit: PeripheralRequestAdmission.Permit,
+        var publicQueued: Boolean = false,
     )
 }
