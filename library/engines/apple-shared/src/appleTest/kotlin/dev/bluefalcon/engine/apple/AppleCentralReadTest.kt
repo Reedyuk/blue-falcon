@@ -4,6 +4,7 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.async
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
+import platform.Foundation.NSData
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -18,6 +19,26 @@ import kotlin.test.assertTrue
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 class AppleCentralReadTest {
+
+    @Test
+    fun `empty native callback value completes read successfully`() = runTest {
+        val target = FakeReadTarget()
+        val controller = AppleCentralWriteController(backgroundScope)
+        controller.connected(target)
+        val read = async { controller.read(target) }
+        runCurrent()
+
+        assertTrue(
+            controller.onCharacteristicValueReceived(
+                peripheralUuid = target.peripheralUuid,
+                characteristicUuid = target.characteristicUuid,
+                value = NSData().toByteArray(),
+                failure = null,
+            )
+        )
+        val outcome = assertIs<AppleReadOutcome.Success>(read.await())
+        assertTrue(outcome.value?.isEmpty() == true)
+    }
 
     @Test
     fun `read completes only from matching callback`() = runTest {

@@ -13,6 +13,7 @@ import dev.bluefalcon.peripheral.PeripheralCapabilities
 import dev.bluefalcon.peripheral.PeripheralConfig
 import dev.bluefalcon.peripheral.PeripheralLifecycleException
 import dev.bluefalcon.peripheral.PeripheralSessionId
+import dev.bluefalcon.peripheral.internal.BackendSessionToken
 import dev.bluefalcon.peripheral.internal.BackendCharacteristicReadRequest
 import dev.bluefalcon.peripheral.internal.BackendCharacteristicWrite
 import dev.bluefalcon.peripheral.internal.BackendCharacteristicWriteBatchRequest
@@ -36,6 +37,7 @@ internal class ApplePeripheralBackend(
     private var state: BackendState = BackendState.Stopped
     private var generation = 0L
     private var eventSink: PeripheralBackendEventSink? = null
+    private val sessionTokens = mutableMapOf<PeripheralSessionId, BackendSessionToken>()
     private val activeSessions = mutableSetOf<PeripheralSessionId>()
     private val maximumLengths = mutableMapOf<PeripheralSessionId, Int>()
     private val subscriptions =
@@ -127,6 +129,7 @@ internal class ApplePeripheralBackend(
             when (state) {
                 BackendState.Stopped, BackendState.Closed -> false
                 is BackendState.Starting, is BackendState.Running -> {
+                    sessionTokens.values.forEach { it.retire() }
                     state = BackendState.Stopping(++generation)
                     true
                 }
@@ -149,7 +152,10 @@ internal class ApplePeripheralBackend(
     override suspend fun close() = lifecycleMutex.withLock {
         val previousState = locked {
             if (state == BackendState.Closed) return@withLock
-            state.also { state = BackendState.Closed }
+            state.also {
+                sessionTokens.values.forEach { it.retire() }
+                state = BackendState.Closed
+            }
         }
 
         try {
@@ -169,8 +175,28 @@ internal class ApplePeripheralBackend(
         value: ByteArray,
         mode: NotificationMode,
     ): NotificationResult = lifecycleMutex.withLock {
+        notifyLocked(sessionId, characteristic, value, mode, null)
+    }
+
+    override suspend fun notify(
+        token: BackendSessionToken,
+        characteristic: GattCharacteristicId,
+        value: ByteArray,
+        mode: NotificationMode,
+    ): NotificationResult = lifecycleMutex.withLock {
+        notifyLocked(token.sessionId, characteristic, value, mode, token)
+    }
+
+    private fun notifyLocked(
+        sessionId: PeripheralSessionId,
+        characteristic: GattCharacteristicId,
+        value: ByteArray,
+        mode: NotificationMode,
+        expectedToken: BackendSessionToken?,
+    ): NotificationResult {
         val request = locked {
-            if (sessionId !in activeSessions) {
+            if (sessionId !in activeSessions || sessionTokens[sessionId]?.isCurrent() != true ||
+                (expectedToken != null && (sessionTokens[sessionId] !== expectedToken.backendToken || !expectedToken.isCurrent()))) {
                 return NotificationResult.Disconnected
             }
             if (supportedModes[characteristic]?.contains(mode) != true) {
@@ -189,7 +215,7 @@ internal class ApplePeripheralBackend(
             AppleNotificationRequest(sessionId, characteristic, mode, value)
         }
 
-        try {
+        return try {
             when (val result = stack.notify(request)) {
                 AppleNotificationStartResult.Accepted -> NotificationResult.Sent
                 AppleNotificationStartResult.Busy -> NotificationResult.Busy
@@ -245,9 +271,10 @@ internal class ApplePeripheralBackend(
                     event.requestToken,
                 ),
             )
+            val token = requireNotNull(sessionTokens[event.sessionId])
             val callback: () -> Unit = {
                 sessionDelivery?.deliver()
-                sink.onRequest(request)
+                sink.onRequest(token, request)
             }
             callback
         }
@@ -272,9 +299,10 @@ internal class ApplePeripheralBackend(
                     event.requestToken,
                 ),
             )
+            val token = requireNotNull(sessionTokens[event.sessionId])
             val callback: () -> Unit = {
                 sessionDelivery?.deliver()
-                sink.onRequest(request)
+                sink.onRequest(token, request)
             }
             callback
         }
@@ -301,9 +329,10 @@ internal class ApplePeripheralBackend(
                     event.requestToken,
                 ),
             )
+            val token = requireNotNull(sessionTokens[event.sessionId])
             val callback: () -> Unit = {
                 sessionDelivery?.deliver()
-                sink.onRequest(request)
+                sink.onRequest(token, request)
             }
             callback
         }
@@ -350,7 +379,7 @@ internal class ApplePeripheralBackend(
         val delivery = SubscriptionDelivery(
             sessionDelivery = sessionDelivery,
             sink = sink,
-            sessionId = sessionId,
+            token = requireNotNull(sessionTokens[sessionId]),
             subscriptions = sessionSubscriptions.toSet(),
         )
         return delivery::deliver
@@ -371,7 +400,7 @@ internal class ApplePeripheralBackend(
             val delivery = SubscriptionDelivery(
                 sessionDelivery = sessionDelivery,
                 sink = sink,
-                sessionId = restored.sessionId,
+                token = requireNotNull(sessionTokens[restored.sessionId]),
                 subscriptions = restored.subscriptions,
             )
             enqueueEventDeliveryLocked(EventDelivery(startGeneration, delivery::deliver))
@@ -386,9 +415,11 @@ internal class ApplePeripheralBackend(
     ): SessionDelivery? {
         val previousMaximum = maximumLengths.put(sessionId, maximumUpdateValueLength)
         return if (activeSessions.add(sessionId)) {
-            SessionDelivery.Opened(sink, sessionId, maximumUpdateValueLength)
+            val token = BackendSessionToken(sessionId)
+            sessionTokens[sessionId] = token
+            SessionDelivery.Opened(sink, token, maximumUpdateValueLength)
         } else if (previousMaximum != maximumUpdateValueLength) {
-            SessionDelivery.MaximumChanged(sink, sessionId, maximumUpdateValueLength)
+            SessionDelivery.MaximumChanged(sink, requireNotNull(sessionTokens[sessionId]), maximumUpdateValueLength)
         } else {
             null
         }
@@ -497,6 +528,8 @@ internal class ApplePeripheralBackend(
 
     private fun clearRuntimeState() {
         eventSink = null
+        sessionTokens.values.forEach { it.retire() }
+        sessionTokens.clear()
         activeSessions.clear()
         maximumLengths.clear()
         subscriptions.clear()
@@ -552,22 +585,22 @@ internal class ApplePeripheralBackend(
 
         class Opened(
             private val sink: PeripheralBackendEventSink,
-            private val sessionId: PeripheralSessionId,
+            private val token: BackendSessionToken,
             private val maximumUpdateValueLength: Int,
         ) : SessionDelivery {
             override fun deliver() {
-                sink.onSessionOpened(sessionId, maximumUpdateValueLength)
+                sink.onSessionOpened(token, maximumUpdateValueLength)
             }
         }
 
         class MaximumChanged(
             private val sink: PeripheralBackendEventSink,
-            private val sessionId: PeripheralSessionId,
+            private val token: BackendSessionToken,
             private val maximumUpdateValueLength: Int,
         ) : SessionDelivery {
             override fun deliver() {
                 sink.onMaximumUpdateValueLengthChanged(
-                    sessionId,
+                    token,
                     maximumUpdateValueLength,
                 )
             }
@@ -577,12 +610,12 @@ internal class ApplePeripheralBackend(
     private class SubscriptionDelivery(
         private val sessionDelivery: SessionDelivery?,
         private val sink: PeripheralBackendEventSink,
-        private val sessionId: PeripheralSessionId,
+        private val token: BackendSessionToken,
         private val subscriptions: Set<GattCharacteristicId>,
     ) {
         fun deliver() {
             sessionDelivery?.deliver()
-            sink.onSubscriptionsChanged(sessionId, subscriptions)
+            sink.onSubscriptionsChanged(token, subscriptions)
         }
     }
 }

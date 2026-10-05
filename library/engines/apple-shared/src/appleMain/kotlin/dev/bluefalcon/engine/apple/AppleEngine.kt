@@ -104,6 +104,8 @@ class AppleEngine : ClosableBlueFalconEngine, CBCentralManagerCallback, CBPeriph
         val token = nativeConnectionOwnership.current(connection.peripheralUuid)
         if (token != null && token.operationOwner.value == connection) {
             retireRejectedCallback(token)
+        } else if (token != null) callbackDispatcher.dispatch {
+            if (connectedPeripherals[connection.peripheralUuid]?.connection == connection) requestTermination(token)
         }
     })
     private val callbackDispatcher = AppleCentralCallbackDispatcher(scope)
