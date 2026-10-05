@@ -391,7 +391,8 @@ class AndroidEngine(
                     identity = characteristicOperationIdentity(
                         char.service?.uuid?.toString(),
                         char.uuid.toString(),
-                    )
+                    ),
+                    payloadBytes = payload.size,
                 ) {
                     // Apply the value/writeType at dispatch time so a queued write never mutates the
                     // characteristic while a previously queued operation on it is still in flight.
@@ -697,7 +698,8 @@ class AndroidEngine(
                     androidDesc.characteristic.service?.uuid?.toString(),
                     androidDesc.characteristic.uuid.toString(),
                     androidDesc.uuid.toString(),
-                )
+                ),
+                payloadBytes = payload.size,
             ) {
                 androidDesc.value = payload
                 it.writeDescriptor(androidDesc)
@@ -816,7 +818,8 @@ class AndroidEngine(
                                 char.service?.uuid?.toString(),
                                 char.uuid.toString(),
                                 descriptor.uuid.toString(),
-                            )
+                            ),
+                            payloadBytes = payload.size,
                         ) {
                             descriptor.value = payload
                             it.writeDescriptor(descriptor)
@@ -1071,7 +1074,7 @@ class AndroidEngine(
                 },
                 onPoisoned = {
                     logger?.warn(
-                        "GATT operation timeout for ${gatt.device.address}; " +
+                        "GATT operation timeout or storage overload for ${gatt.device.address}; " +
                             "disconnecting the poisoned connection"
                     )
                     centralWriteState.onDisconnected(gatt.device.address, generation)
@@ -1102,6 +1105,7 @@ class AndroidEngine(
             type: CentralGattOperationType,
             label: String,
             identity: String? = null,
+            payloadBytes: Int = 0,
             action: (BluetoothGatt) -> Boolean
         ) {
             synchronized(gattLock) {
@@ -1115,6 +1119,7 @@ class AndroidEngine(
                 operationGateFor(gatt, generation)?.enqueueLegacy(
                     key = CentralGattOperationKey(generation, type, identity),
                     label = label,
+                    payloadBytes = payloadBytes,
                 ) {
                     action(gatt)
                 }
