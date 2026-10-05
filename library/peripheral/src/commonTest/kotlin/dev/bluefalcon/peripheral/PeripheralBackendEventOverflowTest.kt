@@ -180,7 +180,7 @@ class PeripheralBackendEventOverflowTest {
             repeat(10_000) { backend.openSession(PeripheralSessionId("peer-$it"), 20) }
             runCurrent()
             val failed = assertIs<PeripheralManagerState.Failed>(peripheral.state.value)
-            assertTrue(failed.cause.message!!.contains("Backend event queue"))
+            assertTrue(failed.cause.message!!.contains("capacity exceeded"))
             assertEquals(1, backend.stopCalls)
             assertTrue(peripheral.sessions.value.isEmpty())
         } finally {

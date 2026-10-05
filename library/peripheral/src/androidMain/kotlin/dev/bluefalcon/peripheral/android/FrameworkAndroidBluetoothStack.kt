@@ -48,6 +48,7 @@ internal class FrameworkAndroidBluetoothStack(
     private val bluetoothManager =
         applicationContext.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
     private val lock = Any()
+    private val payloadAdmission = AndroidPayloadAdmission()
 
     private val lifecycleState = AndroidGattLifecycleState()
     private val serviceGate =
@@ -56,7 +57,7 @@ internal class FrameworkAndroidBluetoothStack(
     private var currentAdvertiser: BluetoothLeAdvertiser? = null
     private var currentAdvertiseCallback: AdvertiseCallback? = null
     private var pendingAdvertising: CompletableDeferred<Unit>? = null
-    private val targetsBySession = mutableMapOf<PeripheralSessionId, FrameworkSessionTarget>()
+    private val targetsBySession = AndroidNativeSessionOwners<FrameworkSessionTarget>()
     private val devicesBySession = mutableMapOf<PeripheralSessionId, BluetoothDevice>()
     private val characteristicsById =
         mutableMapOf<GattCharacteristicId, BluetoothGattCharacteristic>()
@@ -241,6 +242,16 @@ internal class FrameworkAndroidBluetoothStack(
             if (!isCurrent()) AndroidNotificationStartResult.Rejected(IllegalStateException("Android notification connection has retired"))
             else sendTargetedNotification(request)
         }
+        override fun retire() {
+            val owned = synchronized(lock) {
+                if (gattServer !== server || !targetsBySession.retire(sessionId, this)) false
+                else {
+                    devicesBySession.remove(sessionId)
+                    true
+                }
+            }
+            if (owned) server.cancelConnection(device)
+        }
         override fun disconnect(): Boolean = synchronized(lock) {
             if (!isCurrent()) return@synchronized false
             try {
@@ -397,12 +408,13 @@ internal class FrameworkAndroidBluetoothStack(
                         val target = synchronized(lock) {
                             if (lifecycleState.isActive(generation)) {
                                 val server = gattServer ?: return@synchronized null
-                                if (sessionId !in targetsBySession && targetsBySession.size >= 256) {
+                                val owned = targetsBySession.admit(sessionId) { FrameworkSessionTarget(sessionId, server, device) }
+                                if (owned == null) {
                                     server.cancelConnection(device)
-                                    throw IllegalStateException("Android native connection owner capacity exceeded")
+                                    throw IllegalStateException("Android native connection owner retired or capacity exceeded")
                                 }
                                 devicesBySession[sessionId] = device
-                                targetsBySession[sessionId] ?: FrameworkSessionTarget(sessionId, server, device).also { targetsBySession[sessionId] = it }
+                                owned
                             } else null
                         }
                         if (target != null) listener.onEvent(AndroidGattEvent.Connected(sessionId, target))
@@ -473,6 +485,10 @@ internal class FrameworkAndroidBluetoothStack(
                 val sessionId = target.sessionId
                 val identity = characteristic.identityOrNull()
                     ?: return@dispatchAndroidGattCallback
+                payloadAdmission.dispatch((value?.size ?: 0).toLong(), onRejected = {
+                    if (responseNeeded || preparedWrite) target.sendResponse(AndroidGattResponse(sessionId, requestId, GattResponseStatus.UnlikelyError, offset, null))
+                    listener.onResourceOverflow(dev.bluefalcon.peripheral.internal.PeripheralResourceOverflowException())
+                }) {
                 listener.onEvent(
                     AndroidGattEvent.CharacteristicWrite(
                         sessionId = sessionId,
@@ -486,6 +502,7 @@ internal class FrameworkAndroidBluetoothStack(
                         target = target,
                     ),
                 )
+                }
             }
         }
 
@@ -532,6 +549,10 @@ internal class FrameworkAndroidBluetoothStack(
                 val sessionId = target.sessionId
                 val identity = descriptor.identityOrNull()
                     ?: return@dispatchAndroidGattCallback
+                payloadAdmission.dispatch((value?.size ?: 0).toLong(), onRejected = {
+                    if (responseNeeded || preparedWrite) target.sendResponse(AndroidGattResponse(sessionId, requestId, GattResponseStatus.UnlikelyError, offset, null))
+                    listener.onResourceOverflow(dev.bluefalcon.peripheral.internal.PeripheralResourceOverflowException())
+                }) {
                 listener.onEvent(
                     AndroidGattEvent.DescriptorWrite(
                         sessionId = sessionId,
@@ -546,6 +567,7 @@ internal class FrameworkAndroidBluetoothStack(
                         target = target,
                     ),
                 )
+                }
             }
         }
 

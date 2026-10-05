@@ -233,6 +233,7 @@ class AppleEngine : BlueFalconEngine, CBCentralManagerCallback, CBPeripheralCall
                 val active = connectedPeripherals[token.peripheralUuid]
                 if (active?.ownership === token) {
                     connectedPeripherals.remove(token.peripheralUuid)
+                    AppleBluetoothCharacteristic.NotificationFlowStore.retirePeripheral(token.owner)
                     centralWriteController.disconnected(active.connection)
                     l2capDeferreds.remove(token.peripheralUuid)?.completeExceptionally(L2capException("Apple connection retired"))
                     _connectionStateUpdates.tryEmit(ConnectionStateUpdate(active.device, BluetoothPeripheralState.Disconnected))

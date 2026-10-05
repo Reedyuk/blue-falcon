@@ -14,6 +14,7 @@ internal interface AndroidSessionTarget {
     fun sendResponse(response: AndroidGattResponse): Boolean
     fun notify(request: AndroidNotificationRequest): AndroidNotificationStartResult
     fun disconnect(): Boolean
+    fun retire() { disconnect() }
 }
 
 internal interface AndroidBluetoothStack {
@@ -44,6 +45,7 @@ internal interface AndroidBluetoothStackListener {
     fun onEvent(event: AndroidGattEvent)
 
     fun onPlatformFailure(cause: Throwable)
+    fun onResourceOverflow(cause: Throwable) = onPlatformFailure(cause)
 }
 
 internal data class AndroidStackCapabilities(
@@ -93,6 +95,7 @@ internal sealed interface AndroidGattEvent {
         override val target: AndroidSessionTarget? = null,
     ) : AndroidGattEvent {
         private val copiedValue = value.copyOf()
+        val payloadBytes: Long get() = copiedValue.size.toLong()
         val value: ByteArray get() = copiedValue.copyOf()
     }
 
@@ -119,6 +122,7 @@ internal sealed interface AndroidGattEvent {
         override val target: AndroidSessionTarget? = null,
     ) : AndroidGattEvent {
         private val copiedValue = value.copyOf()
+        val payloadBytes: Long get() = copiedValue.size.toLong()
         val value: ByteArray get() = copiedValue.copyOf()
     }
 
