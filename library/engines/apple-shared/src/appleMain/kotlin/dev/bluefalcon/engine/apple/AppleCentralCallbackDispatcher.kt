@@ -9,8 +9,9 @@ import kotlinx.coroutines.CompletableDeferred
 
 internal fun snapshotCallbackPayload(value: ByteArray?): ByteArray? = value?.copyOf()
 
-internal class AppleNativeConnectionToken<T : Any>(val peripheralUuid: String, val owner: T) {
+internal class AppleNativeConnectionToken<T : Any>(val peripheralUuid: String, val owner: T, val origin: Any? = null) {
     val terminated = CompletableDeferred<Unit>()
+    internal val acceptingCallbacks = MutableStateFlow(true)
 }
 
 /** A delegate keeps this binding even if the same native object is reconnected. */
@@ -26,8 +27,8 @@ internal class AppleNativeConnectionCallbacks<T : Any>(
 internal class AppleNativeConnectionOwnership<T : Any> {
     private val owners = MutableStateFlow<Map<String, AppleNativeConnectionToken<T>>>(emptyMap())
 
-    fun connected(peripheralUuid: String, owner: T): AppleNativeConnectionToken<T> {
-        val token = AppleNativeConnectionToken(peripheralUuid, owner)
+    fun connected(peripheralUuid: String, owner: T, origin: Any? = null): AppleNativeConnectionToken<T> {
+        val token = AppleNativeConnectionToken(peripheralUuid, owner, origin)
         while (true) {
             val current = owners.value
             if (owners.compareAndSet(current, current + (peripheralUuid to token))) {
@@ -53,13 +54,16 @@ internal class AppleNativeConnectionOwnership<T : Any> {
         capture(peripheralUuid, owner) != null
 
     fun isActive(token: AppleNativeConnectionToken<T>): Boolean =
-        owners.value[token.peripheralUuid] === token
+        owners.value[token.peripheralUuid] === token && token.acceptingCallbacks.value
+
+    fun beginRetirement(token: AppleNativeConnectionToken<T>): Boolean =
+        owners.value[token.peripheralUuid] === token && token.acceptingCallbacks.compareAndSet(true, false)
 
     fun current(peripheralUuid: String): AppleNativeConnectionToken<T>? =
         owners.value[peripheralUuid]
 
     fun capture(peripheralUuid: String, owner: T): AppleNativeConnectionToken<T>? =
-        current(peripheralUuid)?.takeIf { it.owner === owner }
+        current(peripheralUuid)?.takeIf { it.owner === owner && it.acceptingCallbacks.value }
 }
 
 internal class AppleCentralCallbackDispatcher(

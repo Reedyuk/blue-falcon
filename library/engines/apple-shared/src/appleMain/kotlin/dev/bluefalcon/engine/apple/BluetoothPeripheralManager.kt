@@ -3,6 +3,8 @@ package dev.bluefalcon.engine.apple
 import kotlinx.cinterop.ObjCSignatureOverride
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.withTimeout
 import platform.CoreBluetooth.*
 import platform.Foundation.NSError
 import platform.Foundation.NSNumber
@@ -41,6 +43,20 @@ class BluetoothPeripheralManager(
 
     val centralManager: CBCentralManager = CBCentralManager(this, delegateQueue)
     
+    suspend fun awaitPoweredOn() {
+        withTimeout(10_000L) { managerState.first { it == CBManagerStatePoweredOn } }
+    }
+
+    fun close(peripheral: CBPeripheral?) {
+        // Invalidate callback forwarding before best-effort native cancellation.
+        runCatching { centralManager.delegate = null }
+        if (peripheral != null) {
+            runCatching { peripheral.delegate = null }
+            runCatching { centralManager.cancelPeripheralConnection(peripheral) }
+        }
+        runCatching { centralManager.stopScan() }
+    }
+
     override fun centralManagerDidUpdateState(central: CBCentralManager) {
         _managerState.value = central.state
         callback.onStateUpdated(central.state)
