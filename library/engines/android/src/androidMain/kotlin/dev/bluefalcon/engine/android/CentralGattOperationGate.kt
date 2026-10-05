@@ -53,6 +53,11 @@ internal class CentralGattOperationGate(
     private val onPoisoned: () -> Unit = {},
 ) {
     private val lock = Any()
+    // Readiness callbacks only publish write-state. Keep them ordered without holding
+    // the operation monitor or retaining an unbounded queue of deferred post-actions.
+    private val publicationLock = Any()
+    private var nextPublicationRevision = 0L
+    private var publishedRevision = 0L
     private val legacyPending = ArrayDeque<Operation>()
     private var current: Operation? = null
     private var poisoned = false
@@ -73,13 +78,16 @@ internal class CentralGattOperationGate(
         val postActions = synchronized(lock) {
             if (poisoned) return
             val wasIdle = current == null && legacyPending.isEmpty()
+            // Reserve before invoking native code: a synchronous callback may
+            // complete this operation and publish newer replacement readiness.
+            val busyRevision = if (wasIdle) ++nextPublicationRevision else null
             legacyPending += Operation(
                 key = key,
                 label = label,
                 action = action,
                 onComplete = null,
             )
-            dispatchNextLocked().withBusy(wasIdle)
+            dispatchNextLocked().withBusy(wasIdle, busyRevision).ordered()
         }
         postActions.run()
     }
@@ -102,7 +110,8 @@ internal class CentralGattOperationGate(
                 onComplete = onComplete,
             )
             current = operation
-            dispatchCurrentLocked(operation).withBusy()
+            val dispatched = dispatchCurrentLocked(operation)
+            dispatched.withBusy(current === operation || dispatched.notifyReady).ordered()
         }
         postActions.run()
         return true
@@ -124,7 +133,7 @@ internal class CentralGattOperationGate(
                 } else {
                     CentralGattOperationOutcome.StatusFailure(status)
                 },
-            )
+            ).ordered()
         }
         postActions.run()
         return true
@@ -153,10 +162,10 @@ internal class CentralGattOperationGate(
         postActions.run()
     }
 
-    private fun onTimeout(key: CentralGattOperationKey) {
+    private fun onTimeout(expected: Operation) {
         val postActions = synchronized(lock) {
             val operation = current ?: return
-            if (operation.key != key) return
+            if (operation !== expected) return
             current = null
             legacyPending.clear()
             poisoned = true
@@ -190,6 +199,11 @@ internal class CentralGattOperationGate(
             CentralGattOperationOutcome.Rejected(failure)
         }
 
+        // Native submission may synchronously complete and reenter submission.
+        // Its callback has already terminalized this operation; neither a later
+        // return value nor a watchdog may clear or poison its replacement.
+        if (current !== operation) return PostActions()
+
         if (rejection != null) {
             current = null
             val completion = operation.onComplete?.let { callback ->
@@ -203,7 +217,7 @@ internal class CentralGattOperationGate(
         }
 
         operation.timeoutHandle = timeoutScheduler.schedule(timeoutMillis) {
-            onTimeout(operation.key)
+            onTimeout(operation)
         }
         return PostActions()
     }
@@ -238,13 +252,16 @@ internal class CentralGattOperationGate(
         }
     }
 
-    private fun PostActions.withBusy(enabled: Boolean = true): PostActions =
+    private fun PostActions.withBusy(
+        enabled: Boolean = true,
+        reservedRevision: Long? = null,
+    ): PostActions =
         PostActions(
             completion = completion,
             notifyBusy = enabled,
             notifyReady = notifyReady,
             notifyPoisoned = notifyPoisoned,
-        )
+        ).apply { busyRevision = reservedRevision }
 
     private inner class PostActions(
         val completion: (() -> Unit)? = null,
@@ -252,12 +269,31 @@ internal class CentralGattOperationGate(
         val notifyReady: Boolean = false,
         val notifyPoisoned: Boolean = false,
     ) {
+        var busyRevision: Long? = null
+        private var readyRevision: Long? = null
+
+        // Called under the operation monitor, after the transition is final.
+        fun ordered(): PostActions = apply {
+            if (notifyBusy && busyRevision == null) busyRevision = ++nextPublicationRevision
+            if (notifyReady) readyRevision = ++nextPublicationRevision
+        }
+
         fun run() {
-            if (notifyBusy) onBusy()
+            busyRevision?.let { publish(it, onBusy) }
+            // A completion may reenter submission. Its newer busy revision must win
+            // over this transition's older ready revision.
             completion?.invoke()
-            if (notifyReady) onReady()
+            readyRevision?.let { publish(it, onReady) }
             if (notifyPoisoned) onPoisoned()
         }
+    }
+
+    private fun publish(revision: Long, callback: () -> Unit) = synchronized(publicationLock) {
+        if (revision <= publishedRevision) return@synchronized
+        // Advance before invocation so reentrant publications cannot be overwritten
+        // when this callback returns. Completion/native callbacks never use this lock.
+        publishedRevision = revision
+        callback()
     }
 
     private data class Operation(
