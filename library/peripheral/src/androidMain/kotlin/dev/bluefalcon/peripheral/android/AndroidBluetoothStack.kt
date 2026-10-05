@@ -9,6 +9,13 @@ import dev.bluefalcon.peripheral.GattServiceId
 import dev.bluefalcon.peripheral.NotificationMode
 import dev.bluefalcon.peripheral.PeripheralSessionId
 
+internal interface AndroidSessionTarget {
+    fun isCurrent(): Boolean
+    fun sendResponse(response: AndroidGattResponse): Boolean
+    fun notify(request: AndroidNotificationRequest): AndroidNotificationStartResult
+    fun disconnect(): Boolean
+}
+
 internal interface AndroidBluetoothStack {
     val capabilities: AndroidStackCapabilities
 
@@ -46,19 +53,23 @@ internal data class AndroidStackCapabilities(
 
 internal sealed interface AndroidGattEvent {
     val sessionId: PeripheralSessionId
+    val target: AndroidSessionTarget? get() = null
 
     data class Connected(
         override val sessionId: PeripheralSessionId,
+        override val target: AndroidSessionTarget? = null,
     ) : AndroidGattEvent
 
     data class Disconnected(
         override val sessionId: PeripheralSessionId,
         val status: Int,
+        override val target: AndroidSessionTarget? = null,
     ) : AndroidGattEvent
 
     data class MtuChanged(
         override val sessionId: PeripheralSessionId,
         val mtu: Int,
+        override val target: AndroidSessionTarget? = null,
     ) : AndroidGattEvent
 
     data class CharacteristicRead(
@@ -67,6 +78,7 @@ internal sealed interface AndroidGattEvent {
         val serviceId: GattServiceId,
         val characteristicId: GattCharacteristicId,
         val offset: Int,
+        override val target: AndroidSessionTarget? = null,
     ) : AndroidGattEvent
 
     class CharacteristicWrite(
@@ -78,6 +90,7 @@ internal sealed interface AndroidGattEvent {
         val preparedWrite: Boolean,
         val responseNeeded: Boolean,
         value: ByteArray,
+        override val target: AndroidSessionTarget? = null,
     ) : AndroidGattEvent {
         private val copiedValue = value.copyOf()
         val value: ByteArray get() = copiedValue.copyOf()
@@ -90,6 +103,7 @@ internal sealed interface AndroidGattEvent {
         val characteristicId: GattCharacteristicId,
         val descriptorId: GattDescriptorId,
         val offset: Int,
+        override val target: AndroidSessionTarget? = null,
     ) : AndroidGattEvent
 
     class DescriptorWrite(
@@ -102,6 +116,7 @@ internal sealed interface AndroidGattEvent {
         val preparedWrite: Boolean,
         val responseNeeded: Boolean,
         value: ByteArray,
+        override val target: AndroidSessionTarget? = null,
     ) : AndroidGattEvent {
         private val copiedValue = value.copyOf()
         val value: ByteArray get() = copiedValue.copyOf()
@@ -111,11 +126,13 @@ internal sealed interface AndroidGattEvent {
         override val sessionId: PeripheralSessionId,
         val requestId: Int,
         val execute: Boolean,
+        override val target: AndroidSessionTarget? = null,
     ) : AndroidGattEvent
 
     data class NotificationSent(
         override val sessionId: PeripheralSessionId,
         val status: Int,
+        override val target: AndroidSessionTarget? = null,
     ) : AndroidGattEvent
 }
 

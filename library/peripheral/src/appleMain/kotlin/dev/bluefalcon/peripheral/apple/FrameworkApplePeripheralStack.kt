@@ -185,9 +185,8 @@ internal class FrameworkApplePeripheralStack(
         null,
     )
     private var manager: CBPeripheralManager? = null
-    private var managerRestorationIdentifier: String? = null
-    private var listener: ApplePeripheralStackListener? = null
-    private var currentConfig: PeripheralConfig? = null
+    private var callbackOwner: ApplePeripheralCallbackOwner<CBPeripheralManager>? = null
+    private var managerDelegate: CBPeripheralManagerDelegateProtocol? = null
     private var closed = false
     private var poweredOnWaiter: CompletableDeferred<Unit>? = null
     private var advertisingWaiter: CompletableDeferred<Unit>? = null
@@ -198,9 +197,12 @@ internal class FrameworkApplePeripheralStack(
     private val characteristics = mutableMapOf<GattCharacteristicId, CBMutableCharacteristic>()
     private val centrals = mutableMapOf<PeripheralSessionId, CBCentral>()
 
-    private val delegate = object : NSObject(), CBPeripheralManagerDelegateProtocol {
+    private fun createDelegate(
+        owner: ApplePeripheralCallbackOwner<CBPeripheralManager>,
+    ): CBPeripheralManagerDelegateProtocol = object : NSObject(), CBPeripheralManagerDelegateProtocol {
         override fun peripheralManagerDidUpdateState(peripheral: CBPeripheralManager) {
             val completion = locked {
+                if (!ownsCallbackLocked(owner, peripheral)) return
                 when (peripheral.state) {
                     CBManagerStatePoweredOn -> poweredOnWaiter.also { poweredOnWaiter = null }
                     CBManagerStateUnsupported -> poweredOnWaiter.also {
@@ -227,6 +229,7 @@ internal class FrameworkApplePeripheralStack(
             error: NSError?,
         ) {
             val waiter = locked {
+                if (!ownsCallbackLocked(owner, peripheral)) return
                 serviceWaiters.remove(normalizeAppleUuid(didAddService.UUID.UUIDString))
             } ?: return
             if (error == null) {
@@ -245,7 +248,10 @@ internal class FrameworkApplePeripheralStack(
             peripheral: CBPeripheralManager,
             error: NSError?,
         ) {
-            val waiter = locked { advertisingWaiter.also { advertisingWaiter = null } }
+            val waiter = locked {
+                if (!ownsCallbackLocked(owner, peripheral)) return
+                advertisingWaiter.also { advertisingWaiter = null }
+            }
                 ?: return
             if (error == null) {
                 waiter.complete(Unit)
@@ -262,13 +268,14 @@ internal class FrameworkApplePeripheralStack(
             central: CBCentral,
             didSubscribeToCharacteristic: CBCharacteristic,
         ) {
-            val ids = resolveIds(didSubscribeToCharacteristic) ?: run {
+            if (owner.listenerFor(peripheral) == null) return
+            val ids = resolveIds(owner, didSubscribeToCharacteristic) ?: run {
                 logger?.debug("didSubscribeToCharacteristic: resolveIds returned null, dropping event")
                 return
             }
             logger?.debug("didSubscribeToCharacteristic: resolved ids=$ids for central=${central.identifier}")
-            retainCentral(central)
-            listenerSnapshot()?.onEvent(
+            if (!retainCentral(owner, central)) return
+            owner.listenerFor(peripheral)?.onEvent(
                 AppleGattEvent.Subscribed(
                     sessionId = central.sessionId(),
                     maximumUpdateValueLength = central.maximumUpdateValueLength.toInt(),
@@ -283,9 +290,10 @@ internal class FrameworkApplePeripheralStack(
             central: CBCentral,
             didUnsubscribeFromCharacteristic: CBCharacteristic,
         ) {
-            val ids = resolveIds(didUnsubscribeFromCharacteristic) ?: return
-            retainCentral(central)
-            listenerSnapshot()?.onEvent(
+            if (owner.listenerFor(peripheral) == null) return
+            val ids = resolveIds(owner, didUnsubscribeFromCharacteristic) ?: return
+            if (!retainCentral(owner, central)) return
+            owner.listenerFor(peripheral)?.onEvent(
                 AppleGattEvent.Unsubscribed(
                     sessionId = central.sessionId(),
                     maximumUpdateValueLength = central.maximumUpdateValueLength.toInt(),
@@ -298,16 +306,17 @@ internal class FrameworkApplePeripheralStack(
             peripheral: CBPeripheralManager,
             didReceiveReadRequest: CBATTRequest,
         ) {
-            val ids = resolveIds(didReceiveReadRequest.characteristic)
+            if (owner.listenerFor(peripheral) == null) return
+            val ids = resolveIds(owner, didReceiveReadRequest.characteristic)
             if (ids == null) {
                 logger?.debug("didReceiveReadRequest: resolveIds returned null, rejecting request")
                 peripheral.respondToRequest(didReceiveReadRequest, CBATTErrorAttributeNotFound)
                 return
             }
             val central = didReceiveReadRequest.central
-            retainCentral(central)
-            val token = retainRequest(didReceiveReadRequest, read = true)
-            listenerSnapshot()?.onEvent(
+            if (!retainCentral(owner, central)) return
+            val token = retainRequest(owner, peripheral, didReceiveReadRequest, read = true) ?: return
+            owner.listenerFor(peripheral)?.onEvent(
                 AppleGattEvent.CharacteristicRead(
                     sessionId = central.sessionId(),
                     maximumUpdateValueLength = central.maximumUpdateValueLength.toInt(),
@@ -324,18 +333,20 @@ internal class FrameworkApplePeripheralStack(
             peripheral: CBPeripheralManager,
             didReceiveWriteRequests: List<*>,
         ) {
+            if (owner.listenerFor(peripheral) == null) return
             val requests = didReceiveWriteRequests as List<CBATTRequest>
             val first = requests.firstOrNull() ?: run {
-                listenerSnapshot()?.onPlatformFailure(
+                owner.listenerFor(peripheral)?.onPlatformFailure(
                     AppleEmptyWriteBatchException(),
                 )
                 return
             }
             val writes = requests.map { request ->
-                val ids = resolveIds(request.characteristic)
-                    ?: return rejectRequest(first, GattResponseStatus.InvalidHandle)
+                val ids = resolveIds(owner, request.characteristic)
+                    ?: return rejectRequest(peripheral, first, GattResponseStatus.InvalidHandle)
                 val value = request.value?.toByteArray()
                     ?: return rejectRequest(
+                        peripheral,
                         first,
                         GattResponseStatus.InvalidAttributeValueLength,
                     )
@@ -348,11 +359,11 @@ internal class FrameworkApplePeripheralStack(
             }
             val central = first.central
             if (requests.any { it.central.identifier != central.identifier }) {
-                rejectRequest(first, GattResponseStatus.UnlikelyError)
+                rejectRequest(peripheral, first, GattResponseStatus.UnlikelyError)
                 return
             }
-            retainCentral(central)
-            val token = retainRequest(first, read = false)
+            if (!retainCentral(owner, central)) return
+            val token = retainRequest(owner, peripheral, first, read = false) ?: return
             val event = if (writes.size == 1) {
                 AppleGattEvent.CharacteristicWrite(
                     sessionId = central.sessionId(),
@@ -368,13 +379,13 @@ internal class FrameworkApplePeripheralStack(
                     writes = writes,
                 )
             }
-            listenerSnapshot()?.onEvent(event) ?: rejectPendingRequest(token)
+            owner.listenerFor(peripheral)?.onEvent(event) ?: rejectPendingRequest(token)
         }
 
         override fun peripheralManagerIsReadyToUpdateSubscribers(
             peripheral: CBPeripheralManager,
         ) {
-            listenerSnapshot()?.onEvent(AppleGattEvent.NotificationReady)
+            owner.listenerFor(peripheral)?.onEvent(AppleGattEvent.NotificationReady)
         }
 
         override fun peripheralManager(
@@ -389,6 +400,7 @@ internal class FrameworkApplePeripheralStack(
                 willRestoreState[CBPeripheralManagerRestoredStateAdvertisementDataKey]
                     as? Map<Any?, Any?>
             locked {
+                if (!ownsCallbackLocked(owner, peripheral)) return
                 restoredState = RestoredState(services, advertisementData)
             }
         }
@@ -440,9 +452,9 @@ internal class FrameworkApplePeripheralStack(
 
     override fun sendResponse(response: AppleGattResponse): Boolean {
         val target = locked {
-            val peripheral = manager ?: return false
             val pending = pendingRequests.remove(response.requestToken) ?: return false
-            peripheral to pending
+            if (manager !== pending.peripheral && manager != pending.peripheral) return false
+            pending.peripheral to pending
         }
         if (target.second.read && response.status == GattResponseStatus.Success) {
             target.second.request.value = (response.value ?: ByteArray(0)).toData()
@@ -485,18 +497,32 @@ internal class FrameworkApplePeripheralStack(
     }
 
     override fun clearServices() {
-        val peripheral = locked { manager }
+        val peripheral = locked { retireManagerLocked() }
+        peripheral?.delegate = null
         peripheral?.removeAllServices()
         clearHostedState()
+    }
+
+    private fun retireManagerLocked(): CBPeripheralManager? {
+        callbackOwner?.retire()
+        callbackOwner = null
+        managerDelegate = null
+        restoredState = null
+        val failure = PeripheralLifecycleException("Apple peripheral manager run retired")
+        serviceWaiters.values.forEach { it.completeExceptionally(failure) }
+        serviceWaiters.clear()
+        advertisingWaiter?.completeExceptionally(failure)
+        advertisingWaiter = null
+        poweredOnWaiter?.completeExceptionally(failure)
+        poweredOnWaiter = null
+        return manager.also { manager = null }
     }
 
     override fun close() {
         val peripheral = locked {
             if (closed) return
             closed = true
-            listener = null
-            currentConfig = null
-            pendingRequests.clear()
+                    pendingRequests.clear()
             centrals.clear()
             characteristics.clear()
             serviceWaiters.values.forEach {
@@ -511,8 +537,9 @@ internal class FrameworkApplePeripheralStack(
                 PeripheralLifecycleException("Apple stack closed"),
             )
             poweredOnWaiter = null
-            manager.also { manager = null }
+            retireManagerLocked()
         }
+        peripheral?.delegate = null
         peripheral?.stopAdvertising()
         peripheral?.removeAllServices()
     }
@@ -522,22 +549,18 @@ internal class FrameworkApplePeripheralStack(
         listener: ApplePeripheralStackListener,
     ): CBPeripheralManager = locked {
         check(!closed) { "Apple peripheral stack is closed" }
-        val existing = manager
-        if (existing != null) {
-            check(managerRestorationIdentifier == config.restorationIdentifier) {
-                "Restoration identifier cannot change while reusing an Apple peripheral stack"
-            }
-            this.listener = listener
-            currentConfig = config
-            return existing
-        }
-        this.listener = listener
-        currentConfig = config
-        managerRestorationIdentifier = config.restorationIdentifier
+        check(manager == null) { "Apple peripheral manager already owns a run" }
         val options = config.restorationIdentifier?.let { identifier ->
             mapOf<Any?, Any?>(CBPeripheralManagerOptionRestoreIdentifierKey to identifier)
         }
-        CBPeripheralManager(delegate, delegateQueue, options).also { manager = it }
+        val owner = ApplePeripheralCallbackOwner<CBPeripheralManager>(listener)
+        val delegate = createDelegate(owner)
+        callbackOwner = owner
+        managerDelegate = delegate
+        CBPeripheralManager(delegate, delegateQueue, options).also {
+            owner.bind(it)
+            manager = it
+        }
     }
 
     private suspend fun awaitPoweredOn(peripheral: CBPeripheralManager) {
@@ -610,6 +633,7 @@ internal class FrameworkApplePeripheralStack(
     private fun restoredSessions(
         services: List<CBMutableService>,
     ): List<AppleRestoredSession> {
+        val owner = locked { callbackOwner } ?: return emptyList()
         val sessionMaximums = mutableMapOf<PeripheralSessionId, Int>()
         val sessionSubscriptions =
             mutableMapOf<PeripheralSessionId, MutableSet<GattCharacteristicId>>()
@@ -624,7 +648,7 @@ internal class FrameworkApplePeripheralStack(
                 val subscribedCentrals =
                     characteristic.subscribedCentrals.orEmpty() as List<CBCentral>
                 subscribedCentrals.forEach { central ->
-                    retainCentral(central)
+                    if (!retainCentral(owner, central)) return emptyList()
                     val sessionId = central.sessionId()
                     sessionMaximums[sessionId] = central.maximumUpdateValueLength.toInt()
                     sessionSubscriptions.getOrPut(sessionId, ::mutableSetOf) += characteristicId
@@ -656,6 +680,7 @@ internal class FrameworkApplePeripheralStack(
         }
 
     private fun resolveIds(
+        owner: ApplePeripheralCallbackOwner<CBPeripheralManager>,
         characteristic: CBCharacteristic,
     ): Pair<GattServiceId, GattCharacteristicId>? {
         val service = characteristic.service ?: run {
@@ -663,7 +688,10 @@ internal class FrameworkApplePeripheralStack(
             return null
         }
         val characteristicId = GattCharacteristicId(characteristic.UUID.UUIDString.toUuid())
-        val known = locked { characteristics[characteristicId] }
+        val known = locked {
+            if (callbackOwner !== owner || !owner.isActive()) return null
+            characteristics[characteristicId]
+        }
         if (known == null) {
             logger?.debug(
                 "resolveIds: no registered characteristic for id $characteristicId " +
@@ -671,39 +699,43 @@ internal class FrameworkApplePeripheralStack(
             )
             return null
         }
-        if (known !== characteristic) {
+        if (!belongsToAppleCharacteristicIncarnation(known, characteristic)) {
             logger?.debug(
                 "resolveIds: identity mismatch for $characteristicId " +
-                    "(known=$known, incoming=$characteristic) - falling back to value equality",
+                    "(known=$known, incoming=$characteristic) - rejecting retired attribute",
             )
+            return null
         }
         return GattServiceId(service.UUID.UUIDString.toUuid()) to characteristicId
     }
 
-    private fun retainRequest(request: CBATTRequest, read: Boolean): AppleRequestToken = locked {
+    private fun retainRequest(owner: ApplePeripheralCallbackOwner<CBPeripheralManager>, peripheral: CBPeripheralManager, request: CBATTRequest, read: Boolean): AppleRequestToken? = locked {
+        if (!ownsCallbackLocked(owner, peripheral)) return null
         AppleRequestToken(++nextRequestToken).also { token ->
-            pendingRequests[token] = PendingRequest(request, read)
+            pendingRequests[token] = PendingRequest(peripheral, request, read)
         }
     }
 
     private fun rejectPendingRequest(token: AppleRequestToken) {
         val target = locked {
-            val peripheral = manager ?: return
             val pending = pendingRequests.remove(token) ?: return
-            peripheral to pending.request
+            pending.peripheral to pending.request
         }
         target.first.respondToRequest(target.second, CBATTErrorUnlikelyError)
     }
 
-    private fun rejectRequest(request: CBATTRequest, status: GattResponseStatus) {
-        locked { manager }?.respondToRequest(request, status.toAppleAttError())
+    private fun rejectRequest(peripheral: CBPeripheralManager, request: CBATTRequest, status: GattResponseStatus) {
+        peripheral.respondToRequest(request, status.toAppleAttError())
     }
 
-    private fun retainCentral(central: CBCentral) {
-        locked { centrals[central.sessionId()] = central }
+    private fun retainCentral(owner: ApplePeripheralCallbackOwner<CBPeripheralManager>, central: CBCentral): Boolean = locked {
+        if (callbackOwner !== owner || !owner.isActive()) return false
+        centrals[central.sessionId()] = central
+        true
     }
 
-    private fun listenerSnapshot(): ApplePeripheralStackListener? = locked { listener }
+    private fun ownsCallbackLocked(owner: ApplePeripheralCallbackOwner<CBPeripheralManager>, peripheral: CBPeripheralManager): Boolean =
+        callbackOwner === owner && owner.listenerFor(peripheral) != null
 
     private fun clearHostedState() {
         locked {
@@ -740,6 +772,7 @@ internal class FrameworkApplePeripheralStack(
     }
 
     private class PendingRequest(
+        val peripheral: CBPeripheralManager,
         val request: CBATTRequest,
         val read: Boolean,
     )
@@ -790,3 +823,22 @@ internal class AppleEmptyWriteBatchException :
 
 internal class AppleUnknownCharacteristicException(characteristicId: GattCharacteristicId) :
     IllegalArgumentException("Unknown Apple GATT characteristic $characteristicId")
+
+// UUID equality identifies an attribute name, not the native service incarnation.
+internal fun belongsToAppleCharacteristicIncarnation(
+    owned: CBCharacteristic,
+    incoming: CBCharacteristic,
+): Boolean = owned === incoming || owned == incoming
+
+/** A delegate holds this immutable run/listener owner, never the stack's next listener. */
+internal class ApplePeripheralCallbackOwner<T : Any>(private val listener: ApplePeripheralStackListener) {
+    private val active = kotlinx.coroutines.flow.MutableStateFlow(true)
+    private val native = kotlinx.coroutines.flow.MutableStateFlow<T?>(null)
+    fun bind(target: T) {
+        check(native.compareAndSet(null, target)) { "Native peripheral callback owner is already bound" }
+    }
+    fun isActive(): Boolean = active.value
+    fun listenerFor(target: T): ApplePeripheralStackListener? =
+        listener.takeIf { active.value && (native.value === target || native.value == target) }
+    fun retire() { active.value = false }
+}
