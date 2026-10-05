@@ -847,9 +847,9 @@ internal class DefaultBlueFalconPeripheral(
                 val next = current + (source.sessionId to installed)
                 if (tokens.compareAndSet(current, next)) {
                     // Retirement racing installation cannot retire the previous owner. A
-                    // rejected candidate removes only the exact installed token.
+                    // rejected candidate restores it only while it still owns this slot.
                     if (!source.isCurrent() || generation != activeGeneration) {
-                        removeExactToken(installed)
+                        tokens.compareAndSet(next, current)
                         return
                     }
                     break
@@ -871,7 +871,9 @@ internal class DefaultBlueFalconPeripheral(
             if (generation != activeGeneration) return
             val current = tokens.value
             val owned = current[token.sessionId]?.takeIf { it.backendToken === token.backendToken } ?: return
-            retireToken(owned)
+            owned.backendToken.retire()
+            owned.retire()
+            tokens.compareAndSet(current, current - token.sessionId)
             submit(BackendEvent.SessionClosed(generation, token.sessionId, cause, owned))
         }
         override fun onSubscriptionsChanged(sessionId: PeripheralSessionId, subscriptions: Set<GattCharacteristicId>) {

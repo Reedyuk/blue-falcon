@@ -43,6 +43,7 @@ internal class AppleCentralOperationRegistry {
     private val writes = mutableMapOf<AppleCentralConnectionKey, PendingWrite>()
     private val subscriptions = mutableMapOf<AppleCentralOperationKey, PendingSubscription>()
     private val reads = mutableMapOf<AppleCentralOperationKey, PendingRead>()
+    private val quarantined = mutableSetOf<AppleCentralConnectionKey>()
     private val notifying = mutableSetOf<AppleCentralOperationKey>()
 
     private val _readiness =
@@ -182,9 +183,31 @@ internal class AppleCentralOperationRegistry {
             true
         }
 
+    suspend fun quarantine(connection: AppleCentralConnectionKey, cause: Throwable): Boolean {
+        val completions = mutex.withLock {
+            if (!isActiveLocked(connection) || !quarantined.add(connection)) return false
+            val callbacks = mutableListOf<() -> Unit>()
+            writes[connection]?.let { pending ->
+                pending.onComplete?.let { complete -> callbacks += { complete(CharacteristicWriteResult.Failed(cause)) } }
+                pending.onComplete = null
+            }
+            reads.filterKeys { it.connection == connection }.values.forEach { pending ->
+                pending.onComplete?.let { complete -> callbacks += { complete(AppleReadOutcome.Failed(cause)) } }
+                pending.onComplete = null
+            }
+            subscriptions.filterKeys { it.connection == connection }.values.forEach { pending ->
+                pending.onComplete?.let { complete -> callbacks += { complete(NotificationSubscriptionResult.Failed(cause)) } }
+                pending.onComplete = null
+            }
+            callbacks
+        }
+        completions.forEach { it() }
+        return true
+    }
+
     suspend fun disconnect(connection: AppleCentralConnectionKey): Boolean {
         val completions = mutex.withLock {
-            if (!isActiveLocked(connection)) return false
+            if (activeConnections[connection.peripheralUuid] != connection) return false
             removeConnectionLocked(connection)
         }
         completions.forEach { it() }
@@ -208,11 +231,12 @@ internal class AppleCentralOperationRegistry {
     }
 
     private fun isActiveLocked(connection: AppleCentralConnectionKey): Boolean =
-        activeConnections[connection.peripheralUuid] == connection
+        activeConnections[connection.peripheralUuid] == connection && connection !in quarantined
 
     private fun removeConnectionLocked(
         connection: AppleCentralConnectionKey,
     ): List<() -> Unit> {
+        quarantined.remove(connection)
         activeConnections.remove(connection.peripheralUuid)
         notifying.removeAll { it.connection == connection }
         _readiness.value = _readiness.value - connection

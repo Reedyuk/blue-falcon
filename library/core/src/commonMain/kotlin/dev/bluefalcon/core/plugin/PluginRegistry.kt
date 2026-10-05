@@ -13,6 +13,7 @@ import kotlin.time.TimeSource
  *   case [install] will skip invoking [BlueFalconPlugin.install] since there is no client to pass.
  */
 class PluginRegistry(private val client: BlueFalconClient? = null) {
+    internal var aroundInstall: (() -> Unit) -> Unit = { action -> action() }
     @PublishedApi
     internal val plugins = mutableListOf<BlueFalconPlugin>()
     
@@ -25,9 +26,11 @@ class PluginRegistry(private val client: BlueFalconClient? = null) {
      * by calling `blueFalcon.plugins.install(...)` directly.
      */
     fun <T : BlueFalconPlugin> install(plugin: T, configure: PluginConfig.() -> Unit = {}) {
-        val config = PluginConfig().apply(configure)
-        client?.let { plugin.install(it, config) }
-        plugins.add(plugin)
+        aroundInstall {
+            val config = PluginConfig().apply(configure)
+            client?.let { plugin.install(it, config) }
+            plugins.add(plugin)
+        }
     }
     
     /**
