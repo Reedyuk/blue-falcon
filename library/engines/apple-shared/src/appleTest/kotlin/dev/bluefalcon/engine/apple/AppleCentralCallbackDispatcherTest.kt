@@ -133,6 +133,9 @@ class AppleCentralCallbackDispatcherTest {
         release.complete(Unit)
         runCurrent()
         assertTrue(dispatcher.dispatch {})
+    }
+
+    @Test
     fun `empty native notification snapshot reaches callback worker`() = runTest {
         val dispatcher = AppleCentralCallbackDispatcher(backgroundScope)
         val delivered = mutableListOf<ByteArray>()
