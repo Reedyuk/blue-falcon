@@ -13,6 +13,8 @@ import dev.bluefalcon.peripheral.NotificationResult
 import dev.bluefalcon.peripheral.PeripheralConfig
 import dev.bluefalcon.peripheral.PeripheralSessionId
 import kotlinx.coroutines.test.runTest
+import dev.bluefalcon.peripheral.internal.BackendSessionToken
+import dev.bluefalcon.peripheral.internal.PeripheralBackendEventSink
 import kotlin.test.Test
 import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
@@ -140,6 +142,32 @@ class ApplePeripheralBackendNotificationTest {
             sink.readinessEvents,
         )
         assertEquals(DisconnectResult.Unsupported, backend.disconnect(SessionId))
+    }
+
+
+    @Test
+    fun retiredRunTokenCannotNotifyReplacementWithSameSessionId() = runTest {
+        val stack = FakeApplePeripheralStack()
+        val recording = RecordingAppleBackendSink()
+        var captured: BackendSessionToken? = null
+        val sink = object : PeripheralBackendEventSink by recording {
+            override fun onSessionOpened(token: BackendSessionToken, maximumUpdateValueLength: Int?) {
+                captured = token
+                recording.onSessionOpened(token.sessionId, maximumUpdateValueLength)
+            }
+        }
+        val backend = ApplePeripheralBackend(stack, logger = null)
+        backend.start(Config, sink)
+        stack.emit(AppleGattEvent.Subscribed(SessionId, 20, CharacteristicId))
+        val old = requireNotNull(captured)
+        backend.stop()
+        backend.start(Config, sink)
+        stack.emit(AppleGattEvent.Subscribed(SessionId, 20, CharacteristicId))
+        assertEquals(NotificationResult.Disconnected, backend.notify(old, CharacteristicId, byteArrayOf(1), NotificationMode.Notification))
+        // A token is authority issued by this backend, not just a reusable session ID.
+        assertEquals(NotificationResult.Disconnected, backend.notify(BackendSessionToken(SessionId), CharacteristicId, byteArrayOf(2), NotificationMode.Notification))
+        assertTrue(stack.notifications.isEmpty())
+        backend.close()
     }
 
     private suspend fun startedBackend(

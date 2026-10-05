@@ -26,6 +26,7 @@ import kotlinx.coroutines.sync.withLock
 internal class DefaultPeripheralSession(
     override val id: PeripheralSessionId,
     private val backend: PeripheralBackend,
+    internal val token: BackendSessionToken = BackendSessionToken(id),
     parentJob: Job,
     maximumUpdateValueLength: Int?,
 ) : PeripheralSession {
@@ -59,7 +60,7 @@ internal class DefaultPeripheralSession(
         val copiedValue = value.copyOf()
         val callerContext = currentCoroutineContext()
         val operation = stateMutex.withLock {
-            if (mutableState.value != SessionState.Active) {
+            if (mutableState.value != SessionState.Active || !token.isCurrent()) {
                 return@withLock null
             }
 
@@ -67,8 +68,9 @@ internal class DefaultPeripheralSession(
                 start = CoroutineStart.LAZY,
             ) {
                 backendOperationMutex.withLock {
+                    if (!token.isCurrent()) return@withLock NotificationResult.Disconnected
                     backend.notify(
-                        sessionId = id,
+                        token = token,
                         characteristic = characteristic,
                         value = copiedValue,
                         mode = mode,
@@ -80,7 +82,7 @@ internal class DefaultPeripheralSession(
         return try {
             operation.await()
         } catch (cause: CancellationException) {
-            if (mutableState.value != SessionState.Active) {
+            if (mutableState.value != SessionState.Active || !token.isCurrent()) {
                 NotificationResult.Disconnected
             } else {
                 throw cause
@@ -93,7 +95,7 @@ internal class DefaultPeripheralSession(
     override suspend fun disconnect(): DisconnectResult {
         val callerContext = currentCoroutineContext()
         val operation = stateMutex.withLock {
-            if (mutableState.value != SessionState.Active) {
+            if (mutableState.value != SessionState.Active || !token.isCurrent()) {
                 return@withLock null
             }
 
@@ -101,7 +103,8 @@ internal class DefaultPeripheralSession(
                 start = CoroutineStart.LAZY,
             ) {
                 backendOperationMutex.withLock {
-                    backend.disconnect(id)
+                    if (!token.isCurrent()) return@withLock DisconnectResult.AlreadyDisconnected
+                    backend.disconnect(token)
                 }
             }
         }
@@ -110,7 +113,7 @@ internal class DefaultPeripheralSession(
         return try {
             operation.await()
         } catch (cause: CancellationException) {
-            if (mutableState.value != SessionState.Active) {
+            if (mutableState.value != SessionState.Active || !token.isCurrent()) {
                 DisconnectResult.AlreadyDisconnected
             } else {
                 throw cause

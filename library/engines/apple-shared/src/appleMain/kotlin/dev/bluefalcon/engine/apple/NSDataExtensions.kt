@@ -6,6 +6,7 @@ import platform.posix.memcpy
 
 @OptIn(ExperimentalForeignApi::class)
 fun NSData.toByteArray(): ByteArray {
+    if (length == 0UL) return byteArrayOf()
     val data = this
     val d = memScoped { data }
     return ByteArray(d.length.toInt()).apply {

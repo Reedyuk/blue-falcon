@@ -6,6 +6,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
+import platform.Foundation.NSData
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -132,6 +133,14 @@ class AppleCentralCallbackDispatcherTest {
         release.complete(Unit)
         runCurrent()
         assertTrue(dispatcher.dispatch {})
+    fun `empty native notification snapshot reaches callback worker`() = runTest {
+        val dispatcher = AppleCentralCallbackDispatcher(backgroundScope)
+        val delivered = mutableListOf<ByteArray>()
+        val value = snapshotCallbackPayload(NSData().toByteArray())!!
+        assertTrue(dispatcher.dispatch { delivered += value })
+        runCurrent()
+        assertEquals(1, delivered.size)
+        assertTrue(delivered.single().isEmpty())
     }
 
     @Test
