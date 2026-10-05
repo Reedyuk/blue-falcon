@@ -148,6 +148,47 @@ class AppleCentralRecoveryTest {
         assertTrue(controller.onNotificationStateUpdated(replacement, "characteristic", true, null))
         assertEquals(NotificationSubscriptionResult.Updated(true), second.await())
     }
+    @Test fun rejectedCompletionRetiresOnlyItsExactOwnerAndTerminalizesAllOperationKinds() = runTest {
+        val dispatcher = AppleCentralCallbackDispatcher(backgroundScope, maximumCallbacks = 1)
+        val ownership = AppleNativeConnectionOwnership<Any>()
+        val controller = AppleCentralWriteController(backgroundScope)
+        val peers = (listOf("read", "write", "subscription", "healthy")).associateWith { uuid ->
+            val token = ownership.connected(uuid, Any())
+            token to controller.connected(Target(uuid))
+        }
+        val read = backgroundScope.async { controller.read(Target("read")) }
+        val write = backgroundScope.async { controller.write(Target("write"), byteArrayOf(1), CharacteristicWriteType.WithResponse) }
+        val subscription = backgroundScope.async { controller.setNotificationSubscription(Subscription("subscription"), true) }
+        runCurrent()
+        val release = CompletableDeferred<Unit>()
+        assertTrue(dispatcher.dispatch { release.await() })
+        runCurrent()
+        for (uuid in listOf("read", "write", "subscription")) {
+            val (token, connection) = peers.getValue(uuid)
+            assertFalse(dispatcher.dispatchOwned(token, ownership, onRejected = { rejected ->
+                assertTrue(ownership.beginRetirement(rejected))
+                assertTrue(dispatcher.dispatchTerminal {
+                    controller.disconnected(connection)
+                    ownership.disconnected(rejected)
+                    rejected.terminated.complete(Unit)
+                })
+            }) { error("Rejected completion must not execute") })
+            assertFalse(ownership.isActive(token), "Reject callbacks immediately, before worker resumes")
+            assertFalse(token.terminated.isCompleted)
+        }
+        assertEquals(3, dispatcher.status.value.retainedTerminalCallbacks)
+        assertTrue(ownership.isActive(peers.getValue("healthy").first))
+        release.complete(Unit); runCurrent()
+        assertTrue(read.isCompleted); assertTrue(write.isCompleted); assertTrue(subscription.isCompleted)
+        assertEquals(AppleReadOutcome.Disconnected, read.await())
+        assertEquals(CharacteristicWriteResult.Disconnected, write.await())
+        assertEquals(NotificationSubscriptionResult.Disconnected, subscription.await())
+        for (uuid in listOf("read", "write", "subscription")) assertTrue(peers.getValue(uuid).first.terminated.isCompleted)
+        assertNotNull(controller.currentConnection("healthy"))
+        assertEquals(0, dispatcher.status.value.retainedTerminalCallbacks)
+        dispatcher.close()
+    }
+
     private class Subscription(override val peripheralUuid: String) : AppleNotificationTarget {
         override val characteristicUuid = Uuid.parse("00000000-0000-0000-0000-000000000001")
         override val characteristicIdentity = "characteristic"
