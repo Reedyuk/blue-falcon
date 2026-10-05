@@ -121,7 +121,8 @@ class BlueFalconLifecycleTest {
         engine.fake.emitConnectionStateUpdate(ConnectionStateUpdate(peer, BluetoothPeripheralState.Disconnected))
         runCurrent()
         assertEquals(PeripheralConnectionState.Connected, state.value)
-        assertEquals(PeripheralConnectionState.Connected, client.peripheralState(peer))
+        assertEquals(PeripheralConnectionState.Disconnected(), client.peripheralState(peer))
+        assertEquals(0, client.connectionStateStorageStatus.retainedKeys)
         assertTrue(engine.scope.coroutineContext.job.children.none(), "No facade job remains under the shared engine")
     }
 
@@ -307,6 +308,58 @@ class BlueFalconLifecycleTest {
         assertEquals(1, engine.closeCalls)
     }
 
+    @Test fun disconnectedCallbackChurnEvictsHistoryAndKeepsActiveOwner() = runTest {
+        val engine = LifecycleEngine(backgroundScope)
+        val client = BlueFalcon(engine)
+        val active = engine.fake.createFakePeripheral("active")
+        runCurrent()
+        engine.fake.emitConnectionStateUpdate(ConnectionStateUpdate(active, BluetoothPeripheralState.Connected))
+        runCurrent()
+        repeat(1_000) { i ->
+            val peer = engine.fake.createFakePeripheral("old-$i")
+            engine.fake.emitConnectionStateUpdate(ConnectionStateUpdate(peer, BluetoothPeripheralState.Disconnected))
+            runCurrent()
+        }
+        assertEquals(256, client.connectionStateStorageStatus.retainedKeys)
+        assertEquals(PeripheralConnectionState.Connected, client.peripheralState(active))
+        assertFalse("old-0" in client.connectionStates.value)
+        client.close()
+        assertEquals(0, client.connectionStateStorageStatus.retainedKeys)
+    }
+
+    @Test fun callbackActiveOverflowClosesFinalOwnerAndReportsStableFailure() = runTest {
+        val engine = LifecycleEngine(backgroundScope)
+        val client = BlueFalcon(engine, ownsEngine = true)
+        runCurrent()
+        repeat(257) { i ->
+            val peer = engine.fake.createFakePeripheral("active-$i")
+            engine.fake.emitConnectionStateUpdate(ConnectionStateUpdate(peer, BluetoothPeripheralState.Connected))
+            runCurrent()
+        }
+        assertEquals(1L, client.connectionStateStorageStatus.rejectedUpdates)
+        assertEquals(1, engine.closeCalls)
+        assertEquals(listOf(0, 0, 0), engine.subscriberCounts())
+        assertEquals("Connection state storage capacity exceeded", assertFailsWith<IllegalStateException> { client.close() }.message)
+        assertEquals("Connection state storage capacity exceeded", assertFailsWith<IllegalStateException> { client.close() }.message)
+        assertEquals(0, client.connectionStates.value.size)
+    }
+
+    @Test fun localConnectCapacityRejectsBeforeSubmittingAnotherNativeAttempt() = runTest {
+        val engine = LifecycleEngine(backgroundScope)
+        val client = BlueFalcon(engine)
+        repeat(256) { i -> client.connect(engine.fake.createFakePeripheral("pending-$i")) }
+        val last = engine.fake.createFakePeripheral("overload")
+        assertFailsWith<IllegalStateException> { client.connect(last) }
+        assertFalse("overload" in client.connectionStates.value)
+        assertEquals(256, client.connectionStateStorageStatus.retainedKeys)
+        assertEquals(256, engine.connectCalls)
+        assertEquals(0, engine.closeCalls)
+        client.disconnect(last)
+        assertEquals(1, engine.disconnectCalls, "Full diagnostic history must not block native cleanup")
+        assertFalse("overload" in client.connectionStates.value)
+        client.close()
+    }
+
     private open class NoopPlugin : BlueFalconPlugin {
         override fun install(client: BlueFalconClient, config: PluginConfig) = Unit
     }
@@ -320,6 +373,10 @@ class BlueFalconLifecycleTest {
         var readAction: suspend () -> ByteArray? = { null }
         var closeAction: suspend () -> Unit = {}
         var closeCalls = 0
+        var connectCalls = 0
+        var disconnectCalls = 0
+        override suspend fun disconnect(peripheral: BluetoothPeripheral) { disconnectCalls++; fake.disconnect(peripheral) }
+        override suspend fun connect(peripheral: BluetoothPeripheral, autoConnect: Boolean) { connectCalls++; fake.connect(peripheral, autoConnect) }
         override suspend fun scan(filters: List<ServiceFilter>) = scanAction()
         override fun clearPeripherals() = clearAction()
         override suspend fun readCharacteristic(peripheral: BluetoothPeripheral, characteristic: BluetoothCharacteristic) = readAction()
