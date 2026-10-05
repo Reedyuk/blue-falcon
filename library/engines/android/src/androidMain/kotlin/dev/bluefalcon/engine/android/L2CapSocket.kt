@@ -4,82 +4,50 @@ import dev.bluefalcon.core.BluetoothPeripheral
 import dev.bluefalcon.core.BluetoothSocket
 import dev.bluefalcon.core.L2capException
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.isActive
-import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
-import kotlinx.coroutines.flow.asSharedFlow
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
-import kotlinx.coroutines.withContext
 import java.io.IOException
 
-/**
- * Android L2CAP socket implementation.
- *
- * Wraps an already-connected [android.bluetooth.BluetoothSocket]. A read loop
- * runs on [Dispatchers.IO] emitting inbound chunks to [incoming]; [write]
- * serializes outbound writes through a [Mutex].
- */
-class L2CapSocket(
-    private val socket: android.bluetooth.BluetoothSocket,
+/** Android native socket wrapper; the IO owner closes on every terminal path. */
+class L2CapSocket private constructor(
     override val psm: Int,
     override val peripheral: BluetoothPeripheral,
-    parentScope: CoroutineScope
+    private val io: AndroidSocketIo,
 ) : BluetoothSocket {
+    constructor(
+        socket: android.bluetooth.BluetoothSocket,
+        psm: Int,
+        peripheral: BluetoothPeripheral,
+        parentScope: CoroutineScope,
+    ) : this(psm, peripheral, AndroidSocketIo(
+        socket.inputStream,
+        socket.outputStream,
+        parentScope,
+        { try { socket.close() } catch (_: IOException) {} },
+    ))
 
-    private val _incoming = MutableSharedFlow<ByteArray>(extraBufferCapacity = 64)
-    override val incoming: SharedFlow<ByteArray> = _incoming.asSharedFlow()
+    internal constructor(
+        owner: AndroidOwnedResource<android.bluetooth.BluetoothSocket>,
+        psm: Int,
+        peripheral: BluetoothPeripheral,
+        parentScope: CoroutineScope,
+    ) : this(psm, peripheral, AndroidSocketIo(
+        owner.native.inputStream,
+        owner.native.outputStream,
+        parentScope,
+        { try { owner.close() } catch (_: IOException) {} },
+    ))
 
-    @Volatile
-    override var isOpen: Boolean = true
-        private set
-
-    private val writeMutex = Mutex()
-
-    private val readJob: Job = parentScope.launch(Dispatchers.IO) {
-        val buffer = ByteArray(READ_BUFFER_SIZE)
-        try {
-            while (isActive) {
-                val read = socket.inputStream.read(buffer)
-                if (read == -1) break
-                if (read > 0) _incoming.emit(buffer.copyOf(read))
-            }
-        } catch (_: IOException) {
-            // Socket closed or peer dropped — fall through and mark closed.
-        } finally {
-            isOpen = false
-        }
-    }
+    override val incoming: SharedFlow<ByteArray> get() = io.incoming
+    override val isOpen: Boolean get() = io.isOpen
 
     override suspend fun write(data: ByteArray) {
         if (!isOpen) throw L2capException("L2CAP socket on PSM $psm is closed")
-        writeMutex.withLock {
-            withContext(Dispatchers.IO) {
-                try {
-                    socket.outputStream.write(data)
-                    socket.outputStream.flush()
-                } catch (e: IOException) {
-                    isOpen = false
-                    throw L2capException("Failed to write to L2CAP socket on PSM $psm", e)
-                }
-            }
-        }
-    }
-
-    override fun close() {
-        isOpen = false
-        readJob.cancel()
         try {
-            socket.close()
-        } catch (_: IOException) {
-            // Already closed.
+            io.write(data)
+        } catch (failure: IOException) {
+            throw L2capException("Failed to write to L2CAP socket on PSM $psm", failure)
         }
     }
 
-    companion object {
-        private const val READ_BUFFER_SIZE = 4096
-    }
+    override fun close() = io.close()
 }

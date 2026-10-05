@@ -1,8 +1,7 @@
 package dev.bluefalcon.engine.android
 
 /** One native owner per address, including connections that are still being established. */
-internal class AndroidGattOwnership<T : Any> {
-    val lock = Any()
+internal class AndroidGattOwnership<T : Any>(val lock: Any = Any()) {
     private val owners = mutableMapOf<String, T>()
 
     fun track(address: String, owner: T): T? = synchronized(lock) {
