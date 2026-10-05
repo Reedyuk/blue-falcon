@@ -13,6 +13,17 @@ import dev.bluefalcon.peripheral.PeripheralCapabilities
 import dev.bluefalcon.peripheral.PeripheralConfig
 import dev.bluefalcon.peripheral.PeripheralSessionId
 
+internal class BackendSessionToken(
+    val sessionId: PeripheralSessionId,
+    private val original: BackendSessionToken? = null,
+    private val nativeCurrent: () -> Boolean = { true },
+) {
+    val backendToken: BackendSessionToken get() = original?.backendToken ?: this
+    private val active = kotlinx.coroutines.flow.MutableStateFlow(true)
+    fun isCurrent(): Boolean = active.value && nativeCurrent()
+    fun retire() { active.value = false }
+}
+
 internal interface PeripheralBackend {
     val capabilities: PeripheralCapabilities
 
@@ -32,10 +43,24 @@ internal interface PeripheralBackend {
         mode: NotificationMode,
     ): NotificationResult
 
+    suspend fun notify(token: BackendSessionToken, characteristic: GattCharacteristicId, value: ByteArray, mode: NotificationMode): NotificationResult =
+        if (token.isCurrent()) notify(token.sessionId, characteristic, value, mode) else NotificationResult.Disconnected
+
+    suspend fun disconnect(token: BackendSessionToken): DisconnectResult =
+        if (token.isCurrent()) disconnect(token.sessionId) else DisconnectResult.AlreadyDisconnected
+
     suspend fun disconnect(sessionId: PeripheralSessionId): DisconnectResult
 }
 
 internal interface PeripheralBackendEventSink {
+    fun onSessionClosed(token: BackendSessionToken, cause: Throwable? = null) = onSessionClosed(token.sessionId, cause)
+    fun onSubscriptionsChanged(token: BackendSessionToken, subscriptions: Set<GattCharacteristicId>) = onSubscriptionsChanged(token.sessionId, subscriptions)
+    fun onMaximumUpdateValueLengthChanged(token: BackendSessionToken, maximumUpdateValueLength: Int?) = onMaximumUpdateValueLengthChanged(token.sessionId, maximumUpdateValueLength)
+    fun onNotificationReady(token: BackendSessionToken) = onNotificationReady(NotificationReadiness.Session(token.sessionId))
+    fun onRequest(token: BackendSessionToken, request: BackendGattServerRequest) = onRequest(request)
+    fun onSessionOpened(token: BackendSessionToken, maximumUpdateValueLength: Int?) =
+        onSessionOpened(token.sessionId, maximumUpdateValueLength)
+
     fun onSessionOpened(
         sessionId: PeripheralSessionId,
         maximumUpdateValueLength: Int? = null,
@@ -59,6 +84,8 @@ internal interface PeripheralBackendEventSink {
     fun onNotificationReady(readiness: NotificationReadiness)
 
     fun onRequest(request: BackendGattServerRequest)
+
+    fun onPlatformFailure(token: BackendSessionToken, cause: Throwable) = onPlatformFailure(cause)
 
     fun onPlatformFailure(cause: Throwable)
 }

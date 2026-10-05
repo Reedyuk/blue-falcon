@@ -4,6 +4,7 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
+import platform.Foundation.NSData
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -11,6 +12,17 @@ import kotlin.test.assertTrue
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class AppleCentralCallbackDispatcherTest {
+    @Test
+    fun `empty native notification snapshot reaches callback worker`() = runTest {
+        val dispatcher = AppleCentralCallbackDispatcher(backgroundScope)
+        val delivered = mutableListOf<ByteArray>()
+        val value = snapshotCallbackPayload(NSData().toByteArray())!!
+        assertTrue(dispatcher.dispatch { delivered += value })
+        runCurrent()
+        assertEquals(1, delivered.size)
+        assertTrue(delivered.single().isEmpty())
+    }
+
     @Test
     fun `entered delegate callback cannot recapture a reconnect epoch`() = runTest {
         val ownership = AppleNativeConnectionOwnership<Any>()
