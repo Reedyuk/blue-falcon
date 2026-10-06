@@ -196,6 +196,7 @@ internal class FrameworkApplePeripheralStack(
     private val pendingRequests = mutableMapOf<AppleRequestToken, PendingRequest>()
     private val characteristics = mutableMapOf<GattCharacteristicId, CBMutableCharacteristic>()
     private val centrals = mutableMapOf<PeripheralSessionId, CBCentral>()
+    private val centralTargets = mutableMapOf<PeripheralSessionId, FrameworkCentralTarget>()
 
     private fun createDelegate(
         owner: ApplePeripheralCallbackOwner<CBPeripheralManager>,
@@ -278,6 +279,7 @@ internal class FrameworkApplePeripheralStack(
             owner.listenerFor(peripheral)?.onEvent(
                 AppleGattEvent.Subscribed(
                     sessionId = central.sessionId(),
+                    target = captureCentralTarget(owner, central),
                     maximumUpdateValueLength = central.maximumUpdateValueLength.toInt(),
                     characteristicId = ids.second,
                 ),
@@ -296,6 +298,7 @@ internal class FrameworkApplePeripheralStack(
             owner.listenerFor(peripheral)?.onEvent(
                 AppleGattEvent.Unsubscribed(
                     sessionId = central.sessionId(),
+                    target = captureCentralTarget(owner, central),
                     maximumUpdateValueLength = central.maximumUpdateValueLength.toInt(),
                     characteristicId = ids.second,
                 ),
@@ -314,11 +317,12 @@ internal class FrameworkApplePeripheralStack(
                 return
             }
             val central = didReceiveReadRequest.central
-            if (!retainCentral(owner, central)) return
-            val token = retainRequest(owner, peripheral, didReceiveReadRequest, read = true) ?: return
+            if (!retainCentral(owner, central)) return rejectRequest(peripheral, didReceiveReadRequest, GattResponseStatus.UnlikelyError)
+            val token = retainRequest(owner, peripheral, didReceiveReadRequest, read = true) ?: return rejectRequest(peripheral, didReceiveReadRequest, GattResponseStatus.UnlikelyError)
             owner.listenerFor(peripheral)?.onEvent(
                 AppleGattEvent.CharacteristicRead(
                     sessionId = central.sessionId(),
+                    target = captureCentralTarget(owner, central),
                     maximumUpdateValueLength = central.maximumUpdateValueLength.toInt(),
                     requestToken = token,
                     serviceId = ids.first,
@@ -341,15 +345,25 @@ internal class FrameworkApplePeripheralStack(
                 )
                 return
             }
+            val central = first.central
+            if (requests.size > 256 || requests.any { it.central.identifier != central.identifier }) {
+                rejectRequest(peripheral, first, GattResponseStatus.UnlikelyError)
+                return
+            }
+            var payloadBytes = 0L
+            for (request in requests) {
+                val length = request.value?.length ?: return rejectRequest(peripheral, first, GattResponseStatus.InvalidAttributeValueLength)
+                if (length > (1_048_576L - payloadBytes).toULong()) return rejectRequest(peripheral, first, GattResponseStatus.InvalidAttributeValueLength)
+                payloadBytes += length.toLong()
+            }
+            if (!retainCentral(owner, central)) return rejectRequest(peripheral, first, GattResponseStatus.UnlikelyError)
+            val token = retainRequest(owner, peripheral, first, read = false, payloadBytes = payloadBytes)
+                ?: return rejectRequest(peripheral, first, GattResponseStatus.UnlikelyError)
             val writes = requests.map { request ->
                 val ids = resolveIds(owner, request.characteristic)
-                    ?: return rejectRequest(peripheral, first, GattResponseStatus.InvalidHandle)
+                    ?: return rejectPendingRequest(token, GattResponseStatus.InvalidHandle)
                 val value = request.value?.toByteArray()
-                    ?: return rejectRequest(
-                        peripheral,
-                        first,
-                        GattResponseStatus.InvalidAttributeValueLength,
-                    )
+                    ?: return rejectPendingRequest(token, GattResponseStatus.InvalidAttributeValueLength)
                 AppleCharacteristicWrite(
                     serviceId = ids.first,
                     characteristicId = ids.second,
@@ -357,16 +371,10 @@ internal class FrameworkApplePeripheralStack(
                     value = value,
                 )
             }
-            val central = first.central
-            if (requests.any { it.central.identifier != central.identifier }) {
-                rejectRequest(peripheral, first, GattResponseStatus.UnlikelyError)
-                return
-            }
-            if (!retainCentral(owner, central)) return
-            val token = retainRequest(owner, peripheral, first, read = false) ?: return
             val event = if (writes.size == 1) {
                 AppleGattEvent.CharacteristicWrite(
                     sessionId = central.sessionId(),
+                    target = captureCentralTarget(owner, central),
                     maximumUpdateValueLength = central.maximumUpdateValueLength.toInt(),
                     requestToken = token,
                     write = writes.single(),
@@ -374,6 +382,7 @@ internal class FrameworkApplePeripheralStack(
             } else {
                 AppleGattEvent.CharacteristicWriteBatch(
                     sessionId = central.sessionId(),
+                    target = captureCentralTarget(owner, central),
                     maximumUpdateValueLength = central.maximumUpdateValueLength.toInt(),
                     requestToken = token,
                     writes = writes,
@@ -524,6 +533,7 @@ internal class FrameworkApplePeripheralStack(
             closed = true
                     pendingRequests.clear()
             centrals.clear()
+            centralTargets.clear()
             characteristics.clear()
             serviceWaiters.values.forEach {
                 it.completeExceptionally(PeripheralLifecycleException("Apple stack closed"))
@@ -625,6 +635,7 @@ internal class FrameworkApplePeripheralStack(
         locked {
             characteristics.clear()
             centrals.clear()
+            centralTargets.clear()
             pendingRequests.clear()
             characteristics.putAll(restoredCharacteristics)
         }
@@ -658,6 +669,7 @@ internal class FrameworkApplePeripheralStack(
         return sessionSubscriptions.map { (sessionId, subscriptions) ->
             AppleRestoredSession(
                 sessionId = sessionId,
+                target = centralTargets[sessionId],
                 maximumUpdateValueLength = sessionMaximums.getValue(sessionId),
                 subscriptions = subscriptions,
             )
@@ -709,29 +721,72 @@ internal class FrameworkApplePeripheralStack(
         return GattServiceId(service.UUID.UUIDString.toUuid()) to characteristicId
     }
 
-    private fun retainRequest(owner: ApplePeripheralCallbackOwner<CBPeripheralManager>, peripheral: CBPeripheralManager, request: CBATTRequest, read: Boolean): AppleRequestToken? = locked {
-        if (!ownsCallbackLocked(owner, peripheral)) return null
-        AppleRequestToken(++nextRequestToken).also { token ->
-            pendingRequests[token] = PendingRequest(peripheral, request, read)
+    private fun retainRequest(owner: ApplePeripheralCallbackOwner<CBPeripheralManager>, peripheral: CBPeripheralManager, request: CBATTRequest, read: Boolean, payloadBytes: Long = 0): AppleRequestToken? {
+        var overflow = false
+        val token = locked {
+            if (!ownsCallbackLocked(owner, peripheral)) return null
+            if (pendingRequests.size >= 256 || payloadBytes > 1_048_576L - pendingRequests.values.sumOf { it.payloadBytes }) {
+                overflow = true
+                null
+            } else AppleRequestToken(++nextRequestToken).also { token ->
+                pendingRequests[token] = PendingRequest(peripheral, request, read, payloadBytes, centralTargets[request.central.sessionId()])
+            }
         }
+        if (overflow) owner.resourceOverflow(IllegalStateException("Apple native pending request capacity exceeded"))
+        return token
     }
 
-    private fun rejectPendingRequest(token: AppleRequestToken) {
+    private fun rejectPendingRequest(token: AppleRequestToken, status: GattResponseStatus = GattResponseStatus.UnlikelyError) {
         val target = locked {
             val pending = pendingRequests.remove(token) ?: return
             pending.peripheral to pending.request
         }
-        target.first.respondToRequest(target.second, CBATTErrorUnlikelyError)
+        target.first.respondToRequest(target.second, status.toAppleAttError())
     }
 
     private fun rejectRequest(peripheral: CBPeripheralManager, request: CBATTRequest, status: GattResponseStatus) {
         peripheral.respondToRequest(request, status.toAppleAttError())
     }
 
-    private fun retainCentral(owner: ApplePeripheralCallbackOwner<CBPeripheralManager>, central: CBCentral): Boolean = locked {
-        if (callbackOwner !== owner || !owner.isActive()) return false
-        centrals[central.sessionId()] = central
-        true
+    private fun retainCentral(owner: ApplePeripheralCallbackOwner<CBPeripheralManager>, central: CBCentral): Boolean {
+        val overflow = locked {
+            if (callbackOwner !== owner || !owner.isActive()) return false
+            val id = central.sessionId()
+            if (id !in centrals && centrals.size >= 256) true
+            else {
+                centrals[id] = central
+                val existing = centralTargets[id]
+                if (existing == null || (existing.central !== central && existing.central != central)) {
+                    centralTargets[id] = FrameworkCentralTarget(owner, central)
+                }
+                false
+            }
+        }
+        if (overflow) owner.resourceOverflow(IllegalStateException("Apple native central owner capacity exceeded"))
+        return !overflow
+    }
+
+    private fun captureCentralTarget(owner: ApplePeripheralCallbackOwner<CBPeripheralManager>, central: CBCentral): AppleSessionTarget? = locked {
+        centralTargets[central.sessionId()]?.takeIf { it.owner === owner && (it.central === central || it.central == central) }
+    }
+
+    private inner class FrameworkCentralTarget(val owner: ApplePeripheralCallbackOwner<CBPeripheralManager>, val central: CBCentral) : AppleSessionTarget {
+        override fun isCurrent(): Boolean = locked { owner.isActive() && centralTargets[central.sessionId()] === this }
+        override fun retire() {
+            val pending = locked {
+                if (centralTargets[central.sessionId()] !== this) return
+                centralTargets.remove(central.sessionId())
+                centrals.remove(central.sessionId())
+                pendingRequests.filterValues { it.target === this }.values.toList().also {
+                    pendingRequests.entries.removeAll { entry -> entry.value.target === this }
+                }
+            }
+            pending.forEach { it.peripheral.respondToRequest(it.request, CBATTErrorUnlikelyError) }
+        }
+    }
+
+    override fun retireSession(sessionId: PeripheralSessionId) {
+        locked { centralTargets[sessionId] }?.retire()
     }
 
     private fun ownsCallbackLocked(owner: ApplePeripheralCallbackOwner<CBPeripheralManager>, peripheral: CBPeripheralManager): Boolean =
@@ -741,6 +796,7 @@ internal class FrameworkApplePeripheralStack(
         locked {
             characteristics.clear()
             centrals.clear()
+            centralTargets.clear()
             pendingRequests.clear()
         }
     }
@@ -775,6 +831,8 @@ internal class FrameworkApplePeripheralStack(
         val peripheral: CBPeripheralManager,
         val request: CBATTRequest,
         val read: Boolean,
+        val payloadBytes: Long,
+        val target: AppleSessionTarget?,
     )
 
     private class RestoredState(
@@ -841,4 +899,7 @@ internal class ApplePeripheralCallbackOwner<T : Any>(private val listener: Apple
     fun listenerFor(target: T): ApplePeripheralStackListener? =
         listener.takeIf { active.value && (native.value === target || native.value == target) }
     fun retire() { active.value = false }
+    fun resourceOverflow(cause: Throwable) {
+        if (active.compareAndSet(true, false)) listener.onResourceOverflow(cause)
+    }
 }

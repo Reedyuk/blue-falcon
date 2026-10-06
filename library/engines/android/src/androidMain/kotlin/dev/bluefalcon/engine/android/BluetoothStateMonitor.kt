@@ -25,12 +25,11 @@ internal object BluetoothStateMonitor {
             
             if (!adapterOn && !adapterOff) return
             
-            synchronized(instances) {
+            val current = synchronized(instances) {
                 instances.removeAll { it.get() == null }
-                instances.mapNotNull { it.get() }.forEach { instance ->
-                    instance.onAdapterStateChanged(adapterOn)
-                }
+                instances.mapNotNull { it.get() }
             }
+            current.forEach { it.onAdapterStateChanged(adapterOn) }
         }
     }
     
