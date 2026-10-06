@@ -36,16 +36,16 @@ Blue Falcon provides a unified API for Bluetooth LE operations across all platfo
 
 ```kotlin
 commonMain.dependencies {
-    implementation("dev.bluefalcon:blue-falcon-core:3.7.13")
+    implementation("dev.bluefalcon:blue-falcon-core:3.7.14")
 }
 
 // Add platform-specific engines
 androidMain.dependencies {
-    implementation("dev.bluefalcon:blue-falcon-engine-android:3.7.13")
+    implementation("dev.bluefalcon:blue-falcon-engine-android:3.7.14")
 }
 
 iosMain.dependencies {
-    implementation("dev.bluefalcon:blue-falcon-engine-ios:3.7.13")
+    implementation("dev.bluefalcon:blue-falcon-engine-ios:3.7.14")
 }
 ```
 
@@ -54,19 +54,19 @@ iosMain.dependencies {
 ```kotlin
 commonMain.dependencies {
     // Logging support
-    implementation("dev.bluefalcon:blue-falcon-plugin-logging:3.7.13")
+    implementation("dev.bluefalcon:blue-falcon-plugin-logging:3.7.14")
     
     // Automatic retry with exponential backoff
-    implementation("dev.bluefalcon:blue-falcon-plugin-retry:3.7.13")
+    implementation("dev.bluefalcon:blue-falcon-plugin-retry:3.7.14")
     
     // Service/characteristic caching
-    implementation("dev.bluefalcon:blue-falcon-plugin-caching:3.7.13")
+    implementation("dev.bluefalcon:blue-falcon-plugin-caching:3.7.14")
     
     // Connection success/failure counts, operation latency, and throughput metrics
-    implementation("dev.bluefalcon:blue-falcon-plugin-metrics:3.7.13")
+    implementation("dev.bluefalcon:blue-falcon-plugin-metrics:3.7.14")
 
     // Bounded, observable central GATT command queue
-    implementation("dev.bluefalcon:blue-falcon-plugin-command-queue:3.7.13")
+    implementation("dev.bluefalcon:blue-falcon-plugin-command-queue:3.7.14")
 }
 ```
 
@@ -111,9 +111,9 @@ and macOS**; the other Central platforms do not currently provide this server AP
 
 ```kotlin
 commonMain.dependencies {
-    implementation("dev.bluefalcon:blue-falcon-peripheral:3.7.13")
+    implementation("dev.bluefalcon:blue-falcon-peripheral:3.7.14")
     // Optional bounded notification queue with fair per-session scheduling
-    implementation("dev.bluefalcon:blue-falcon-plugin-queue:3.7.13")
+    implementation("dev.bluefalcon:blue-falcon-plugin-queue:3.7.14")
 }
 ```
 
