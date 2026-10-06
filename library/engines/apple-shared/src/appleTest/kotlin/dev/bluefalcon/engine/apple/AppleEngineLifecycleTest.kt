@@ -76,6 +76,22 @@ class AppleEngineLifecycleTest {
         owner.close { error("Must not reclose retired channel") }
     }
 
+    @Test fun cancelledChannelWaiterReclaimsCompletedButUnclaimedChannel() = runTest {
+        val owner = AppleChannelOwner<Any>()
+        val waiter = CompletableDeferred<Any>()
+        val channel = Any()
+        owner.registerWaiter(waiter)
+        assertTrue(owner.retain(channel))
+        assertTrue(owner.associate(waiter, channel))
+        waiter.complete(channel)
+        waiter.cancel()
+        assertTrue(owner.reclaim(waiter) === channel)
+        owner.forgetWaiter(waiter)
+        var closed = false
+        owner.close { closed = true }
+        assertFalse(closed, "The canceled waiter already reclaimed and closed its channel")
+    }
+
     @Test fun closeReleasesNativeWaiterBeforeJoiningOwnedOperations() = runTest {
         val scope = CoroutineScope(SupervisorJob() + StandardTestDispatcher(testScheduler))
         val release = CompletableDeferred<Unit>()

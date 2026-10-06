@@ -636,26 +636,40 @@ class AppleEngine : ClosableBlueFalconEngine, CBCentralManagerCallback, CBPeriph
             l2capDeferreds.update { it + (identifier to deferred) }
         }
 
-        val channel = try {
+        var channel: CBL2CAPChannel? = null
+        try {
             lifecycle.native { cbPeripheral.openL2CAPChannel(psm.toUShort()) }
-            deferred.await()
+            val received = deferred.await()
+            if (!channelOwner.claim(deferred, received)) {
+                closeNativeChannel(received)
+                channelOwner.release(received)
+                throw L2capException("Apple channel ownership ended before delivery")
+            }
+            channel = received
         } finally {
+            if (channel == null) {
+                channelOwner.reclaim(deferred)?.let { closeNativeChannel(it) }
+            }
             channelOwner.forgetWaiter(deferred)
             l2capDeferreds.update { it - identifier }
         }
 
+        val openedChannel = checkNotNull(channel)
         return@operation lifecycle.native {
             try {
-                AppleL2CapSocket(channel, psm, peripheral, lifecycle::rememberCleanupFailure).also { socket ->
+                AppleL2CapSocket(
+                    openedChannel, psm, peripheral, lifecycle::rememberCleanupFailure, false,
+                ).also { socket ->
                     socket.onClosed = { failure ->
                         lifecycle.rememberCleanupFailure(failure)
                         ownedSockets.update { it - socket }
-                        channelOwner.release(channel)
+                        channelOwner.release(openedChannel)
                     }
                     ownedSockets.update { it + socket }
+                    socket.start()
                 }
             } catch (failure: Throwable) {
-                try { closeNativeChannel(channel) } finally { channelOwner.release(channel) }
+                try { closeNativeChannel(openedChannel) } finally { channelOwner.release(openedChannel) }
                 throw failure
             }
         }
@@ -1091,13 +1105,23 @@ class AppleEngine : ClosableBlueFalconEngine, CBCentralManagerCallback, CBPeriph
                 return@dispatchOwned
             }
             when {
-                error != null ->
+                error != null -> {
+                    if (channel != null) {
+                        try { closeNativeChannel(channel) } finally { channelOwner.release(channel) }
+                    }
                     deferred.completeExceptionally(
                         L2capException("Failed to open L2CAP channel: ${error.localizedDescription}")
                     )
+                }
                 channel == null ->
                     deferred.completeExceptionally(L2capException("L2CAP channel was null"))
-                else -> deferred.complete(channel)
+                else -> {
+                    if (!channelOwner.associate(deferred, channel)) {
+                        try { closeNativeChannel(channel) } finally { channelOwner.release(channel) }
+                    } else if (!deferred.complete(channel)) {
+                        channelOwner.reclaim(deferred)?.let { closeNativeChannel(it) }
+                    }
+                }
             }
         }
         if (!accepted && channel != null) { try { closeNativeChannel(channel) } finally { channelOwner.release(channel) } }

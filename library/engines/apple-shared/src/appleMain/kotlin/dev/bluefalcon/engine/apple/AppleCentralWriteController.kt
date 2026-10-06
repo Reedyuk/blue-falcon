@@ -568,10 +568,10 @@ internal class AppleCentralWriteController(
         }
     }
 
-    private suspend fun startWatch(key: AppleCentralOperationKey, kind: String): Boolean {
+    internal suspend fun startWatch(key: AppleCentralOperationKey, kind: String): Boolean {
         val watch = Watch(WatchKey(key, kind))
         return kotlinx.coroutines.withContext(kotlinx.coroutines.NonCancellable) { mutex.withLock {
-            if (watches.size >= 256 || key.connection in quarantined) return@withLock false
+            if (closed || watches.size >= 256 || key.connection in quarantined) return@withLock false
             watches[watch.key] = watch
             watch.job = scheduleTimeout {
                 val won = mutex.withLock {

@@ -44,12 +44,27 @@ class AppleL2CapSocket internal constructor(
     private val writeNative: ((ByteArray, Int) -> Long)? = null,
     private val openNativeStream: (NSStream) -> Unit = { it.open() },
     private val onCleanupFailure: (Throwable) -> Unit = {},
+    autoStart: Boolean = true,
 ) : BluetoothSocket {
     constructor(channel: CBL2CAPChannel, psm: Int, peripheral: BluetoothPeripheral) : this(channel, psm, peripheral, {})
     internal constructor(channel: CBL2CAPChannel, psm: Int, peripheral: BluetoothPeripheral, onCleanupFailure: (Throwable) -> Unit) : this(
         channel.inputStream ?: throw L2capException("L2CAP channel on PSM $psm has no input stream"),
         channel.outputStream ?: throw L2capException("L2CAP channel on PSM $psm has no output stream"),
         psm, peripheral, onCleanupFailure = onCleanupFailure,
+    )
+    internal constructor(
+        channel: CBL2CAPChannel,
+        psm: Int,
+        peripheral: BluetoothPeripheral,
+        onCleanupFailure: (Throwable) -> Unit,
+        autoStart: Boolean,
+    ) : this(
+        channel.inputStream ?: throw L2capException("L2CAP channel on PSM $psm has no input stream"),
+        channel.outputStream ?: throw L2capException("L2CAP channel on PSM $psm has no output stream"),
+        psm,
+        peripheral,
+        onCleanupFailure = onCleanupFailure,
+        autoStart = autoStart,
     )
     private val _incoming = MutableSharedFlow<ByteArray>(extraBufferCapacity = 64)
     override val incoming: SharedFlow<ByteArray> = _incoming.asSharedFlow()
@@ -58,8 +73,23 @@ class AppleL2CapSocket internal constructor(
     private val closeLock = NSRecursiveLock()
     private var teardownDone = false
     private var retired = false
+    private var closeCallbackInvoked = false
     private var closeFailure: Throwable? = null
-    internal var onClosed: (Throwable?) -> Unit = {}
+    private var closeCallback: ((Throwable?) -> Unit)? = null
+    internal var onClosed: (Throwable?) -> Unit
+        get() = closeCallback ?: {}
+        set(value) {
+            var notify = false
+            closeLock.lock()
+            try {
+                closeCallback = value
+                if (retired && !closeCallbackInvoked) {
+                    closeCallbackInvoked = true
+                    notify = true
+                }
+            } finally { closeLock.unlock() }
+            if (notify) value(closeFailure)
+        }
     override val isOpen: Boolean get() = !closing.value
     private inline fun <T> locked(action: () -> T): T {
         streamLock.lock()
@@ -80,10 +110,18 @@ class AppleL2CapSocket internal constructor(
         }
     }
 
-    init {
-        val runLoop = NSRunLoop.mainRunLoop
+    init { if (autoStart) start() }
+
+    private var started = false
+
+    internal fun start() = locked {
+        if (closing.value) return@locked
+        check(!started) { "Apple L2CAP socket streams already started" }
+        started = true
         try {
+            val runLoop = NSRunLoop.mainRunLoop
             for (stream in listOf(inputStream, outputStream)) {
+                if (closing.value) break
                 stream.delegate = streamDelegate
                 stream.scheduleInRunLoop(runLoop, NSDefaultRunLoopMode)
                 openNativeStream(stream)
@@ -173,7 +211,13 @@ class AppleL2CapSocket internal constructor(
         locked { }
         closeLock.lock()
         try {
-            if (!retired) { retired = true; onClosed(closeFailure) }
+            if (!retired) retired = true
+            if (!closeCallbackInvoked) {
+                closeCallback?.let {
+                    closeCallbackInvoked = true
+                    it(closeFailure)
+                }
+            }
         } finally { closeLock.unlock() }
         closeFailure?.let { throw it }
     }

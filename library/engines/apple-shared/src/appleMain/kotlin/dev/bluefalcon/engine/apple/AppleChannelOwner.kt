@@ -11,6 +11,7 @@ internal class AppleChannelOwner<T : Any> {
     private var closed = false
     private val waiters = mutableSetOf<CompletableDeferred<T>>()
     private val channels = mutableSetOf<T>()
+    private val delivered = mutableMapOf<CompletableDeferred<T>, T>()
     private inline fun <R> locked(action: () -> R): R {
         lock.lock()
         return try { action() } finally { lock.unlock() }
@@ -22,6 +23,17 @@ internal class AppleChannelOwner<T : Any> {
     }
     fun forgetWaiter(waiter: CompletableDeferred<T>) = locked { waiters.remove(waiter); Unit }
     fun retain(channel: T): Boolean = locked { if (closed) false else { channels.add(channel); true } }
+    fun associate(waiter: CompletableDeferred<T>, channel: T): Boolean = locked {
+        if (closed || channel !in channels || waiter !in waiters) false
+        else { delivered[waiter] = channel; true }
+    }
+    fun claim(waiter: CompletableDeferred<T>, channel: T): Boolean = locked {
+        if (delivered[waiter] !== channel) false
+        else { delivered.remove(waiter); true }
+    }
+    fun reclaim(waiter: CompletableDeferred<T>): T? = locked {
+        delivered.remove(waiter)?.also { channels.remove(it) }
+    }
     fun release(channel: T) = locked { channels.remove(channel); Unit }
     fun close(closeChannel: (T) -> Unit) {
         val retained = locked {
@@ -29,6 +41,7 @@ internal class AppleChannelOwner<T : Any> {
             closed = true
             val pending = waiters.toList()
             waiters.clear()
+            delivered.clear()
             val native = channels.toList()
             channels.clear()
             pending to native

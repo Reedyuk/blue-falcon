@@ -9,6 +9,22 @@ import kotlin.test.*
 
 @OptIn(ExperimentalForeignApi::class)
 class AppleSocketLifecycleTest {
+    @Test fun closeDuringStreamStartupStillNotifiesLateInstalledOwner() {
+        val input = NSInputStream(data = byteArrayOf(1).toData())
+        val output = NSOutputStream.outputStreamToMemory()
+        val socket = AppleL2CapSocket(input, output, 42, Peer, openNativeStream = { stream ->
+            if (stream === input) {
+                input.delegate!!.stream(input, NSStreamEventErrorOccurred)
+            } else {
+                stream.open()
+            }
+        })
+        var notifications = 0
+        socket.onClosed = { notifications++ }
+        assertFalse(socket.isOpen)
+        assertEquals(1, notifications)
+    }
+
     @Test fun closeDetachesBothRealNativeStreamsAndRejectsFurtherIO() = runTest {
         val input = NSInputStream(data = byteArrayOf(1, 2).toData())
         val output = NSOutputStream.outputStreamToMemory()
