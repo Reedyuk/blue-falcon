@@ -86,6 +86,7 @@ internal class AppleCentralWriteController(
     },
 ) {
     private val mutex = Mutex()
+    private var closed = false
     private val quarantined = mutableSetOf<AppleCentralConnectionKey>()
     private data class WatchKey(val key: AppleCentralOperationKey, val kind: String)
     private class Watch(val key: WatchKey) { var job: kotlinx.coroutines.Job? = null }
@@ -105,8 +106,7 @@ internal class AppleCentralWriteController(
     val notificationUpdates: SharedFlow<NotificationSubscriptionUpdate> =
         _notificationUpdates.asSharedFlow()
 
-    init {
-        scope.launch(start = CoroutineStart.UNDISPATCHED) {
+    private val readinessForwarder = scope.launch(start = CoroutineStart.UNDISPATCHED) {
             registry.readyEdges.collect { connection ->
                 val active = mutex.withLock {
                     connections[connection.peripheralUuid] == connection
@@ -123,15 +123,19 @@ internal class AppleCentralWriteController(
                 }
             }
         }
-    }
 
     suspend fun connected(peer: AppleCentralWritePeer): AppleCentralConnectionKey {
+        mutex.withLock { check(!closed) { "Apple central controller is closed" } }
         val maximumWithResponse =
             peer.maximumWriteValueLength(CharacteristicWriteType.WithResponse)
         val maximumWithoutResponse =
             peer.maximumWriteValueLength(CharacteristicWriteType.WithoutResponse)
         val connection = registry.connected(peer.peripheralUuid)
         mutex.withLock {
+            if (closed) {
+                registry.disconnect(connection)
+                error("Apple central controller is closed")
+            }
             watches.filterKeys { it.key.peripheralUuid == peer.peripheralUuid }.values.forEach { it.job?.cancel() }
             watches.keys.removeAll { it.key.peripheralUuid == peer.peripheralUuid }
             quarantined.removeAll { it.peripheralUuid == peer.peripheralUuid }
@@ -158,6 +162,24 @@ internal class AppleCentralWriteController(
                 )
         }
         return connection
+    }
+
+    suspend fun close() {
+        val pending = mutex.withLock {
+            if (closed) return
+            closed = true
+            val jobs = watches.values.mapNotNull { it.job }
+            watches.clear()
+            quarantined.clear()
+            connections.clear()
+            _capabilities.value = emptyMap()
+            jobs
+        }
+        readinessForwarder.cancel()
+        pending.forEach { it.cancel() }
+        registry.close()
+        pending.forEach { it.join() }
+        readinessForwarder.join()
     }
 
     suspend fun disconnected(peripheralUuid: String): Boolean {
@@ -546,10 +568,10 @@ internal class AppleCentralWriteController(
         }
     }
 
-    private suspend fun startWatch(key: AppleCentralOperationKey, kind: String): Boolean {
+    internal suspend fun startWatch(key: AppleCentralOperationKey, kind: String): Boolean {
         val watch = Watch(WatchKey(key, kind))
         return kotlinx.coroutines.withContext(kotlinx.coroutines.NonCancellable) { mutex.withLock {
-            if (watches.size >= 256 || key.connection in quarantined) return@withLock false
+            if (closed || watches.size >= 256 || key.connection in quarantined) return@withLock false
             watches[watch.key] = watch
             watch.job = scheduleTimeout {
                 val won = mutex.withLock {

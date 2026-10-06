@@ -20,6 +20,16 @@ import kotlin.test.assertTrue
 class AppleCentralWriteTest {
 
     @Test
+    fun `watchdog registration is rejected after controller close`() = runTest {
+        var scheduled = 0
+        val controller = AppleCentralWriteController(backgroundScope, scheduleTimeout = { scheduled++; kotlinx.coroutines.Job() })
+        controller.close()
+
+        assertFalse(controller.startWatch(AppleCentralOperationKey("peer", 1, "characteristic"), "read"))
+        assertEquals(0, scheduled)
+    }
+
+    @Test
     fun `characteristic identity includes owning service`() {
         val characteristicUuid = "2A37"
 
