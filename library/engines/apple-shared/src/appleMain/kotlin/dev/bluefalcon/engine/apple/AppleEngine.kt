@@ -29,8 +29,17 @@ class AppleEngine : BlueFalconEngine, CBCentralManagerCallback, CBPeripheralCall
     
     override val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     
-    private val _peripherals = MutableStateFlow<Set<BluetoothPeripheral>>(emptySet())
-    override val peripherals: StateFlow<Set<BluetoothPeripheral>> = _peripherals.asStateFlow()
+    private val discovery = AppleDiscoveryStore<BluetoothPeripheral>(
+        keyOf = { it.uuid },
+        payloadSize = { it.manufacturerData.values.sumOf { bytes -> bytes.size.toLong() } },
+        isPinned = { device ->
+            val token = nativeConnectionOwnership.current(device.uuid)
+            device is AppleBluetoothPeripheral && token != null &&
+                token.owner === device.cbPeripheral && nativeConnectionOwnership.isActive(token)
+        },
+    )
+    override val peripherals: StateFlow<Set<BluetoothPeripheral>> = discovery.peripherals
+    val discoveryStorageStatus: AppleDiscoveryStorageStatus get() = discovery.status
     
     private val _managerState = MutableStateFlow(BluetoothManagerState.NotReady)
     override val managerState: StateFlow<BluetoothManagerState> = _managerState.asStateFlow()
@@ -82,6 +91,7 @@ class AppleEngine : BlueFalconEngine, CBCentralManagerCallback, CBPeripheralCall
     
     // Peripheral delegate for handling peripheral events
     private val connectionAttempts = AppleConnectionAttemptCoordinator()
+    val connectionAttemptStorageStatus: StateFlow<AppleConnectionAttemptStorageStatus> = connectionAttempts.status
     private val peerManagers = ApplePeerManagerEpochs<BluetoothPeripheralManager>()
     private val terminalWatches = AppleTerminalWatchdogs<AppleNativeConnectionToken<CBPeripheral>>({ action ->
         scope.launch { delay(10_000L); action() }
@@ -133,7 +143,7 @@ class AppleEngine : BlueFalconEngine, CBCentralManagerCallback, CBPeripheralCall
     }
     
     override fun clearPeripherals() {
-        _peripherals.value = emptySet()
+        discovery.clear()
     }
     
     override suspend fun connect(peripheral: BluetoothPeripheral, autoConnect: Boolean) {
@@ -603,26 +613,24 @@ class AppleEngine : BlueFalconEngine, CBCentralManagerCallback, CBPeripheralCall
         if (isScanning) {
             val uuid = peripheral.identifier.UUIDString
             val rssiValue = rssi.floatValue
-            val mfData = parseManufacturerData(advertisementData)
-            val existing = _peripherals.value.find { it.uuid == uuid } as? AppleBluetoothPeripheral
+            val mfData = parseManufacturerData(advertisementData) ?: run { discovery.reject(); return }
+            val existing = discovery.valueFor(uuid) as? AppleBluetoothPeripheral
             if (existing != null) {
+                val retainedData = mfData.ifEmpty { existing.manufacturerData }
+                if (!discovery.put(existing, retainedData.values.sumOf { it.size.toLong() })) return
                 existing.rssi = rssiValue
                 if (mfData.isNotEmpty()) existing.manufacturerData = mfData
                 _rssiUpdates.tryEmit(uuid to rssiValue)
             } else {
                 val device = AppleBluetoothPeripheral(peripheral, rssiValue, mfData)
-                _peripherals.value = _peripherals.value + device
+                discovery.put(device, mfData.values.sumOf { it.size.toLong() })
             }
         }
     }
 
-    private fun parseManufacturerData(advertisementData: Map<Any?, *>): Map<Int, ByteArray> {
+    private fun parseManufacturerData(advertisementData: Map<Any?, *>): Map<Int, ByteArray>? {
         val raw = advertisementData["kCBAdvDataManufacturerData"] as? NSData ?: return emptyMap()
-        val bytes = raw.toByteArray()
-        if (bytes.size < 2) return emptyMap()
-        val companyId = (bytes[0].toInt() and 0xFF) or ((bytes[1].toInt() and 0xFF) shl 8)
-        val payload = bytes.copyOfRange(2, bytes.size)
-        return mapOf(companyId to payload)
+        return decodeAppleManufacturerData(raw.length) { raw.toByteArray() }
     }
     
     override fun onPeripheralConnected(peripheral: CBPeripheral) = Unit
@@ -635,9 +643,7 @@ class AppleEngine : BlueFalconEngine, CBCentralManagerCallback, CBPeripheralCall
             val uuid = peripheral.identifier.UUIDString
             val existingConnection = connectedPeripherals[uuid]
             if (existingConnection?.ownership === token) return@dispatchOwned
-            val scannedDevice = _peripherals.value
-                .filterIsInstance<AppleBluetoothPeripheral>()
-                .firstOrNull { device -> device.uuid == uuid }
+            val scannedDevice = discovery.valueFor(uuid) as? AppleBluetoothPeripheral
             // Prefer the wrapper previously emitted by scanning so its advertisement metadata
             // (manufacturer data, RSSI, and advertised identity) survives the transition to a
             // GATT connection. CoreBluetooth's connected CBPeripheral does not carry that data.
@@ -645,8 +651,14 @@ class AppleEngine : BlueFalconEngine, CBCentralManagerCallback, CBPeripheralCall
                 connected = existingConnection?.device,
                 scanned = scannedDevice,
                 create = { AppleBluetoothPeripheral(peripheral, null) },
-                updateNativePeripheral = { selected -> selected.updatePeripheral(peripheral) },
+                updateNativePeripheral = {},
             )
+            if (!discovery.put(device, device.manufacturerData.values.sumOf { it.size.toLong() }, evictInactive = true)) {
+                retirePeer(epoch, token, forced = false)
+                _connectionStateUpdates.tryEmit(ConnectionStateUpdate(device, BluetoothPeripheralState.Disconnected))
+                return@dispatchOwned
+            }
+            device.updatePeripheral(peripheral)
             val connection = centralWriteController.connected(CoreBluetoothWritePeer(peripheral))
             check(token.operationOwner.compareAndSet(null, connection)) { "Apple native token already has an operation owner" }
             connectedPeripherals[uuid] = ActiveAppleConnection(
