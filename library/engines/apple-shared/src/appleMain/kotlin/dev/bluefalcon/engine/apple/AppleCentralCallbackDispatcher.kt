@@ -11,6 +11,10 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.selects.select
+import platform.Foundation.NSHashTable
+import platform.Foundation.NSPointerFunctionsObjectPointerPersonality
+import platform.Foundation.NSPointerFunctionsStrongMemory
+import platform.darwin.NSObject
 
 /** Private ingress counts include the callback currently executing. Ordinary ingress rejects newest; owned rejection retires its peer. */
 data class AppleCallbackIngressStatus(
@@ -24,6 +28,17 @@ data class AppleCallbackIngressStatus(
 internal fun snapshotCallbackPayload(value: ByteArray?): ByteArray? = value?.copyOf()
 
 internal class AppleNativeConnectionToken<T : Any>(val peripheralUuid: String, val owner: T, val origin: Any? = null) {
+    // CoreBluetooth can bridge one ObjC object as distinct Kotlin wrappers. Compare
+    // native pointers, never UUID/value equality; the captured epoch still owns it.
+    private val nativeIdentity = (owner as? NSObject)?.let { native ->
+        NSHashTable(
+            options = NSPointerFunctionsStrongMemory or NSPointerFunctionsObjectPointerPersonality,
+            capacity = 1uL,
+        ).apply { addObject(native) }
+    }
+    fun ownsNative(candidate: T): Boolean =
+        owner === candidate || (candidate is NSObject && nativeIdentity?.containsObject(candidate) == true)
+
     val terminated = CompletableDeferred<Unit>()
     internal val acceptingCallbacks = MutableStateFlow(true)
     internal val operationOwner = MutableStateFlow<AppleCentralConnectionKey?>(null)
@@ -80,7 +95,7 @@ internal class AppleNativeConnectionOwnership<T : Any> {
         owners.value[peripheralUuid]
 
     fun capture(peripheralUuid: String, owner: T): AppleNativeConnectionToken<T>? =
-        current(peripheralUuid)?.takeIf { it.owner === owner && it.acceptingCallbacks.value }
+        current(peripheralUuid)?.takeIf { it.ownsNative(owner) && it.acceptingCallbacks.value }
 }
 
 internal class AppleCentralCallbackDispatcher(
