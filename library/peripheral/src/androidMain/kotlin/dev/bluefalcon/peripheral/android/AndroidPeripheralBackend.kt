@@ -271,12 +271,34 @@ internal class AndroidPeripheralBackend(
 
         scheduleNotificationWatchdog(sessionId, request.third)
         return try {
-            when (val result = request.second?.notify(request.first) ?: stack.notify(request.first)) {
-                AndroidNotificationStartResult.Accepted -> NotificationResult.Sent
-                is AndroidNotificationStartResult.Rejected -> {
-                    synchronized(lock) { if (pendingNotifications[sessionId] === request.third) { pendingNotifications.remove(sessionId)?.watchdog?.cancel() } }
-                    if (result.cause is CancellationException) throw result.cause
-                    NotificationResult.Failed(result.cause)
+            synchronized(lock) {
+                val maximumLength = maximumUpdateLengths[sessionId]
+                val rejection = when {
+                    state != BackendState.Running(request.third.generation) ||
+                        pendingNotifications[sessionId] !== request.third ||
+                        sessionTokens[sessionId] !== request.third.token ||
+                        !request.third.token.isCurrent() || maximumLength == null ->
+                        NotificationResult.Disconnected
+                    subscriptions[sessionId]?.get(characteristic) != mode ->
+                        NotificationResult.Unsupported
+                    value.size > maximumLength -> NotificationResult.Failed(
+                        AndroidNotificationValueTooLongException(value.size, maximumLength),
+                    )
+                    else -> null
+                }
+                if (rejection != null) {
+                    if (pendingNotifications[sessionId] === request.third) {
+                        pendingNotifications.remove(sessionId)?.watchdog?.cancel()
+                    }
+                    return rejection
+                }
+                when (val result = request.second?.notify(request.first) ?: stack.notify(request.first)) {
+                    AndroidNotificationStartResult.Accepted -> NotificationResult.Sent
+                    is AndroidNotificationStartResult.Rejected -> {
+                        synchronized(lock) { if (pendingNotifications[sessionId] === request.third) { pendingNotifications.remove(sessionId)?.watchdog?.cancel() } }
+                        if (result.cause is CancellationException) throw result.cause
+                        NotificationResult.Failed(result.cause)
+                    }
                 }
             }
         } catch (cause: Throwable) {
@@ -731,7 +753,8 @@ internal class AndroidPeripheralBackend(
                     null
                 } else {
                     val maximumUpdateValueLength =
-                        (event.mtu - AttHeaderLength).coerceAtLeast(0)
+                        (event.mtu.coerceAtLeast(AttHeaderLength) - AttHeaderLength)
+                            .coerceAtMost(MAX_ATT_ATTRIBUTE_VALUE_BYTES)
                     maximumUpdateLengths[event.sessionId] = maximumUpdateValueLength
                     val token = sessionTokens[event.sessionId] ?: return null
                     val delivery = {
@@ -1235,6 +1258,7 @@ internal class AndroidPeripheralBackend(
     private companion object {
         const val DefaultMaximumUpdateValueLength = 20
         const val AttHeaderLength = 3
+        private const val MAX_ATT_ATTRIBUTE_VALUE_BYTES = 512
         const val CccdUuid = "00002902-0000-1000-8000-00805f9b34fb"
         const val CccdValueLength = 2
         val DisableCccdValue = byteArrayOf(0, 0)

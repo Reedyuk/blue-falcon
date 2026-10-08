@@ -449,9 +449,33 @@ class AndroidEngine(
                 ) {
                     // Apply the value/writeType at dispatch time so a queued write never mutates the
                     // characteristic while a previously queued operation on it is still in flight.
-                    writeType?.let { wt -> char.writeType = wt }
-                    char.setValue(payload)
-                    it.writeCharacteristic(char)
+                    val nativeWriteType = writeType ?: char.writeType
+                    val ordinaryWriteType = when (nativeWriteType) {
+                        BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT -> CharacteristicWriteType.WithResponse
+                        BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE -> CharacteristicWriteType.WithoutResponse
+                        else -> null
+                    }
+                    var accepted = false
+                    val submit = {
+                        writeType?.let { wt -> char.writeType = wt }
+                        char.setValue(payload)
+                        accepted = it.writeCharacteristic(char)
+                        null
+                    }
+                    val rejection = if (ordinaryWriteType == null) {
+                        submit()
+                    } else {
+                        centralWriteState.validateAndSubmitWrite(
+                            peripheral.uuid,
+                            gattCallback.generationFor(it) ?: return@enqueueOperation false,
+                            ordinaryWriteType,
+                            payload.size,
+                            requireReady = false,
+                            submit = submit,
+                        )
+                    }
+                    check(rejection == null) { "Android ordinary write rejected: $rejection" }
+                    accepted
                 }
             }
         }
@@ -516,43 +540,56 @@ class AndroidEngine(
             ?: return CharacteristicWriteResult.Disconnected
 
         return suspendCancellableCoroutine { continuation ->
-            val accepted = gattCallback.trySubmitTyped(gatt, gate,
-                key = operationKey,
-                label = "writeCharacteristic ${targetCharacteristic.uuid}",
-                action = {
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                        gatt.writeCharacteristic(
-                            targetCharacteristic,
-                            payload,
-                            nativeWriteType,
-                        ) == BluetoothStatusCodes.SUCCESS
+            val current = gattCallback.withCurrentResult(gatt) {
+                val rejection = centralWriteState.validateAndSubmitWrite(
+                    peripheralUuid = peripheral.uuid,
+                    generation = generation,
+                    writeType = writeType,
+                    payloadSize = payload.size,
+                ) {
+                    val accepted = gattCallback.trySubmitTyped(gatt, gate,
+                        key = operationKey,
+                        label = "writeCharacteristic ${targetCharacteristic.uuid}",
+                        action = {
+                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                                gatt.writeCharacteristic(
+                                    targetCharacteristic,
+                                    payload,
+                                    nativeWriteType,
+                                ) == BluetoothStatusCodes.SUCCESS
+                            } else {
+                                @Suppress("DEPRECATION")
+                                targetCharacteristic.writeType = nativeWriteType
+                                @Suppress("DEPRECATION")
+                                targetCharacteristic.value = payload
+                                @Suppress("DEPRECATION")
+                                gatt.writeCharacteristic(targetCharacteristic)
+                            }
+                        },
+                        onComplete = { outcome ->
+                            if (continuation.isActive) {
+                                continuation.resume(outcome.toWriteResult())
+                            }
+                        },
+                    )
+                    if (accepted != true) {
+                        return@validateAndSubmitWrite if (accepted == null || gate.isPoisoned) {
+                            CharacteristicWriteResult.Disconnected
+                        } else {
+                            CharacteristicWriteResult.Backpressured
+                        }
                     } else {
-                        @Suppress("DEPRECATION")
-                        targetCharacteristic.writeType = nativeWriteType
-                        @Suppress("DEPRECATION")
-                        targetCharacteristic.value = payload
-                        @Suppress("DEPRECATION")
-                        gatt.writeCharacteristic(targetCharacteristic)
+                        continuation.invokeOnCancellation {
+                            gate.abandon(operationKey)
+                        }
                     }
-                },
-                onComplete = { outcome ->
-                    if (continuation.isActive) {
-                        continuation.resume(outcome.toWriteResult())
-                    }
-                },
-            )
-            if (accepted != true) {
-                continuation.resume(
-                    if (accepted == null || gate.isPoisoned) {
-                        CharacteristicWriteResult.Disconnected
-                    } else {
-                        CharacteristicWriteResult.Backpressured
-                    }
-                )
-            } else {
-                continuation.invokeOnCancellation {
-                    gate.abandon(operationKey)
+                    null
                 }
+                if (rejection != null && continuation.isActive) continuation.resume(rejection)
+                true
+            }
+            if (current == null && continuation.isActive) {
+                continuation.resume(CharacteristicWriteResult.Disconnected)
             }
         }
     }
