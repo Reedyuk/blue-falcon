@@ -119,16 +119,100 @@ class AndroidPeripheralCapacityTest {
         } finally { manager.close() }
     }
 
+    @Test fun mtuShrinkBeforeNativeEntryRejectsReservedNotificationAndReleasesBusySlot() = runTest {
+        val stack = FakeAndroidBluetoothStack()
+        val sink = RecordingBackendSink()
+        val delegate = kotlinx.coroutines.test.StandardTestDispatcher(testScheduler)
+        var shrinkBeforeEntry = true
+        val dispatcher = object : kotlinx.coroutines.CoroutineDispatcher() {
+            override fun dispatch(context: kotlin.coroutines.CoroutineContext, block: Runnable) {
+                if (shrinkBeforeEntry) {
+                    shrinkBeforeEntry = false
+                    stack.emit(AndroidGattEvent.MtuChanged(Id, 26))
+                }
+                delegate.dispatch(context, block)
+            }
+        }
+        val backend = AndroidPeripheralBackend(stack, NoOpLogger, watchdogDispatcher = dispatcher)
+        try {
+            backend.start(config(), sink)
+            stack.emit(AndroidGattEvent.Connected(Id))
+            subscribe(stack, Id)
+            stack.emit(AndroidGattEvent.MtuChanged(Id, 517))
+            val rejected = assertIs<NotificationResult.Failed>(backend.notify(Id, Char, ByteArray(512), NotificationMode.Notification))
+            assertEquals("Android notification value size 512 exceeds the negotiated limit 23", assertIs<AndroidNotificationValueTooLongException>(rejected.cause).message)
+            assertTrue(stack.notifications.isEmpty())
+            assertEquals(NotificationResult.Sent, backend.notify(Id, Char, ByteArray(23), NotificationMode.Notification))
+            assertEquals(23, stack.notifications.single().value.size)
+        } finally { backend.close() }
+    }
+
+    @Test fun capturedTargetIndicationUsesBoundedCapacityBeforeNativeEntry() = runTest {
+        val stack = FakeAndroidBluetoothStack()
+        val sink = RecordingBackendSink()
+        val target = Target()
+        val backend = AndroidPeripheralBackend(stack, NoOpLogger)
+        try {
+            backend.start(config(), sink)
+            stack.emit(AndroidGattEvent.Connected(Id, target))
+            stack.emit(AndroidGattEvent.DescriptorWrite(Id, 1, Service, Char,
+                GattDescriptorId("2902".toUuid()), 0, false, false, byteArrayOf(2, 0), target))
+            stack.emit(AndroidGattEvent.MtuChanged(Id, 517, target))
+            assertIs<NotificationResult.Failed>(backend.notify(Id, Char, ByteArray(513), NotificationMode.Indication))
+            assertTrue(target.notifications.isEmpty())
+            assertTrue(stack.notifications.isEmpty())
+            assertEquals(NotificationResult.Sent, backend.notify(Id, Char, ByteArray(512), NotificationMode.Indication))
+            assertEquals(512, target.notifications.single().value.size)
+            assertTrue(stack.notifications.isEmpty(), "Submission must use the captured native target")
+            backend.close()
+            stack.emit(AndroidGattEvent.MtuChanged(Id, 517, target))
+            assertEquals(NotificationResult.Disconnected, backend.notify(Id, Char, ByteArray(512), NotificationMode.Indication))
+            assertEquals(1, target.notifications.size)
+        } finally { backend.close() }
+    }
+
+    @Test fun unsubscribeBetweenReservationAndNativeEntryReleasesBusySlot() = runTest {
+        val stack = FakeAndroidBluetoothStack()
+        val sink = RecordingBackendSink()
+        val delegate = kotlinx.coroutines.test.StandardTestDispatcher(testScheduler)
+        var unsubscribe = true
+        val dispatcher = object : kotlinx.coroutines.CoroutineDispatcher() {
+            override fun dispatch(context: kotlin.coroutines.CoroutineContext, block: Runnable) {
+                if (unsubscribe) {
+                    unsubscribe = false
+                    subscribe(stack, Id, enabled = false)
+                }
+                delegate.dispatch(context, block)
+            }
+        }
+        val backend = AndroidPeripheralBackend(stack, NoOpLogger, watchdogDispatcher = dispatcher)
+        try {
+            backend.start(config(), sink)
+            stack.emit(AndroidGattEvent.Connected(Id))
+            subscribe(stack, Id)
+            stack.emit(AndroidGattEvent.MtuChanged(Id, 517))
+            assertEquals(NotificationResult.Unsupported, backend.notify(Id, Char, ByteArray(512), NotificationMode.Notification))
+            assertTrue(stack.notifications.isEmpty())
+            subscribe(stack, Id)
+            assertEquals(NotificationResult.Sent, backend.notify(Id, Char, ByteArray(512), NotificationMode.Notification))
+            assertEquals(1, stack.notifications.size)
+        } finally { backend.close() }
+    }
+
     private class Target : AndroidSessionTarget {
         var current = true
+        val notifications = mutableListOf<AndroidNotificationRequest>()
         override fun isCurrent() = current
         override fun sendResponse(response: AndroidGattResponse) = true
-        override fun notify(request: AndroidNotificationRequest) = AndroidNotificationStartResult.Accepted
+        override fun notify(request: AndroidNotificationRequest): AndroidNotificationStartResult {
+            notifications += request
+            return AndroidNotificationStartResult.Accepted
+        }
         override fun disconnect() = true
     }
     private fun config() = PeripheralConfig(AdvertiseConfig(services = listOf(
         GattServiceConfig(Service.uuid.toString(), listOf(
-            GattCharacteristicConfig(Char.uuid.toString(), setOf(CharacteristicProperty.NOTIFY)),
+            GattCharacteristicConfig(Char.uuid.toString(), setOf(CharacteristicProperty.NOTIFY, CharacteristicProperty.INDICATE)),
         )),
     )))
     private fun subscribe(stack: FakeAndroidBluetoothStack, id: PeripheralSessionId, enabled: Boolean = true) {

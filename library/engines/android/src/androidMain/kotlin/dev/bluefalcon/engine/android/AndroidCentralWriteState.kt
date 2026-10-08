@@ -56,7 +56,8 @@ internal class AndroidCentralWriteState(initialGeneration: Long = 0) {
         if (!successful || activeGenerations[peripheralUuid] != generation) return@synchronized
         replaceCapabilities(
             peripheralUuid = peripheralUuid,
-            maximumLength = (mtu - ATT_HEADER_LENGTH).coerceAtLeast(0),
+            maximumLength = (mtu.coerceAtLeast(ATT_HEADER_LENGTH) - ATT_HEADER_LENGTH)
+                .coerceAtMost(MAX_ATT_ATTRIBUTE_VALUE_BYTES),
             ready = currentReady(peripheralUuid),
         )
     }
@@ -113,6 +114,7 @@ internal class AndroidCentralWriteState(initialGeneration: Long = 0) {
         generation: Long,
         writeType: CharacteristicWriteType,
         payloadSize: Int,
+        requireReady: Boolean = true,
     ): CharacteristicWriteResult? = synchronized(lock) {
         if (activeGenerations[peripheralUuid] != generation) {
             return CharacteristicWriteResult.Disconnected
@@ -121,13 +123,25 @@ internal class AndroidCentralWriteState(initialGeneration: Long = 0) {
             CharacteristicWriteKey(peripheralUuid, writeType)
         ] ?: return CharacteristicWriteResult.Disconnected
         if (!capability.supported) return CharacteristicWriteResult.Unsupported
-        if (!capability.ready) return CharacteristicWriteResult.Backpressured
+        if (requireReady && !capability.ready) return CharacteristicWriteResult.Backpressured
         val maximumLength = capability.maximumLength
         if (maximumLength != null && payloadSize > maximumLength) {
             return CharacteristicWriteResult.PayloadTooLarge(maximumLength)
         }
         null
     }
+
+    /** Caller holds the native owner lock through validation and synchronous submission. */
+    fun validateAndSubmitWrite(
+        peripheralUuid: String,
+        generation: Long,
+        writeType: CharacteristicWriteType,
+        payloadSize: Int,
+        requireReady: Boolean = true,
+        submit: () -> CharacteristicWriteResult?,
+    ): CharacteristicWriteResult? =
+        validateWrite(peripheralUuid, generation, writeType, payloadSize, requireReady)
+            ?: submit()
 
     private fun replaceCapabilities(
         peripheralUuid: String,
@@ -167,6 +181,7 @@ internal class AndroidCentralWriteState(initialGeneration: Long = 0) {
     companion object {
         private const val DEFAULT_WRITE_PAYLOAD_LENGTH = 20
         private const val ATT_HEADER_LENGTH = 3
+        private const val MAX_ATT_ATTRIBUTE_VALUE_BYTES = 512
     }
 }
 
