@@ -84,11 +84,11 @@ class RpiEngine : BlueFalconEngine {
             // Blessed skips a queued write with no callback when the link is down, so no pending
             // write of this peripheral can complete any more.
             pendingWrites.disconnected(peripheral.address)
-            links.ended(peripheral.address)
+            links.ended(peripheral.address, peripheral.state.toLinkState())
         }
 
         override fun onConnectionFailed(peripheral: BlessedPeripheral, status: BluetoothCommandStatus) {
-            links.ended(peripheral.address)
+            links.ended(peripheral.address, peripheral.state.toLinkState())
         }
     }
     
@@ -187,16 +187,15 @@ class RpiEngine : BlueFalconEngine {
             ?: throw IllegalArgumentException("Peripheral must be an RpiBluetoothPeripheral")
         val nativePeripheral = rpiPeripheral.nativePeripheral
 
-        val address = nativePeripheral.address
-
-        val start = links.prepareConnect(address) { nativePeripheral.state.toLinkState() }
-        if (start == RpiConnectStart.Withdrawn) return
-        // No suspension from here to the Blessed call, so a cancellation cannot come between.
-        if (start == RpiConnectStart.NewLink) links.linkStarts(address, rpiPeripheral::clearServices)
-
-        val callback = createPeripheralCallback(rpiPeripheral)
-        peripheralCallbacks[peripheral.uuid] = callback
-        bluetoothManager.connectPeripheral(nativePeripheral, callback)
+        links.connect(
+            address = nativePeripheral.address,
+            linkState = { nativePeripheral.state.toLinkState() },
+            reset = rpiPeripheral::clearServices,
+        ) {
+            val callback = createPeripheralCallback(rpiPeripheral)
+            peripheralCallbacks[peripheral.uuid] = callback
+            bluetoothManager.connectPeripheral(nativePeripheral, callback)
+        }
     }
     
     override suspend fun disconnect(peripheral: dev.bluefalcon.core.BluetoothPeripheral) {

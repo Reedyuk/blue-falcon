@@ -35,14 +35,26 @@ class RpiLinksTest {
     /** The number of times that the services of the board were removed. */
     private var resets = 0
 
+    /** The number of connects to the board that went to Blessed. */
+    private var starts = 0
+
     private val down = { RpiLinkState.Down }
     private val scanAndStop = { address: String -> listOf("address $address", "stop") }
 
-    /** Prepares a connect and starts its link, as `RpiEngine.connect()` does. */
-    private suspend fun prepare(address: String = BOARD, state: () -> RpiLinkState = down): RpiConnectStart =
-        links.prepareConnect(address, state).also { start ->
-            if (start == RpiConnectStart.NewLink) links.linkStarts(address) { if (address == BOARD) resets++ }
-        }
+    /** Connects as `RpiEngine.connect()` does. [started] runs when the connect goes to Blessed. */
+    private suspend fun connect(
+        address: String = BOARD,
+        started: () -> Unit = {},
+        state: () -> RpiLinkState = down,
+    ): RpiConnectStart = links.connect(
+        address = address,
+        linkState = state,
+        reset = { if (address == BOARD) resets++ },
+        start = {
+            if (address == BOARD) starts++
+            started()
+        },
+    )
 
     // --- The device object of BlueZ
 
@@ -50,7 +62,7 @@ class RpiLinksTest {
     fun `a connect to a peripheral that BlueZ has starts no scan`() = runTest {
         devices += BOARD
 
-        assertEquals(RpiConnectStart.NewLink, prepare())
+        assertEquals(RpiConnectStart.NewLink, connect())
 
         assertEquals(emptyList(), scanner.requests)
         assertEquals(0, currentTime)
@@ -63,7 +75,7 @@ class RpiLinksTest {
             devices += BOARD
         }
 
-        assertEquals(RpiConnectStart.NewLink, prepare())
+        assertEquals(RpiConnectStart.NewLink, connect())
 
         assertEquals(scanAndStop(BOARD), scanner.requests)
         assertEquals(300, currentTime)
@@ -71,7 +83,7 @@ class RpiLinksTest {
 
     @Test
     fun `a connect fails when BlueZ does not find the peripheral`() = runTest {
-        assertFailsWith<BluetoothUnknownException> { prepare() }
+        assertFailsWith<BluetoothUnknownException> { connect() }
 
         assertEquals(scanAndStop(BOARD), scanner.requests)
         assertEquals(DISCOVERY_MS, currentTime)
@@ -86,7 +98,7 @@ class RpiLinksTest {
             devices += BOARD
         }
 
-        assertEquals(RpiConnectStart.NewLink, prepare())
+        assertEquals(RpiConnectStart.NewLink, connect())
 
         assertEquals("services []", scanner.scan)
         assertEquals(listOf("services []"), scanner.requests)
@@ -103,20 +115,20 @@ class RpiLinksTest {
             devices += BOARD
         }
 
-        assertEquals(RpiConnectStart.NewLink, prepare())
+        assertEquals(RpiConnectStart.NewLink, connect())
 
         assertEquals(null, scanner.scan)
     }
 
     @Test
     fun `a cancelled connect stops its scan`() = runTest {
-        val connect = launch { prepare() }
+        val caller = launch { connect() }
         advanceTimeBy(200)
         assertEquals("address $BOARD", scanner.scan)
 
-        connect.cancelAndJoin()
+        caller.cancelAndJoin()
 
-        assertTrue(connect.isCancelled)
+        assertTrue(caller.isCancelled)
         assertEquals(null, scanner.scan)
     }
 
@@ -127,7 +139,7 @@ class RpiLinksTest {
             if (++checks > 3) throw BluetoothUnknownException("no answer") else false
         }
 
-        assertFailsWith<BluetoothUnknownException> { failing.prepareConnect(BOARD, down) }
+        assertFailsWith<BluetoothUnknownException> { failing.connect(BOARD, down, reset = {}, start = {}) }
 
         assertEquals(scanAndStop(BOARD), scanner.requests)
     }
@@ -141,8 +153,8 @@ class RpiLinksTest {
             devices += OTHER
         }
 
-        val first = async { prepare(BOARD) }
-        val second = async { prepare(OTHER) }
+        val first = async { connect(BOARD) }
+        val second = async { connect(OTHER) }
 
         assertEquals(listOf(RpiConnectStart.NewLink, RpiConnectStart.NewLink), awaitAll(first, second))
         assertEquals(scanAndStop(BOARD) + scanAndStop(OTHER), scanner.requests)
@@ -154,8 +166,8 @@ class RpiLinksTest {
             delay(1_500)
             devices += BOARD
         }
-        val first = async { prepare(BOARD) }
-        val second = async { runCatching { prepare(OTHER) } }
+        val first = async { connect(BOARD) }
+        val second = async { runCatching { connect(OTHER) } }
 
         assertEquals(RpiConnectStart.NewLink, first.await())
         assertTrue(second.await().exceptionOrNull() is BluetoothUnknownException)
@@ -168,8 +180,8 @@ class RpiLinksTest {
             delay(300)
             devices += BOARD
         }
-        val first = async { prepare(BOARD) }
-        val second = launch { prepare(OTHER) }
+        val first = async { connect(BOARD) }
+        val second = launch { connect(OTHER) }
         advanceTimeBy(100)
 
         second.cancelAndJoin()
@@ -183,11 +195,11 @@ class RpiLinksTest {
     @Test
     fun `a connect waits for the end of a link that closes`() = runTest {
         devices += BOARD
-        assertEquals(RpiConnectStart.NewLink, prepare())
+        assertEquals(RpiConnectStart.NewLink, connect())
         // Blessed reports the link as connected until it starts the disconnect.
         var state = RpiLinkState.Connected
         assertTrue(links.disconnectRequested(BOARD, state))
-        val prepared = async { prepare { state } }
+        val prepared = async { connect { state } }
         advanceTimeBy(1_000)
         state = RpiLinkState.Closing
         advanceTimeBy(1_000)
@@ -196,7 +208,7 @@ class RpiLinksTest {
         // Blessed removes the device object, and then it reports the end of the link.
         state = RpiLinkState.Down
         devices -= BOARD
-        links.ended(BOARD)
+        links.ended(BOARD, RpiLinkState.Down)
         launch {
             delay(300)
             devices += BOARD
@@ -209,12 +221,12 @@ class RpiLinksTest {
     @Test
     fun `a connect waits for the end report of a link that went down`() = runTest {
         devices += BOARD
-        assertEquals(RpiConnectStart.NewLink, prepare())
-        val prepared = async { prepare() }
+        assertEquals(RpiConnectStart.NewLink, connect())
+        val prepared = async { connect() }
         advanceTimeBy(1_000)
         assertFalse(prepared.isCompleted)
 
-        links.ended(BOARD)
+        links.ended(BOARD, RpiLinkState.Down)
 
         assertEquals(RpiConnectStart.NewLink, prepared.await())
     }
@@ -222,14 +234,14 @@ class RpiLinksTest {
     @Test
     fun `a cancelled connect stops its wait for the end of a link`() = runTest {
         devices += BOARD
-        assertEquals(RpiConnectStart.NewLink, prepare())
+        assertEquals(RpiConnectStart.NewLink, connect())
         links.disconnectRequested(BOARD, RpiLinkState.Connected)
-        val connect = launch { prepare { RpiLinkState.Closing } }
+        val caller = launch { connect { RpiLinkState.Closing } }
         advanceTimeBy(1_000)
 
-        connect.cancelAndJoin()
+        caller.cancelAndJoin()
 
-        assertTrue(connect.isCancelled)
+        assertTrue(caller.isCancelled)
         assertEquals(1_000, currentTime)
         assertEquals(emptyList(), scanner.requests)
     }
@@ -237,10 +249,10 @@ class RpiLinksTest {
     @Test
     fun `a connect fails when Blessed does not start the disconnect in time`() = runTest {
         devices += BOARD
-        assertEquals(RpiConnectStart.NewLink, prepare())
+        assertEquals(RpiConnectStart.NewLink, connect())
         links.disconnectRequested(BOARD, RpiLinkState.Connected)
 
-        assertFailsWith<BluetoothUnknownException> { prepare { RpiLinkState.Connected } }
+        assertFailsWith<BluetoothUnknownException> { connect { RpiLinkState.Connected } }
 
         assertEquals(LINK_END_MS, currentTime)
     }
@@ -248,10 +260,10 @@ class RpiLinksTest {
     @Test
     fun `a connect fails when BlueZ does not end the link in time`() = runTest {
         devices += BOARD
-        assertEquals(RpiConnectStart.NewLink, prepare())
+        assertEquals(RpiConnectStart.NewLink, connect())
         links.disconnectRequested(BOARD, RpiLinkState.Connected)
 
-        assertFailsWith<BluetoothUnknownException> { prepare { RpiLinkState.Closing } }
+        assertFailsWith<BluetoothUnknownException> { connect { RpiLinkState.Closing } }
 
         assertEquals(LINK_END_MS, currentTime)
     }
@@ -259,10 +271,10 @@ class RpiLinksTest {
     @Test
     fun `a connect goes on when the link is down and Blessed reported no end`() = runTest {
         devices += BOARD
-        assertEquals(RpiConnectStart.NewLink, prepare())
+        assertEquals(RpiConnectStart.NewLink, connect())
         links.disconnectRequested(BOARD, RpiLinkState.Connected)
 
-        assertEquals(RpiConnectStart.NewLink, prepare())
+        assertEquals(RpiConnectStart.NewLink, connect())
 
         assertEquals(LINK_END_MS, currentTime)
     }
@@ -270,9 +282,9 @@ class RpiLinksTest {
     @Test
     fun `a connect to an open link prepares nothing`() = runTest {
         devices += BOARD
-        assertEquals(RpiConnectStart.NewLink, prepare())
+        assertEquals(RpiConnectStart.NewLink, connect())
 
-        assertEquals(RpiConnectStart.LinkExists, prepare { RpiLinkState.Connected })
+        assertEquals(RpiConnectStart.LinkExists, connect { RpiLinkState.Connected })
 
         assertEquals(emptyList(), scanner.requests)
         assertEquals(0, currentTime)
@@ -281,7 +293,7 @@ class RpiLinksTest {
 
     @Test
     fun `a connect to a link with no record prepares nothing`() = runTest {
-        assertEquals(RpiConnectStart.LinkExists, prepare { RpiLinkState.Connected })
+        assertEquals(RpiConnectStart.LinkExists, connect { RpiLinkState.Connected })
 
         assertEquals(emptyList(), scanner.requests)
         assertEquals(0, currentTime)
@@ -291,14 +303,14 @@ class RpiLinksTest {
     @Test
     fun `a second connect waits until Blessed starts the first connect`() = runTest {
         devices += BOARD
-        assertEquals(RpiConnectStart.NewLink, prepare())
+        assertEquals(RpiConnectStart.NewLink, connect())
         var state = RpiLinkState.Down
         launch {
             delay(100)
             state = RpiLinkState.Connecting
         }
 
-        assertEquals(RpiConnectStart.LinkExists, prepare { state })
+        assertEquals(RpiConnectStart.LinkExists, connect { state })
 
         assertEquals(100, currentTime)
         assertEquals(emptyList(), scanner.requests)
@@ -313,9 +325,9 @@ class RpiLinksTest {
             devices += OTHER
         }
         var state = RpiLinkState.Down
-        val first = async { prepare { state }.also { state = RpiLinkState.Connected } }
-        val other = async { prepare(OTHER) }
-        val second = async { prepare { state } }
+        val first = async { connect(started = { state = RpiLinkState.Connected }) { state } }
+        val other = async { connect(OTHER) }
+        val second = async { connect { state } }
 
         assertEquals(
             listOf(RpiConnectStart.NewLink, RpiConnectStart.NewLink, RpiConnectStart.LinkExists),
@@ -323,6 +335,37 @@ class RpiLinksTest {
         )
         // The second connect did not remove the services of the link that the first one made.
         assertEquals(1, resets)
+    }
+
+    @Test
+    fun `two connects that completed their wait make one link`() = runTest {
+        devices += BOARD
+        var state = RpiLinkState.Down
+        // The two waits complete before the first connect goes to Blessed. Blessed then makes the
+        // link of the first connect, with its services, before the second connect goes on.
+        val first = async { connect(started = { state = RpiLinkState.Connected }) { state } }
+        val second = async { connect { state } }
+
+        assertEquals(listOf(RpiConnectStart.NewLink, RpiConnectStart.LinkExists), awaitAll(first, second))
+        // The second connect did not remove the services of the link that the first one made.
+        assertEquals(1, resets)
+        assertEquals(0, currentTime)
+    }
+
+    @Test
+    fun `the second of two connects that completed their wait waits until Blessed starts the first`() = runTest {
+        devices += BOARD
+        var state = RpiLinkState.Down
+        val first = async { connect { state } }
+        val second = async { connect { state } }
+        launch {
+            delay(100)
+            state = RpiLinkState.Connecting
+        }
+
+        assertEquals(listOf(RpiConnectStart.NewLink, RpiConnectStart.LinkExists), awaitAll(first, second))
+        assertEquals(1, resets)
+        assertEquals(100, currentTime)
     }
 
     @Test
@@ -335,14 +378,14 @@ class RpiLinksTest {
             // The end report of the link that went down at 400 ms. Blessed removed the device.
             delay(100)
             devices -= BOARD
-            links.ended(BOARD)
+            links.ended(BOARD, RpiLinkState.Down)
             delay(200)
             devices += BOARD
         }
         var state = RpiLinkState.Down
-        val first = async { prepare { state }.also { state = RpiLinkState.Connected } }
-        val other = async { prepare(OTHER) }
-        val second = async { prepare { state } }
+        val first = async { connect(started = { state = RpiLinkState.Connected }) { state } }
+        val other = async { connect(OTHER) }
+        val second = async { connect { state } }
         launch {
             delay(400)
             state = RpiLinkState.Down
@@ -355,10 +398,10 @@ class RpiLinksTest {
     @Test
     fun `a connect that failed leaves no record`() = runTest {
         devices += BOARD
-        assertEquals(RpiConnectStart.NewLink, prepare())
-        links.ended(BOARD)
+        assertEquals(RpiConnectStart.NewLink, connect())
+        links.ended(BOARD, RpiLinkState.Down)
 
-        assertEquals(RpiConnectStart.NewLink, prepare())
+        assertEquals(RpiConnectStart.NewLink, connect())
 
         assertEquals(0, currentTime)
     }
@@ -369,22 +412,55 @@ class RpiLinksTest {
     fun `the services are removed before a new link and at its end`() = runTest {
         devices += BOARD
 
-        assertEquals(RpiConnectStart.NewLink, prepare())
+        assertEquals(RpiConnectStart.NewLink, connect())
         assertEquals(1, resets)
 
-        links.ended(BOARD)
+        links.ended(BOARD, RpiLinkState.Down)
         assertEquals(2, resets)
 
         // Blessed can report the end of one link through two callbacks.
-        links.ended(BOARD)
+        links.ended(BOARD, RpiLinkState.Down)
         assertEquals(2, resets)
+    }
+
+    @Test
+    fun `the second end report of a link does not end the link that came after`() = runTest {
+        devices += BOARD
+        assertEquals(RpiConnectStart.NewLink, connect())
+        links.ended(BOARD, RpiLinkState.Down)
+        // A connect comes between the two end reports of the first link, and Blessed starts it.
+        assertEquals(RpiConnectStart.NewLink, connect())
+        assertEquals(3, resets)
+
+        links.ended(BOARD, RpiLinkState.Connecting)
+
+        // The second link has its record: its services stay, only its first disconnect request
+        // goes to Blessed, and its end removes its services.
+        assertEquals(3, resets)
+        assertTrue(links.disconnectRequested(BOARD, RpiLinkState.Connected))
+        assertFalse(links.disconnectRequested(BOARD, RpiLinkState.Connected))
+        links.ended(BOARD, RpiLinkState.Down)
+        assertEquals(4, resets)
+    }
+
+    @Test
+    fun `an end report for a link that is connected changes no record`() = runTest {
+        devices += BOARD
+        assertEquals(RpiConnectStart.NewLink, connect())
+        assertTrue(links.disconnectRequested(BOARD, RpiLinkState.Connected))
+
+        links.ended(BOARD, RpiLinkState.Connected)
+
+        assertEquals(1, resets)
+        // The record shows that a disconnect of the link is in Blessed.
+        assertFalse(links.disconnectRequested(BOARD, RpiLinkState.Connected))
     }
 
     // --- A disconnect request
 
     @Test
     fun `a disconnect request stops a connect that waits for the scan`() = runTest {
-        val prepared = async { prepare() }
+        val prepared = async { connect() }
         advanceTimeBy(200)
         assertEquals("address $BOARD", scanner.scan)
 
@@ -394,20 +470,35 @@ class RpiLinksTest {
         assertEquals(null, scanner.scan)
         assertEquals(200, currentTime)
         assertEquals(0, resets)
+        assertEquals(0, starts)
+    }
+
+    @Test
+    fun `a disconnect request does not stop a later connect`() = runTest {
+        val prepared = async { connect() }
+        advanceTimeBy(200)
+        links.disconnectRequested(BOARD, RpiLinkState.Down)
+        assertEquals(RpiConnectStart.Withdrawn, prepared.await())
+        devices += BOARD
+
+        assertEquals(RpiConnectStart.NewLink, connect())
+
+        assertEquals(1, starts)
     }
 
     @Test
     fun `a disconnect request stops a connect that waits for the end of a link`() = runTest {
         devices += BOARD
-        assertEquals(RpiConnectStart.NewLink, prepare())
+        assertEquals(RpiConnectStart.NewLink, connect())
         assertTrue(links.disconnectRequested(BOARD, RpiLinkState.Connected))
-        val prepared = async { prepare { RpiLinkState.Closing } }
+        val prepared = async { connect { RpiLinkState.Closing } }
         advanceTimeBy(1_000)
 
         links.disconnectRequested(BOARD, RpiLinkState.Closing)
 
         assertEquals(RpiConnectStart.Withdrawn, prepared.await())
         assertEquals(1_000, currentTime)
+        assertEquals(1, starts)
     }
 
     @Test
@@ -423,10 +514,35 @@ class RpiLinksTest {
             true
         }
 
-        assertEquals(RpiConnectStart.Withdrawn, racing.prepareConnect(BOARD, down))
+        var started = false
 
+        assertEquals(RpiConnectStart.Withdrawn, racing.connect(BOARD, down, reset = {}, start = { started = true }))
+
+        assertFalse(started)
         // A record with no link would make this connect wait for the end of that link.
-        assertEquals(RpiConnectStart.NewLink, racing.prepareConnect(BOARD, down))
+        assertEquals(RpiConnectStart.NewLink, racing.connect(BOARD, down, reset = {}, start = {}))
+        assertEquals(0, currentTime)
+    }
+
+    @Test
+    fun `a disconnect request stops a connect that completed its wait`() = runTest {
+        // The request comes after the wait of the connect completed, and before the connect goes
+        // on. The device check is the last step of the wait, and the request runs after it.
+        var requestAfterCheck = true
+        lateinit var racing: RpiLinks
+        racing = RpiLinks(scans, LINK_END_MS, DISCOVERY_MS, POLL_MS) { address ->
+            if (requestAfterCheck) {
+                requestAfterCheck = false
+                launch { racing.disconnectRequested(address, RpiLinkState.Down) }
+            }
+            true
+        }
+        var started = false
+
+        assertEquals(RpiConnectStart.Withdrawn, racing.connect(BOARD, down, reset = {}, start = { started = true }))
+
+        assertFalse(started)
+        assertEquals(RpiConnectStart.NewLink, racing.connect(BOARD, down, reset = {}, start = {}))
         assertEquals(0, currentTime)
     }
 
@@ -442,17 +558,12 @@ class RpiLinksTest {
             true
         }
         var started = false
-        caller = launch {
-            if (racing.prepareConnect(BOARD, down) == RpiConnectStart.NewLink) {
-                racing.linkStarts(BOARD) {}
-                started = true
-            }
-        }
+        caller = launch { racing.connect(BOARD, down, reset = {}, start = { started = true }) }
         caller.join()
 
         assertTrue(caller.isCancelled)
         assertFalse(started)
-        assertEquals(RpiConnectStart.NewLink, racing.prepareConnect(BOARD, down))
+        assertEquals(RpiConnectStart.NewLink, racing.connect(BOARD, down, reset = {}, start = {}))
         assertEquals(0, currentTime)
     }
 
@@ -462,7 +573,7 @@ class RpiLinksTest {
             delay(300)
             devices += BOARD
         }
-        val prepared = async { prepare() }
+        val prepared = async { connect() }
         advanceTimeBy(100)
 
         links.disconnectRequested(OTHER, RpiLinkState.Down)
@@ -473,39 +584,39 @@ class RpiLinksTest {
     @Test
     fun `only the first disconnect request of a link goes to Blessed`() = runTest {
         devices += BOARD
-        assertEquals(RpiConnectStart.NewLink, prepare())
+        assertEquals(RpiConnectStart.NewLink, connect())
 
         assertTrue(links.disconnectRequested(BOARD, RpiLinkState.Connected))
         assertFalse(links.disconnectRequested(BOARD, RpiLinkState.Connected))
         assertFalse(links.disconnectRequested(BOARD, RpiLinkState.Closing))
 
-        links.ended(BOARD)
+        links.ended(BOARD, RpiLinkState.Down)
         assertTrue(links.disconnectRequested(BOARD, RpiLinkState.Down))
     }
 
     @Test
     fun `a disconnect request for a link that is not connected changes no record`() = runTest {
         devices += BOARD
-        assertEquals(RpiConnectStart.NewLink, prepare())
+        assertEquals(RpiConnectStart.NewLink, connect())
 
         // Blessed does nothing for this request, so the link comes.
         assertTrue(links.disconnectRequested(BOARD, RpiLinkState.Connecting))
         assertTrue(links.disconnectRequested(BOARD, RpiLinkState.Connecting))
 
-        assertEquals(RpiConnectStart.LinkExists, prepare { RpiLinkState.Connected })
+        assertEquals(RpiConnectStart.LinkExists, connect { RpiLinkState.Connected })
         assertEquals(0, currentTime)
     }
 
     @Test
     fun `a disconnect request that comes after the end of the link leaves no record`() = runTest {
         devices += BOARD
-        assertEquals(RpiConnectStart.NewLink, prepare())
-        links.ended(BOARD)
+        assertEquals(RpiConnectStart.NewLink, connect())
+        links.ended(BOARD, RpiLinkState.Down)
 
         // The caller read the state as connected before the link went down.
         assertTrue(links.disconnectRequested(BOARD, RpiLinkState.Connected))
 
-        assertEquals(RpiConnectStart.NewLink, prepare())
+        assertEquals(RpiConnectStart.NewLink, connect())
         assertEquals(0, currentTime)
     }
 
