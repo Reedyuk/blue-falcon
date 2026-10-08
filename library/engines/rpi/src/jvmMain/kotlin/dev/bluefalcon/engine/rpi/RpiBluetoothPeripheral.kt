@@ -24,6 +24,8 @@ class RpiBluetoothPeripheral(
 
     override var manufacturerData: Map<Int, ByteArray> = emptyMap()
     
+    // Blessed sets the services on its callback thread, and a caller reads them on a different thread.
+    @Volatile
     private var _services = emptyList<BluetoothService>()
     override val services: List<BluetoothService>
         get() = _services
@@ -33,6 +35,14 @@ class RpiBluetoothPeripheral(
     
     internal fun updateServices(services: List<BluetoothService>) {
         _services = services
+    }
+
+    /**
+     * Removes the services of a link that ended. They are BlueZ objects of that link, and a new
+     * link gets new ones from its own discovery.
+     */
+    internal fun clearServices() {
+        _services = emptyList()
     }
     
     internal fun updateCharacteristicValue(characteristicUuid: String, value: ByteArray) {
