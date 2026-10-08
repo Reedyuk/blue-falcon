@@ -17,6 +17,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import org.freedesktop.dbus.connections.impl.DBusConnectionBuilder
+import org.freedesktop.dbus.exceptions.DBusExecutionException
+import org.freedesktop.dbus.interfaces.Introspectable
 
 /**
  * Raspberry Pi implementation of BlueFalconEngine using the Blessed library
@@ -36,8 +38,8 @@ class RpiEngine : BlueFalconEngine {
     private val _serviceDiscoveryUpdates = MutableSharedFlow<ServiceDiscoveryUpdate>(extraBufferCapacity = 64)
     override val serviceDiscoveryUpdates: SharedFlow<ServiceDiscoveryUpdate> = _serviceDiscoveryUpdates
     
-    override var isScanning: Boolean = false
-        private set
+    override val isScanning: Boolean
+        get() = scans.applicationScanActive
     
     private val peripheralMap = mutableMapOf<String, RpiBluetoothPeripheral>()
     private val peripheralCallbacks = mutableMapOf<String, BluetoothPeripheralCallback>()
@@ -64,6 +66,10 @@ class RpiEngine : BlueFalconEngine {
             peripheral: BlessedPeripheral,
             scanResult: ScanResult
         ) {
+            // A connect can start a scan of its own (see RpiScans). Only a scan of the application
+            // gives peripherals to the application.
+            if (!isScanning) return
+
             val address = peripheral.address
             val device = peripheralMap.getOrPut(address) {
                 RpiBluetoothPeripheral(peripheral)
@@ -78,17 +84,27 @@ class RpiEngine : BlueFalconEngine {
             // Blessed skips a queued write with no callback when the link is down, so no pending
             // write of this peripheral can complete any more.
             pendingWrites.disconnected(peripheral.address)
+            links.ended(peripheral.address, peripheral.state.toLinkState())
+        }
+
+        override fun onConnectionFailed(peripheral: BlessedPeripheral, status: BluetoothCommandStatus) {
+            links.ended(peripheral.address, peripheral.state.toLinkState())
         }
     }
     
-    private val bluetoothManager: BluetoothCentralManager = run {
-        // blessed-bluez 0.64 sorts adapters by getDeviceName() (the last path component) ascending
-        // and returns the last one. On systems with /org/bluez/test, "test" > "hci0" so the wrong
-        // adapter is chosen. We bypass this by creating the connection ourselves, initialising the
-        // BluezSignalHandler singleton (normally done by package-private BluezAdapterProvider), and
-        // then calling the package-private BluetoothCentralManager constructor with the correct adapter.
-        val connection = DBusConnectionBuilder.forSystemBus().build()
+    // blessed-bluez 0.64 sorts adapters by getDeviceName() (the last path component) ascending
+    // and returns the last one. On systems with /org/bluez/test, "test" > "hci0" so the wrong
+    // adapter is chosen. We bypass this by creating the connection ourselves, initialising the
+    // BluezSignalHandler singleton (normally done by package-private BluezAdapterProvider), and
+    // then calling the package-private BluetoothCentralManager constructor with the correct adapter.
+    private val dbusConnection = DBusConnectionBuilder.forSystemBus().build()
 
+    private val hciAdapter = DbusHelper.findBluezAdapters(dbusConnection)
+        .filter { Regex("/hci\\d+$").containsMatchIn(it.dbusPath) }
+        .maxByOrNull { it.dbusPath }
+        ?: throw IllegalStateException("No Bluetooth HCI adapter found at /org/bluez/hciX")
+
+    private val bluetoothManager: BluetoothCentralManager = run {
         // Initialise the BluezSignalHandler singleton that the CentralManager requires.
         val signalHandlerClass = Class.forName("com.welie.blessed.BluezSignalHandler")
         val createInstanceMethod = signalHandlerClass.getDeclaredMethod(
@@ -96,12 +112,7 @@ class RpiEngine : BlueFalconEngine {
             org.freedesktop.dbus.connections.impl.DBusConnection::class.java
         )
         createInstanceMethod.isAccessible = true
-        createInstanceMethod.invoke(null, connection)
-
-        val hciAdapter = DbusHelper.findBluezAdapters(connection)
-            .filter { Regex("/hci\\d+$").containsMatchIn(it.dbusPath) }
-            .maxByOrNull { it.dbusPath }
-            ?: throw IllegalStateException("No Bluetooth HCI adapter found at /org/bluez/hciX")
+        createInstanceMethod.invoke(null, dbusConnection)
 
         val ctor = BluetoothCentralManager::class.java.declaredConstructors
             .first { it.parameterCount == 3 }
@@ -109,20 +120,47 @@ class RpiEngine : BlueFalconEngine {
         @Suppress("UNCHECKED_CAST")
         ctor.newInstance(bluetoothManagerCallback, emptySet<String>(), hciAdapter) as BluetoothCentralManager
     }
+
+    private val scans = RpiScans(object : RpiScanner {
+        override fun scanForServices(serviceUuids: List<java.util.UUID>) {
+            if (serviceUuids.isNotEmpty()) {
+                bluetoothManager.scanForPeripheralsWithServices(serviceUuids.toTypedArray())
+            } else {
+                bluetoothManager.scanForPeripherals()
+            }
+        }
+
+        override fun scanForAddress(address: String) {
+            bluetoothManager.scanForPeripheralsWithAddresses(arrayOf(address))
+        }
+
+        override fun stop() {
+            bluetoothManager.stopScan()
+        }
+    })
+
+    // The adapter object of BlueZ lists each device object as a child node.
+    private val adapterNode =
+        dbusConnection.getRemoteObject(BLUEZ_BUS_NAME, hciAdapter.dbusPath, Introspectable::class.java)
+
+    private val links = RpiLinks(scans) { address ->
+        // A D-Bus call blocks its thread until BlueZ answers.
+        val adapterXml = withContext(Dispatchers.IO) {
+            try {
+                adapterNode.Introspect()
+            } catch (e: DBusExecutionException) {
+                throw BluetoothUnknownException("BlueZ did not answer: ${e.message}")
+            }
+        }
+        bluezHasChildNode(adapterXml, hciAdapter.getPath(address).substringAfterLast('/'))
+    }
     
     override suspend fun scan(filters: List<ServiceFilter>) {
-        isScanning = true
-        if (filters.isNotEmpty()) {
-            val uuids = filters.map { java.util.UUID.fromString(it.uuid.toString()) }.toTypedArray()
-            bluetoothManager.scanForPeripheralsWithServices(uuids)
-        } else {
-            bluetoothManager.scanForPeripherals()
-        }
+        scans.startApplicationScan(filters.map { java.util.UUID.fromString(it.uuid.toString()) })
     }
     
     override suspend fun stopScanning() {
-        isScanning = false
-        bluetoothManager.stopScan()
+        scans.stopApplicationScan()
     }
     
     override fun clearPeripherals() {
@@ -130,20 +168,44 @@ class RpiEngine : BlueFalconEngine {
         peripheralMap.clear()
     }
     
+    /**
+     * Connects to [peripheral]. A peripheral from an earlier scan can connect again after its link
+     * ended, with no new scan by the caller.
+     *
+     * This call can suspend before the connect starts (see [RpiLinks]):
+     * - until a link of this peripheral that closes is down, with a limit of 5 s;
+     * - then until BlueZ finds the peripheral again when BlueZ does not know it any more, with a
+     *   limit of 5 s. A connect to a second peripheral that needs a scan waits for its turn.
+     *
+     * A [disconnect] or a cancellation in that time stops the connect.
+     *
+     * @throws BluetoothUnknownException when the link that closes does not end, when BlueZ does
+     *   not find the peripheral again, or when BlueZ does not answer.
+     */
     override suspend fun connect(peripheral: dev.bluefalcon.core.BluetoothPeripheral, autoConnect: Boolean) {
         val rpiPeripheral = peripheral as? RpiBluetoothPeripheral
             ?: throw IllegalArgumentException("Peripheral must be an RpiBluetoothPeripheral")
-        
-        val callback = createPeripheralCallback(rpiPeripheral)
-        peripheralCallbacks[peripheral.uuid] = callback
-        bluetoothManager.connectPeripheral(rpiPeripheral.nativePeripheral, callback)
+        val nativePeripheral = rpiPeripheral.nativePeripheral
+
+        links.connect(
+            address = nativePeripheral.address,
+            linkState = { nativePeripheral.state.toLinkState() },
+            reset = rpiPeripheral::clearServices,
+        ) {
+            val callback = createPeripheralCallback(rpiPeripheral)
+            peripheralCallbacks[peripheral.uuid] = callback
+            bluetoothManager.connectPeripheral(nativePeripheral, callback)
+        }
     }
     
     override suspend fun disconnect(peripheral: dev.bluefalcon.core.BluetoothPeripheral) {
         val rpiPeripheral = peripheral as? RpiBluetoothPeripheral
             ?: throw IllegalArgumentException("Peripheral must be an RpiBluetoothPeripheral")
-        
-        bluetoothManager.cancelConnection(rpiPeripheral.nativePeripheral)
+        val nativePeripheral = rpiPeripheral.nativePeripheral
+
+        if (links.disconnectRequested(nativePeripheral.address, nativePeripheral.state.toLinkState())) {
+            bluetoothManager.cancelConnection(nativePeripheral)
+        }
         peripheralCallbacks.remove(peripheral.uuid)
     }
     
@@ -473,6 +535,8 @@ class RpiEngine : BlueFalconEngine {
     companion object {
         private const val READ_TIMEOUT_MS = 10_000L
         private const val WRITE_TIMEOUT_MS = 10_000L
+
+        private const val BLUEZ_BUS_NAME = "org.bluez"
 
         /** Android's `BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE`, as the other engines read it. */
         private const val WRITE_TYPE_NO_RESPONSE = 1
