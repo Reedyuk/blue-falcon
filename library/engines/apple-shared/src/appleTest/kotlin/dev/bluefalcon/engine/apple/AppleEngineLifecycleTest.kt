@@ -5,9 +5,117 @@ import kotlinx.coroutines.*
 import kotlinx.coroutines.test.*
 import kotlin.test.*
 import kotlin.uuid.Uuid
+import platform.Foundation.NSMutableArray
+import platform.Foundation.NSUUID
+import platform.darwin.NSObject
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class AppleEngineLifecycleTest {
+    // Exercises the real lifecycle seam with native ownership components. The injected
+    // cleanup follows closeResources' owner ordering; this is not AppleEngine.connect/
+    // close integration and cannot detect edits confined to those private methods.
+    @Test fun admittedOperationCallerCancellationPreservesOwnerUntilLifecycleClose() = runTest {
+        val engineScope = CoroutineScope(SupervisorJob() + StandardTestDispatcher(testScheduler))
+        val epochs = ApplePeerManagerEpochs<Any>()
+        val ownership = AppleNativeConnectionOwnership<NSObject>()
+        val native = NSUUID("00000000-0000-0000-0000-000000000001")
+        val wrapper = NSMutableArray().apply { addObject(native) }.objectAtIndex(0uL) as NSObject
+        val admitted = CompletableDeferred<AppleNativeConnectionToken<NSObject>>()
+        val operationCancelled = CompletableDeferred<Unit>()
+        val cleanupEntered = CompletableDeferred<Unit>()
+        val cleanupRelease = CompletableDeferred<Unit>()
+        val callbackRelease = CompletableDeferred<Unit>()
+        // Keep the worker alive independently to test the ownership fence itself,
+        // rather than making engine-scope cancellation discard the callback for us.
+        val dispatcher = AppleCentralCallbackDispatcher(backgroundScope)
+        var closes = 0
+        var staleEvents = 0
+        var replacementEvents = 0
+        val lifecycle = AppleEngineLifecycle(engineScope) {
+            closes++
+            val retiringEpochs = epochs.closeAdmission()
+            val tokens = ownership.snapshot()
+            tokens.forEach { ownership.beginRetirement(it) }
+            cleanupEntered.complete(Unit)
+            cleanupRelease.await()
+            tokens.forEach { ownership.disconnected(it); it.terminated.complete(Unit) }
+            retiringEpochs.forEach { epochs.finishRetirement(it) }
+        }
+        try {
+            val caller = launch {
+                lifecycle.operation {
+                    val token = lifecycle.native {
+                        val epoch = epochs.reserve("peer")
+                        ownership.connected("peer", native, epoch)
+                    }
+                    admitted.complete(token)
+                    try { awaitCancellation() } finally { operationCancelled.complete(Unit) }
+                }
+            }
+            val token = admitted.await()
+            val epoch = epochs.current("peer")!!
+            caller.cancelAndJoin()
+            operationCancelled.await()
+            assertTrue(caller.isCancelled)
+            assertTrue(engineScope.isActive, "Caller cancellation must not cancel the engine")
+            assertTrue(lifecycle.isOpen)
+            assertEquals(0, closes)
+            assertSame(token, epochs.capture(epoch, ownership, wrapper))
+            assertFalse(token.terminated.isCompleted)
+
+            assertTrue(dispatcher.dispatch { callbackRelease.await() })
+            runCurrent() // Park the worker before queuing the old owner's callback.
+            assertTrue(dispatcher.dispatchOwned(token, ownership, onRejected = { error("Unexpected rejection") }) {
+                staleEvents++
+            })
+            val closing = lifecycle.requestClose()
+            assertFalse(lifecycle.isOpen, "Close must synchronously reject new admission")
+            assertFailsWith<IllegalStateException> { lifecycle.native { error("Late native admission") } }
+            runCurrent()
+            assertTrue(cleanupEntered.isCompleted, "Real lifecycle close must invoke terminal cleanup")
+            assertEquals(1, closes)
+            assertFalse(closing.isCompleted, "Close must await final owner cleanup")
+            assertFalse(ownership.isActive(token))
+            assertNull(epochs.capture(epoch, ownership, wrapper))
+            assertNull(ownership.capture("peer", wrapper))
+            callbackRelease.complete(Unit)
+            runCurrent()
+            assertEquals(0, staleEvents, "Queued callback must observe the retired owner before removal")
+
+            cleanupRelease.complete(Unit)
+            lifecycle.close()
+            assertTrue(closing.isCompleted)
+            assertTrue(token.terminated.isCompleted)
+            assertTrue(epoch.terminated.isCompleted)
+            assertNull(epochs.current("peer"))
+            assertNull(ownership.current("peer"))
+            assertTrue(engineScope.coroutineContext[Job]!!.isCompleted)
+
+            // A fresh manager epoch can own the same native/UUID. Reuse the owner
+            // table adversarially to prove stale removal cannot erase a replacement;
+            // a closed AppleEngine itself cannot reconnect.
+            val replacementEpochs = ApplePeerManagerEpochs<Any>()
+            val replacementEpoch = replacementEpochs.reserve("peer")
+            val replacement = ownership.connected("peer", native, replacementEpoch)
+            assertNull(epochs.capture(epoch, ownership, wrapper))
+            assertSame(replacement, replacementEpochs.capture(replacementEpoch, ownership, wrapper))
+            assertFalse(ownership.disconnected(token))
+            assertFalse(dispatcher.dispatchOwned(token, ownership, onRejected = { error("Stale rejection") }) { staleEvents++ })
+            assertTrue(dispatcher.dispatchOwned(replacement, ownership, onRejected = { error("Replacement rejection") }) { replacementEvents++ })
+            runCurrent()
+            assertEquals(0, staleEvents)
+            assertEquals(1, replacementEvents, "Replacement must remain usable")
+            assertTrue(ownership.isActive(replacement))
+            lifecycle.close()
+            assertEquals(1, closes)
+        } finally {
+            callbackRelease.complete(Unit)
+            cleanupRelease.complete(Unit)
+            lifecycle.close()
+            dispatcher.close()
+        }
+    }
+
     @Test fun successfulCloseStillReportsLateRejectedChannelCleanupFailure() = runTest {
         val owner = AppleEngineLifecycle(CoroutineScope(SupervisorJob() + StandardTestDispatcher(testScheduler))) { }
         owner.close()

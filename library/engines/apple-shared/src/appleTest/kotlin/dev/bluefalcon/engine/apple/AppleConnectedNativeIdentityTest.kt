@@ -1,8 +1,6 @@
 package dev.bluefalcon.engine.apple
 
 import kotlinx.coroutines.CoroutineStart
-import kotlinx.coroutines.awaitCancellation
-import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.collect
@@ -89,15 +87,12 @@ class AppleConnectedNativeIdentityTest {
         dispatcher.close()
     }
 
-    @Test fun cancelledConnectCallerAndCloseCannotLeakIntoReplacement() = runTest {
+    @Test fun explicitTokenRetirementCannotLeakIntoReplacement() = runTest {
         val native = NSUUID("00000000-0000-0000-0000-000000000001")
         val ownership = AppleNativeConnectionOwnership<NSObject>()
         val token = ownership.connected("peer", native)
         val dispatcher = AppleCentralCallbackDispatcher(backgroundScope)
-        val caller = launch(start = CoroutineStart.UNDISPATCHED) { awaitCancellation() }
-        caller.cancelAndJoin()
-        assertSame(token, ownership.capture("peer", rewrap(native)), "Caller cancellation does not retire the engine's native owner")
-        assertTrue(ownership.beginRetirement(token)) // Explicit engine close fences native ingress.
+        assertTrue(ownership.beginRetirement(token)) // Lower-level token retirement, not AppleEngine.close().
         val replacement = ownership.connected("peer", native)
         var events = 0
         assertFalse(dispatcher.dispatchOwned(token, ownership, onRejected = { error("Stale callback retired replacement") }) { events++ })
