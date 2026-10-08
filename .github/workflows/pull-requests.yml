@@ -8,30 +8,137 @@ permissions:
   contents: read
 
 jobs:
-  build-macos:
-    name: Build & Test (macOS)
-    runs-on: macos-latest
+  changes:
+    name: Find Changed Platforms
+    runs-on: ubuntu-latest
+    outputs:
+      jvm: ${{ steps.platforms.outputs.jvm }}
+      android: ${{ steps.platforms.outputs.android }}
+      js: ${{ steps.platforms.outputs.js }}
+      macos: ${{ steps.platforms.outputs.macos }}
+      windows: ${{ steps.platforms.outputs.windows }}
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
-      
+      with:
+        # The merge commit of the pull request and its parents.
+        fetch-depth: 2
+
+    - name: Find changed platforms
+      id: platforms
+      shell: bash
+      # The first parent of the merge commit is the base branch.
+      run: |
+        git diff --name-only --no-renames HEAD^1 HEAD \
+          | bash .github/scripts/changed-platforms.sh \
+          | tee -a "$GITHUB_OUTPUT"
+
+  build-jvm:
+    name: Build & Test (JVM)
+    needs: changes
+    if: needs.changes.outputs.jvm == 'true'
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
     - name: Set up JDK 17
       uses: actions/setup-java@v4
       with:
         java-version: 17
         distribution: 'temurin'
-        
+
     - name: Setup Gradle
       uses: gradle/actions/setup-gradle@v4
-      
-    - name: Build all modules
-      run: ./gradlew -p ./library build --parallel
-      
-    - name: Run tests
-      run: ./gradlew -p ./library test
+
+    - name: Build and test JVM targets
+      # windowsTest is the JVM target of the root module.
+      run: ./gradlew -p ./library jvmTest windowsTest
+
+  build-android:
+    name: Build & Test (Android)
+    needs: changes
+    if: needs.changes.outputs.android == 'true'
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up JDK 17
+      uses: actions/setup-java@v4
+      with:
+        java-version: 17
+        distribution: 'temurin'
+
+    - name: Setup Gradle
+      uses: gradle/actions/setup-gradle@v4
+
+    - name: Build and test Android targets
+      run: ./gradlew -p ./library assembleDebug assembleRelease testDebugUnitTest testReleaseUnitTest lint
+
+  build-js:
+    name: Build & Test (JS)
+    needs: changes
+    if: needs.changes.outputs.js == 'true'
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up JDK 17
+      uses: actions/setup-java@v4
+      with:
+        java-version: 17
+        distribution: 'temurin'
+
+    - name: Setup Gradle
+      uses: gradle/actions/setup-gradle@v4
+
+    - name: Build and test JS and Wasm targets
+      # The wasmWasi target has no test task.
+      run: ./gradlew -p ./library jsTest wasmJsTest compileKotlinWasmWasi compileWebMainKotlinMetadata
+
+  build-macos:
+    name: Build & Test (macOS)
+    needs: changes
+    if: needs.changes.outputs.macos == 'true'
+    runs-on: macos-latest
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up JDK 17
+      uses: actions/setup-java@v4
+      with:
+        java-version: 17
+        distribution: 'temurin'
+
+    - name: Setup Gradle
+      uses: gradle/actions/setup-gradle@v4
+
+    - name: Build and test Kotlin/Native targets
+      # A test task compiles and links its target before it runs the tests.
+      # A device target has no test task, thus the job only compiles it.
+      # The metadata tasks compile the source sets that more than one target uses.
+      run: |
+        ./gradlew -p ./library \
+          macosArm64Test macosX64Test \
+          iosSimulatorArm64Test iosX64Test compileTestKotlinIosArm64 \
+          tvosSimulatorArm64Test tvosX64Test compileTestKotlinTvosArm64 \
+          watchosSimulatorArm64Test watchosX64Test \
+          compileTestKotlinWatchosArm32 compileTestKotlinWatchosArm64 compileTestKotlinWatchosDeviceArm64 \
+          linuxX64Test compileTestKotlinLinuxArm64 mingwX64Test \
+          allMetadataJar \
+          compileNativeMainKotlinMetadata compileAppleMainKotlinMetadata \
+          compileIosMainKotlinMetadata compileMacosMainKotlinMetadata
+
+    - name: Build macOS JVM engine
+      run: ./gradlew -p ./library :engines:macos-jvm:build
 
   build-windows:
     name: Build (Windows)
+    needs: changes
+    if: needs.changes.outputs.windows == 'true'
     runs-on: windows-latest
     steps:
     - name: Checkout code
