@@ -79,7 +79,7 @@ class AppleEngine : ClosableBlueFalconEngine, CBCentralManagerCallback, CBPeriph
         isPinned = { device ->
             val token = nativeConnectionOwnership.current(device.uuid)
             device is AppleBluetoothPeripheral && token != null &&
-                token.owner === device.cbPeripheral && nativeConnectionOwnership.isActive(token)
+                token.ownsNative(device.cbPeripheral) && nativeConnectionOwnership.isActive(token)
         },
     )
     override val peripherals: StateFlow<Set<BluetoothPeripheral>> = discovery.peripherals
