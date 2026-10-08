@@ -72,6 +72,36 @@ class AndroidPeripheralBackendNotificationTest {
     }
 
     @Test
+    fun synchronousNotificationCompletionReleasesReservedBusySlot() = runTest {
+        val fixture = startedFixture()
+        try {
+            fixture.subscribe(SessionId, NotificationMode.Notification)
+            fixture.stack.beforeNotify = {
+                fixture.stack.emit(AndroidGattEvent.NotificationSent(SessionId, BluetoothGatt.GATT_SUCCESS))
+            }
+
+            assertEquals(NotificationResult.Sent, fixture.backend.notify(
+                SessionId, CharacteristicId, byteArrayOf(1), NotificationMode.Notification,
+            ))
+            assertEquals(listOf<NotificationReadiness>(NotificationReadiness.Session(SessionId)), fixture.sink.readiness)
+
+            fixture.stack.beforeNotify = null
+            assertEquals(NotificationResult.Sent, fixture.backend.notify(
+                SessionId, CharacteristicId, byteArrayOf(2), NotificationMode.Notification,
+            ))
+            assertEquals(NotificationResult.Busy, fixture.backend.notify(
+                SessionId, CharacteristicId, byteArrayOf(3), NotificationMode.Notification,
+            ))
+            assertEquals(2, fixture.stack.notifications.size)
+            fixture.stack.emit(AndroidGattEvent.NotificationSent(SessionId, BluetoothGatt.GATT_SUCCESS))
+            assertEquals(2, fixture.sink.readiness.size)
+            assertTrue(fixture.sink.platformFailures.isEmpty())
+        } finally {
+            fixture.backend.close()
+        }
+    }
+
+    @Test
     fun notificationRejectsPayloadAboveNegotiatedLimit() = runTest {
         val fixture = startedFixture()
         fixture.subscribe(SessionId, NotificationMode.Notification)
