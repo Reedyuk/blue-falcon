@@ -87,11 +87,11 @@ data class NotificationSubscriptionUpdate(
  * Describes the platform's bonding/pairing capability.
  */
 enum class BondCapability {
-    /** The platform can both request bonding and report state changes (Android, RPi/BlueZ). */
+    /** The platform can request bonding and report state changes (Android, Windows, RPi/BlueZ). */
     Supported,
     /** Bonding happens implicitly on first encrypted access; the app cannot request or observe it (Apple). */
     Implicit,
-    /** The platform exposes no bonding API at all (Windows, JS/Web Bluetooth). */
+    /** The platform exposes no bonding API at all (JS/Web Bluetooth). */
     Unsupported,
 }
 

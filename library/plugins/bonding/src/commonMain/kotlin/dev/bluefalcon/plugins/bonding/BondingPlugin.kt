@@ -7,6 +7,9 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlin.time.Duration
@@ -40,8 +43,8 @@ sealed class BondResult {
 /**
  * Plugin that provides observable, typed bonding/pairing workflow for BLE peripherals.
  *
- * Where the platform can request and observe bond state changes (Android), the plugin
- * awaits the result reactively. Where the platform cannot (Apple, Windows, JS), the
+ * Where the platform can request and observe bond state changes (Android, Windows), the plugin
+ * awaits the result reactively. Where the platform cannot (Apple, JS), the
  * plugin returns [BondResult.Unsupported] immediately rather than silently no-op-ing.
  *
  * Usage:
@@ -109,8 +112,13 @@ class BondingPlugin(private val config: Config) : BlueFalconPlugin {
         }
 
         return try {
-            bf.createBond(peripheral)
-            awaitBondState(bf, peripheral.uuid, BlueFalconBondState.Bonded)
+            coroutineScope {
+                val bondState = async(start = CoroutineStart.UNDISPATCHED) {
+                    awaitBondState(bf, peripheral.uuid, BlueFalconBondState.Bonded)
+                }
+                bf.createBond(peripheral)
+                bondState.await()
+            }
         } catch (e: Throwable) {
             BondResult.Failed(e)
         }
@@ -128,8 +136,13 @@ class BondingPlugin(private val config: Config) : BlueFalconPlugin {
         }
 
         return try {
-            bf.removeBond(peripheral)
-            awaitUnbondState(bf, peripheral.uuid)
+            coroutineScope {
+                val bondState = async(start = CoroutineStart.UNDISPATCHED) {
+                    awaitUnbondState(bf, peripheral.uuid)
+                }
+                bf.removeBond(peripheral)
+                bondState.await()
+            }
         } catch (e: Throwable) {
             BondResult.Failed(e)
         }

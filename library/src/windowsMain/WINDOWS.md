@@ -125,6 +125,9 @@ blueFalcon.stopScanning()
 // Connect to a device
 blueFalcon.connect(device, autoConnect = false)
 
+// Pair with a device when encrypted GATT access is required
+blueFalcon.createBond(device)
+
 // Read a characteristic
 blueFalcon.readCharacteristic(device, characteristic)
 
@@ -214,7 +217,7 @@ Windows 10 version 1803+ requires the following capabilities in your application
 
 1. **Descriptor Operations**: Full descriptor read/write support is partially implemented
 2. **Background Operation**: Continuous background scanning may be limited by Windows power management
-3. **Pairing**: Explicit pairing is handled by Windows, not directly by this library
+3. **Pairing**: Pairing uses the Windows system pairing flow and requests at least encryption-level protection. Windows may display a system confirmation prompt; the peripheral must support pairing.
 4. **Multiple Adapters**: Supports adapter enumeration and selection through `adapters()` and `selectAdapter()` on Windows.
 
 ## Troubleshooting

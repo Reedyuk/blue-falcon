@@ -32,6 +32,16 @@ Java_dev_bluefalcon_engine_windows_WindowsEngine_nativeDisconnect(JNIEnv* env, j
 }
 
 JNIEXPORT jint JNICALL
+Java_dev_bluefalcon_engine_windows_WindowsEngine_nativeCreateBond(JNIEnv* env, jobject thiz, jlong address) {
+    return BluetoothLEManager::getInstance().createBond(static_cast<uint64_t>(address));
+}
+
+JNIEXPORT jint JNICALL
+Java_dev_bluefalcon_engine_windows_WindowsEngine_nativeRemoveBond(JNIEnv* env, jobject thiz, jlong address) {
+    return BluetoothLEManager::getInstance().removeBond(static_cast<uint64_t>(address));
+}
+
+JNIEXPORT jint JNICALL
 Java_dev_bluefalcon_engine_windows_WindowsEngine_nativeGetConnectionState(JNIEnv* env, jobject thiz, jlong address) {
     return BluetoothLEManager::getInstance().getConnectionState(static_cast<uint64_t>(address));
 }

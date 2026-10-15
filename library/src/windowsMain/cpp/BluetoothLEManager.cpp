@@ -372,6 +372,61 @@ void BluetoothLEManager::disconnect(uint64_t address) {
     }
 }
 
+int BluetoothLEManager::createBond(uint64_t address) {
+    try {
+        BluetoothLEDevice device{nullptr};
+        {
+            SRWSharedLockGuard lock(&m_connectionsMutex);
+            auto it = m_connections.find(address);
+            if (it != m_connections.end()) {
+                device = it->second->device;
+            }
+        }
+
+        if (device == nullptr) {
+            device = BluetoothLEDevice::FromBluetoothAddressAsync(address).get();
+        }
+        if (device == nullptr) return 1;
+
+        auto pairing = device.DeviceInformation().Pairing();
+        if (pairing.IsPaired()) return 0;
+        if (!pairing.CanPair()) return 1;
+
+        auto result = pairing.PairAsync(DevicePairingProtectionLevel::Encryption).get();
+        return result.Status() == DevicePairingResultStatus::Paired ||
+               result.Status() == DevicePairingResultStatus::AlreadyPaired ? 0 : 1;
+    } catch (...) {
+        return 1;
+    }
+}
+
+int BluetoothLEManager::removeBond(uint64_t address) {
+    try {
+        BluetoothLEDevice device{nullptr};
+        {
+            SRWSharedLockGuard lock(&m_connectionsMutex);
+            auto it = m_connections.find(address);
+            if (it != m_connections.end()) {
+                device = it->second->device;
+            }
+        }
+
+        if (device == nullptr) {
+            device = BluetoothLEDevice::FromBluetoothAddressAsync(address).get();
+        }
+        if (device == nullptr) return 1;
+
+        auto pairing = device.DeviceInformation().Pairing();
+        if (!pairing.IsPaired()) return 0;
+
+        auto result = pairing.UnpairAsync().get();
+        return result.Status() == DeviceUnpairingResultStatus::Unpaired ||
+               result.Status() == DeviceUnpairingResultStatus::AlreadyUnpaired ? 0 : 1;
+    } catch (...) {
+        return 1;
+    }
+}
+
 int BluetoothLEManager::getConnectionState(uint64_t address) {
     SRWLockGuard lock(&m_connectionsMutex);
 

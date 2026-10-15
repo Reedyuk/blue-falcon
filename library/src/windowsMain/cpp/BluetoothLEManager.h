@@ -61,6 +61,8 @@ public:
     void stopScan();
     void connect(uint64_t address);
     void disconnect(uint64_t address);
+    int createBond(uint64_t address);
+    int removeBond(uint64_t address);
     int getConnectionState(uint64_t address);
     void discoverServices(uint64_t address);
     void discoverCharacteristics(uint64_t address, const std::wstring& serviceUuid);

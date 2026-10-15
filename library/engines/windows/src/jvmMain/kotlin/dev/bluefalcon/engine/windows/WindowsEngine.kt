@@ -42,6 +42,18 @@ class WindowsEngine : BlueFalconEngine {
 
     private val _serviceDiscoveryUpdates = MutableSharedFlow<ServiceDiscoveryUpdate>(extraBufferCapacity = 64)
     override val serviceDiscoveryUpdates: SharedFlow<ServiceDiscoveryUpdate> = _serviceDiscoveryUpdates
+
+    private val _bondStateUpdates = MutableSharedFlow<BondStateUpdate>(extraBufferCapacity = 64)
+    override val bondStateUpdates: SharedFlow<BondStateUpdate> = _bondStateUpdates
+
+    override val centralCapabilities = CentralCapabilities(
+        reliableWriteResults = false,
+        writeWithoutResponseReadiness = false,
+        perConnectionMaximumWriteLength = false,
+        notificationSubscriptionResults = false,
+        restoration = false,
+        bondCapability = BondCapability.Supported,
+    )
     
     override var isScanning: Boolean = false
         private set
@@ -437,11 +449,29 @@ class WindowsEngine : BlueFalconEngine {
     }
     
     override suspend fun createBond(peripheral: BluetoothPeripheral) {
-        throw UnsupportedOperationException("Bonding is not supported on this platform")
+        val windowsPeripheral = peripheral as? WindowsBluetoothPeripheral
+            ?: throw IllegalArgumentException("Peripheral must be a WindowsBluetoothPeripheral")
+
+        _bondStateUpdates.emit(BondStateUpdate(peripheral.uuid, BlueFalconBondState.Bonding))
+        try {
+            check(nativeCreateBond(windowsPeripheral.address) == 0) {
+                "Windows could not pair with peripheral ${peripheral.uuid}"
+            }
+            _bondStateUpdates.emit(BondStateUpdate(peripheral.uuid, BlueFalconBondState.Bonded))
+        } catch (e: Throwable) {
+            _bondStateUpdates.emit(BondStateUpdate(peripheral.uuid, BlueFalconBondState.None))
+            throw e
+        }
     }
     
     override suspend fun removeBond(peripheral: BluetoothPeripheral) {
-        throw UnsupportedOperationException("Bonding is not supported on this platform")
+        val windowsPeripheral = peripheral as? WindowsBluetoothPeripheral
+            ?: throw IllegalArgumentException("Peripheral must be a WindowsBluetoothPeripheral")
+
+        check(nativeRemoveBond(windowsPeripheral.address) == 0) {
+            "Windows could not remove the pairing with peripheral ${peripheral.uuid}"
+        }
+        _bondStateUpdates.emit(BondStateUpdate(peripheral.uuid, BlueFalconBondState.None))
     }
     
     // Callbacks from native code
@@ -691,6 +721,8 @@ class WindowsEngine : BlueFalconEngine {
     private external fun nativeChangeMTU(address: Long, mtu: Int)
     private external fun nativeEnumerateAdapters(): Array<BluetoothAdapterData>
     private external fun nativeSelectAdapter(adapterId: String): Int
+    private external fun nativeCreateBond(address: Long): Int
+    private external fun nativeRemoveBond(address: Long): Int
     
     companion object {
         const val WRITE_TYPE_DEFAULT = 0x02

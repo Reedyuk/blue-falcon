@@ -21,7 +21,7 @@ differently "bonding" behaves per platform:
 |---|---|---|
 | Android | Calls `BluetoothDevice.createBond()`; result arrives asynchronously via `ACTION_BOND_STATE_CHANGED`, observed internally by a registered broadcast receiver but never surfaced to the caller. | Calls the hidden `removeBond()` method via reflection (not part of the public Android SDK). |
 | Apple (iOS/macOS) | No-op — CoreBluetooth has no explicit pairing API; pairing happens implicitly the first time an encrypted characteristic is accessed. | No-op — must be done through the system Bluetooth Settings/System Preferences UI; apps cannot unpair programmatically. |
-| Windows | Throws `UnsupportedOperationException`. | Throws `UnsupportedOperationException`. |
+| Windows | Uses WinRT `DeviceInformation.Pairing.PairAsync` with encryption-level protection and emits the completed bond state. | Uses WinRT `UnpairAsync` and emits the unbonded state. |
 | JS (Web Bluetooth) | Throws `UnsupportedOperationException` — the Web Bluetooth spec has no pairing API. | Throws `UnsupportedOperationException`. |
 | Raspberry Pi (BlueZ) | Calls the BlueZ pairing API on an already-connected peripheral; throws if not connected. | Throws `UnsupportedOperationException`. |
 
@@ -35,8 +35,8 @@ Consequences for consumers today:
   at runtime on a specific platform.
 
 Bonding is inherently one of the least portable parts of BLE — the correct response to "please
-unbond this device" genuinely differs (Android: system call; Apple: point the user at Settings;
-Windows/JS: unsupported). Blue Falcon should not hide that unevenness behind a false promise of
+unbond this device" genuinely differs (Android/Windows: system call; Apple: point the user at Settings;
+JS: unsupported). Blue Falcon should not hide that unevenness behind a false promise of
 uniform behavior, but it should give consumers a single, honest, observable API instead of having
 to special-case `createBond`/`removeBond`'s current inconsistent throw/no-op/async behavior
 themselves.
@@ -47,18 +47,18 @@ We will add a `blue-falcon-plugin-bonding` module that layers a typed, observabl
 workflow on top of the existing `createBond`/`removeBond` engine calls, without changing the
 `BlueFalconEngine` interface. Where a platform can report an authoritative bond state change
 (Android today; others as their platform APIs allow), the plugin surfaces it reactively. Where a
-platform cannot (Apple, Windows, JS), the plugin reports that capability gap explicitly rather
+platform cannot (Apple, JS), the plugin reports that capability gap explicitly rather
 than hanging or silently no-op-ing.
 
 ### New types (`plugins/bonding`)
 
 ```kotlin
 enum class BondCapability {
-    /** The platform can both request bonding and report state changes (Android, RPi/BlueZ). */
+    /** The platform can both request bonding and report state changes (Android, Windows, RPi/BlueZ). */
     Supported,
     /** Bonding happens implicitly on first encrypted access; the app cannot request or observe it (Apple). */
     Implicit,
-    /** The platform exposes no bonding API at all (Windows, JS/Web Bluetooth). */
+    /** The platform exposes no bonding API at all (JS/Web Bluetooth). */
     Unsupported,
 }
 
@@ -91,17 +91,17 @@ class BondingPlugin(private val config: Config) : BlueFalconPlugin {
 }
 ```
 
-`requestBond` calls `blueFalcon.createBond(peripheral)` and then:
+`requestBond` subscribes for a bond state update and calls `blueFalcon.createBond(peripheral)`:
 - on Android, awaits the plugin's internal collection of a (new, additive)
   `BlueFalconEngine.bondStateUpdates: SharedFlow<BondStateUpdate>` that the Android engine will be
   extended to emit from its existing (currently internal-only) `ACTION_BOND_STATE_CHANGED`
   receiver, resolving `Bonded`/`Failed` accordingly, or `TimedOut` after `bondTimeout`;
 - on RPi, similarly awaits BlueZ's pairing completion signal;
-- on platforms with `BondCapability.Unsupported`/`Implicit` (Apple, Windows, JS), returns
+- on platforms with `BondCapability.Unsupported`/`Implicit` (Apple, JS), returns
   `BondResult.Unsupported` immediately without calling into the engine, since the engine's current
   no-op/throw behavior gives the plugin nothing to await.
 
-`requestUnbond` mirrors this, immediately returning `Unsupported` on Apple/Windows/JS to match
+`requestUnbond` mirrors this, immediately returning `Unsupported` on Apple/JS to match
 their documented lack of a programmatic API.
 
 ## Consequences
@@ -122,7 +122,7 @@ their documented lack of a programmatic API.
 - Requires one small additive change to `BlueFalconEngine`/`AndroidEngine`/RPi engine
   (`bondStateUpdates` flow) to let the plugin observe real completion instead of guessing from a
   timeout alone. This is the one piece of this ADR that isn't purely additive-at-the-plugin-layer.
-- Cannot make Apple/Windows/JS behave uniformly — the ADR is explicit that `Unsupported`/
+- Cannot make Apple/JS behave uniformly — the ADR is explicit that `Unsupported`/
   `Implicit` results are permanent for those platforms, which may surprise apps expecting parity.
 - `bondTimeout`-based fallback on platforms without a real completion signal (if a future platform
   is added without one) means `Bonded` can never be positively confirmed there — only inferred by
