@@ -112,13 +112,15 @@ class BondingPlugin(private val config: Config) : BlueFalconPlugin {
         }
 
         return try {
-            coroutineScope {
-                val bondState = async(start = CoroutineStart.UNDISPATCHED) {
-                    awaitBondState(bf, peripheral.uuid, BlueFalconBondState.Bonded)
+            withTimeoutOrNull(config.bondTimeout) {
+                coroutineScope {
+                    val bondState = async(start = CoroutineStart.UNDISPATCHED) {
+                        awaitBondState(bf, peripheral.uuid, BlueFalconBondState.Bonded)
+                    }
+                    bf.createBond(peripheral)
+                    bondState.await()
                 }
-                bf.createBond(peripheral)
-                bondState.await()
-            }
+            } ?: BondResult.TimedOut
         } catch (e: Throwable) {
             BondResult.Failed(e)
         }
@@ -136,13 +138,15 @@ class BondingPlugin(private val config: Config) : BlueFalconPlugin {
         }
 
         return try {
-            coroutineScope {
-                val bondState = async(start = CoroutineStart.UNDISPATCHED) {
-                    awaitUnbondState(bf, peripheral.uuid)
+            withTimeoutOrNull(config.bondTimeout) {
+                coroutineScope {
+                    val bondState = async(start = CoroutineStart.UNDISPATCHED) {
+                        awaitUnbondState(bf, peripheral.uuid)
+                    }
+                    bf.removeBond(peripheral)
+                    bondState.await()
                 }
-                bf.removeBond(peripheral)
-                bondState.await()
-            }
+            } ?: BondResult.TimedOut
         } catch (e: Throwable) {
             BondResult.Failed(e)
         }
@@ -153,12 +157,10 @@ class BondingPlugin(private val config: Config) : BlueFalconPlugin {
         peripheralUuid: String,
         targetState: BlueFalconBondState,
     ): BondResult {
-        val result = withTimeoutOrNull(config.bondTimeout) {
-            bf.bondStateUpdates.first { update ->
-                update.peripheralUuid == peripheralUuid &&
-                    (update.state == targetState || update.state == BlueFalconBondState.None)
-            }
-        } ?: return BondResult.TimedOut
+        val result = bf.bondStateUpdates.first { update ->
+            update.peripheralUuid == peripheralUuid &&
+                (update.state == targetState || update.state == BlueFalconBondState.None)
+        }
 
         return if (result.state == targetState) {
             BondResult.Bonded(peripheralUuid)
@@ -171,13 +173,11 @@ class BondingPlugin(private val config: Config) : BlueFalconPlugin {
         bf: BlueFalcon,
         peripheralUuid: String,
     ): BondResult {
-        val completed = withTimeoutOrNull(config.bondTimeout) {
-            bf.bondStateUpdates.first { update ->
-                update.peripheralUuid == peripheralUuid && update.state == BlueFalconBondState.None
-            }
+        bf.bondStateUpdates.first { update ->
+            update.peripheralUuid == peripheralUuid && update.state == BlueFalconBondState.None
         }
 
-        return if (completed != null) BondResult.Unbonded(peripheralUuid) else BondResult.TimedOut
+        return BondResult.Unbonded(peripheralUuid)
     }
 
     companion object {

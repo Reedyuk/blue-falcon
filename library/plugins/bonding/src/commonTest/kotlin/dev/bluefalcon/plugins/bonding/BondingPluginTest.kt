@@ -9,8 +9,12 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.advanceUntilIdle
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -48,6 +52,8 @@ private class FakeEngine(
     var removeBondCalled = false
     var emitBondStateDuringCreate = false
     var emitBondStateDuringRemove = false
+    var suspendCreateBond = false
+    var suspendRemoveBond = false
 
     override suspend fun scan(filters: List<ServiceFilter>) {}
     override suspend fun stopScanning() {}
@@ -73,12 +79,14 @@ private class FakeEngine(
     }
     override suspend fun createBond(peripheral: BluetoothPeripheral) {
         createBondCalled = true
+        if (suspendCreateBond) awaitCancellation()
         if (emitBondStateDuringCreate) {
             emitBondState(BondStateUpdate(peripheral.uuid, BlueFalconBondState.Bonded))
         }
     }
     override suspend fun removeBond(peripheral: BluetoothPeripheral) {
         removeBondCalled = true
+        if (suspendRemoveBond) awaitCancellation()
         if (emitBondStateDuringRemove) {
             emitBondState(BondStateUpdate(peripheral.uuid, BlueFalconBondState.None))
         }
@@ -169,6 +177,24 @@ class BondingPluginTest {
     }
 
     @Test
+    fun `requestBond times out while createBond is still running`() = runTest {
+        val engine = FakeEngine(BondCapability.Supported).apply {
+            suspendCreateBond = true
+        }
+        val falcon = BlueFalcon(engine)
+        val plugin = BondingPlugin.create { bondTimeout = 50.milliseconds }
+        plugin.bind(falcon)
+
+        val request = async { plugin.requestBond(FakePeripheral("device-1")) }
+        runCurrent()
+        advanceTimeBy(50)
+        runCurrent()
+
+        assertTrue(engine.createBondCalled)
+        assertIs<BondResult.TimedOut>(request.await())
+    }
+
+    @Test
     fun `requestUnbond returns Unsupported on non-supported platforms`() = runTest {
         val engine = FakeEngine(BondCapability.Implicit)
         val falcon = BlueFalcon(engine)
@@ -195,6 +221,24 @@ class BondingPluginTest {
         val result = plugin.requestUnbond(peripheral)
         assertIs<BondResult.Unbonded>(result)
         assertTrue(engine.removeBondCalled)
+    }
+
+    @Test
+    fun `requestUnbond times out while removeBond is still running`() = runTest {
+        val engine = FakeEngine(BondCapability.Supported).apply {
+            suspendRemoveBond = true
+        }
+        val falcon = BlueFalcon(engine)
+        val plugin = BondingPlugin.create { bondTimeout = 50.milliseconds }
+        plugin.bind(falcon)
+
+        val request = async { plugin.requestUnbond(FakePeripheral("device-1")) }
+        runCurrent()
+        advanceTimeBy(50)
+        runCurrent()
+
+        assertTrue(engine.removeBondCalled)
+        assertIs<BondResult.TimedOut>(request.await())
     }
 
     @Test

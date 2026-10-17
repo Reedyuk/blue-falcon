@@ -392,7 +392,37 @@ int BluetoothLEManager::createBond(uint64_t address) {
         if (pairing.IsPaired()) return 0;
         if (!pairing.CanPair()) return 1;
 
-        auto result = pairing.PairAsync(DevicePairingProtectionLevel::Encryption).get();
+        auto customPairing = pairing.Custom();
+        auto pairingRequestedToken = customPairing.PairingRequested(
+            [](DeviceInformationCustomPairing const&, DevicePairingRequestedEventArgs const& args) {
+                std::wstring prompt;
+                switch (args.PairingKind()) {
+                    case DevicePairingKinds::ConfirmOnly:
+                        prompt = L"Allow this Bluetooth device to pair?";
+                        break;
+                    case DevicePairingKinds::DisplayPin:
+                        prompt = std::wstring(L"Enter this PIN on the Bluetooth device:\n\n") +
+                                 args.Pin().c_str();
+                        break;
+                    case DevicePairingKinds::ConfirmPinMatch:
+                        prompt = std::wstring(L"Confirm that this PIN matches the Bluetooth device:\n\n") +
+                                 args.Pin().c_str();
+                        break;
+                    default:
+                        return;
+                }
+
+                if (MessageBoxW(nullptr, prompt.c_str(), L"Bluetooth pairing",
+                                MB_YESNO | MB_ICONQUESTION | MB_TOPMOST) == IDYES) {
+                    args.Accept();
+                }
+            });
+        auto result = customPairing.PairAsync(
+            DevicePairingKinds::ConfirmOnly |
+                DevicePairingKinds::DisplayPin |
+                DevicePairingKinds::ConfirmPinMatch,
+            DevicePairingProtectionLevel::Encryption).get();
+        customPairing.PairingRequested(pairingRequestedToken);
         return result.Status() == DevicePairingResultStatus::Paired ||
                result.Status() == DevicePairingResultStatus::AlreadyPaired ? 0 : 1;
     } catch (...) {

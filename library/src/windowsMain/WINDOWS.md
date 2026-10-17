@@ -125,9 +125,6 @@ blueFalcon.stopScanning()
 // Connect to a device
 blueFalcon.connect(device, autoConnect = false)
 
-// Pair with a device when encrypted GATT access is required
-blueFalcon.createBond(device)
-
 // Read a characteristic
 blueFalcon.readCharacteristic(device, characteristic)
 
@@ -137,6 +134,37 @@ blueFalcon.writeCharacteristic(device, characteristic, data)
 // Enable notifications
 blueFalcon.notifyCharacteristic(device, characteristic, true)
 ```
+
+### Pairing with the core Windows engine
+
+The legacy `dev.bluefalcon.BlueFalcon` API does not support pairing. Use the core facade with
+`WindowsEngine` and a peripheral discovered by that engine:
+
+```kotlin
+import dev.bluefalcon.core.BlueFalcon
+import dev.bluefalcon.engine.windows.WindowsEngine
+import dev.bluefalcon.plugins.bonding.BondingPlugin
+import kotlinx.coroutines.flow.first
+
+suspend fun pairWithDiscoveredDevice() {
+    val engine = WindowsEngine()
+    val blueFalcon = BlueFalcon(engine)
+    val bonding = BondingPlugin.create()
+    blueFalcon.plugins.install(bonding)
+    bonding.bind(blueFalcon)
+
+    blueFalcon.scan()
+    val device = engine.peripherals.first { it.isNotEmpty() }.first()
+    blueFalcon.connect(device)
+
+    val result = bonding.requestBond(device)
+    println("Pairing result: $result")
+}
+```
+
+Windows pairing uses custom pairing with encryption protection. Confirmation-only, displayed-PIN,
+and PIN-match requests show a Windows consent prompt; PIN-entry requests are not currently
+supported.
 
 ### Filtering Devices
 
