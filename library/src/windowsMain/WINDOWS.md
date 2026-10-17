@@ -135,6 +135,37 @@ blueFalcon.writeCharacteristic(device, characteristic, data)
 blueFalcon.notifyCharacteristic(device, characteristic, true)
 ```
 
+### Pairing with the core Windows engine
+
+The legacy `dev.bluefalcon.BlueFalcon` API does not support pairing. Use the core facade with
+`WindowsEngine` and a peripheral discovered by that engine:
+
+```kotlin
+import dev.bluefalcon.core.BlueFalcon
+import dev.bluefalcon.engine.windows.WindowsEngine
+import dev.bluefalcon.plugins.bonding.BondingPlugin
+import kotlinx.coroutines.flow.first
+
+suspend fun pairWithDiscoveredDevice() {
+    val engine = WindowsEngine()
+    val blueFalcon = BlueFalcon(engine)
+    val bonding = BondingPlugin.create()
+    blueFalcon.plugins.install(bonding)
+    bonding.bind(blueFalcon)
+
+    blueFalcon.scan()
+    val device = engine.peripherals.first { it.isNotEmpty() }.first()
+    blueFalcon.connect(device)
+
+    val result = bonding.requestBond(device)
+    println("Pairing result: $result")
+}
+```
+
+Windows pairing uses custom pairing with encryption protection. Confirmation-only, displayed-PIN,
+and PIN-match requests show a Windows consent prompt; PIN-entry requests are not currently
+supported.
+
 ### Filtering Devices
 
 ```kotlin
@@ -214,7 +245,7 @@ Windows 10 version 1803+ requires the following capabilities in your application
 
 1. **Descriptor Operations**: Full descriptor read/write support is partially implemented
 2. **Background Operation**: Continuous background scanning may be limited by Windows power management
-3. **Pairing**: Explicit pairing is handled by Windows, not directly by this library
+3. **Pairing**: Pairing uses the Windows system pairing flow and requests at least encryption-level protection. Windows may display a system confirmation prompt; the peripheral must support pairing.
 4. **Multiple Adapters**: Supports adapter enumeration and selection through `adapters()` and `selectAdapter()` on Windows.
 
 ## Troubleshooting

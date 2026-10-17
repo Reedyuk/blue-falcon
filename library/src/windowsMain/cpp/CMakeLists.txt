@@ -27,6 +27,7 @@ add_library(bluefalcon-windows SHARED ${SOURCES})
 target_link_libraries(bluefalcon-windows 
     ${JNI_LIBRARIES}
     WindowsApp
+    User32
 )
 
 # Set C++/WinRT properties
