@@ -15,6 +15,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.BufferOverflow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -64,10 +65,20 @@ class AndroidEngine(
     private val _rssiUpdates = MutableSharedFlow<Pair<String, Float>>(extraBufferCapacity = 64)
     override val rssiUpdates: SharedFlow<Pair<String, Float>> = _rssiUpdates
 
-    private val _connectionStateUpdates = MutableSharedFlow<ConnectionStateUpdate>(extraBufferCapacity = 64)
+    // Use DROP_OLDEST for connection state so the latest authoritative state (Connected/Disconnected)
+    // always reaches consumers, even under backpressure. A stale "Connected" is worse than missing
+    // an intermediate state.
+    private val _connectionStateUpdates = MutableSharedFlow<ConnectionStateUpdate>(
+        extraBufferCapacity = 64,
+        onBufferOverflow = BufferOverflow.DROP_OLDEST
+    )
     override val connectionStateUpdates: SharedFlow<ConnectionStateUpdate> = _connectionStateUpdates
 
-    private val _serviceDiscoveryUpdates = MutableSharedFlow<ServiceDiscoveryUpdate>(extraBufferCapacity = 64)
+    // Use DROP_OLDEST for service discovery so the latest discovery phase is always delivered.
+    private val _serviceDiscoveryUpdates = MutableSharedFlow<ServiceDiscoveryUpdate>(
+        extraBufferCapacity = 64,
+        onBufferOverflow = BufferOverflow.DROP_OLDEST
+    )
     override val serviceDiscoveryUpdates: SharedFlow<ServiceDiscoveryUpdate> = _serviceDiscoveryUpdates
 
     private val _notificationSubscriptionUpdates =
@@ -128,7 +139,9 @@ class AndroidEngine(
                         else -> BlueFalconBondState.None
                     }
                     logger?.debug("Bond state changed for ${device.address}: $mappedState")
-                    _bondStateUpdates.tryEmit(BondStateUpdate(device.address, mappedState))
+                    if (!_bondStateUpdates.tryEmit(BondStateUpdate(device.address, mappedState))) {
+                        logger?.warn("Dropped bond state update for ${device.address} (buffer full)")
+                    }
                 }
             }
         }
@@ -600,13 +613,15 @@ class AndroidEngine(
         enabled: Boolean,
     ): NotificationSubscriptionResult {
         fun report(result: NotificationSubscriptionResult): NotificationSubscriptionResult {
-            _notificationSubscriptionUpdates.tryEmit(
+            if (!_notificationSubscriptionUpdates.tryEmit(
                 NotificationSubscriptionUpdate(
                     peripheralUuid = peripheral.uuid,
                     characteristicUuid = characteristic.uuid,
                     result = result,
                 )
-            )
+            )) {
+                logger?.warn("Dropped notification subscription update for ${peripheral.uuid} (buffer full)")
+            }
             return result
         }
 
@@ -1008,7 +1023,9 @@ class AndroidEngine(
                             bluetoothPeripheral.advertisedServiceUUIDs
                         (existing as? AndroidBluetoothPeripheral)?.isConnectable =
                             bluetoothPeripheral.isConnectable
-                        _rssiUpdates.tryEmit(bluetoothPeripheral.uuid to newRssi)
+                        if (!_rssiUpdates.tryEmit(bluetoothPeripheral.uuid to newRssi)) {
+                            logger?.debug("Dropped RSSI update for ${bluetoothPeripheral.uuid} (buffer full)")
+                        }
                     } else {
                         _peripherals.value = peripheralRetention.snapshot().toSet()
                     }
@@ -1131,7 +1148,9 @@ class AndroidEngine(
                 closeAndForget(gatt)
                 logger?.error("Connection generation exhausted for ${gatt.device.address}", failure)
                 peripheralFor(gatt.device.address)?.let { peer ->
-                    _connectionStateUpdates.tryEmit(ConnectionStateUpdate(peer, BluetoothPeripheralState.Disconnected))
+                    if (!_connectionStateUpdates.tryEmit(ConnectionStateUpdate(peer, BluetoothPeripheralState.Disconnected))) {
+                        logger?.warn("Dropped disconnect event for ${gatt.device.address} (buffer full)")
+                    }
                 }
                 false
             }
@@ -1342,9 +1361,11 @@ class AndroidEngine(
                         logger?.info("Connected to ${device.address}")
                         if (!addGatt(gatt)) return@withCurrent
                         peripheralFor(device.address)?.let { peripheral ->
-                            _connectionStateUpdates.tryEmit(
+                            if (!_connectionStateUpdates.tryEmit(
                                 ConnectionStateUpdate(peripheral, BluetoothPeripheralState.Connected)
-                            )
+                            )) {
+                                logger?.warn("Dropped connect event for ${device.address} (buffer full)")
+                            }
                         }
                         if (autoDiscoverAllServicesAndCharacteristics) {
                             // Serialize the post-connect service discovery and RSSI read; issued back to
@@ -1362,9 +1383,11 @@ class AndroidEngine(
                     } else if (newState == BluetoothProfile.STATE_DISCONNECTED) {
                         logger?.info("Disconnected from ${device.address}")
                         peripheralFor(device.address)?.let { peripheral ->
-                            _connectionStateUpdates.tryEmit(
+                            if (!_connectionStateUpdates.tryEmit(
                                 ConnectionStateUpdate(peripheral, BluetoothPeripheralState.Disconnected)
-                            )
+                            )) {
+                                logger?.warn("Dropped disconnect event for ${device.address} (buffer full)")
+                            }
                         }
                         // closeAndForget removes/closes the gatt, clears its queue, and resets the reused
                         // peripheral's transient state so a later reconnect waits for the new connection's
@@ -1396,13 +1419,17 @@ class AndroidEngine(
                     val services = gatt.services.map { AndroidBluetoothService(it) }
                     peripheral._servicesFlow.value = services
                     // Android discovers services and characteristics atomically — emit both phases.
-                    _serviceDiscoveryUpdates.tryEmit(
+                    if (!_serviceDiscoveryUpdates.tryEmit(
                         ServiceDiscoveryUpdate(peripheral, ServiceDiscoveryPhase.ServicesDiscovered)
-                    )
+                    )) {
+                        logger?.warn("Dropped service discovery event for ${device.address} (buffer full)")
+                    }
                     services.forEach { service ->
-                        _serviceDiscoveryUpdates.tryEmit(
+                        if (!_serviceDiscoveryUpdates.tryEmit(
                             ServiceDiscoveryUpdate(peripheral, ServiceDiscoveryPhase.CharacteristicsDiscovered, service)
-                        )
+                        )) {
+                            logger?.debug("Dropped characteristic discovery event for ${device.address} (buffer full)")
+                        }
                     }
                 }
             }
@@ -1483,13 +1510,15 @@ class AndroidEngine(
                 val peripheral = peripheralFor(gatt.device.address) ?: AndroidBluetoothPeripheral(gatt.device)
                 val bluetoothCharacteristic = AndroidBluetoothCharacteristic(characteristic)
                 bluetoothCharacteristic.emitNotification(value)
-                _characteristicNotifications.tryEmit(
+                if (!_characteristicNotifications.tryEmit(
                     CharacteristicNotification(
                         peripheral = peripheral,
                         characteristic = bluetoothCharacteristic,
                         value = value
                     )
-                )
+                )) {
+                    logger?.debug("Dropped characteristic notification for ${gatt.device.address} (buffer full)")
+                }
             }
         }
         
