@@ -57,9 +57,11 @@ internal sealed interface AndroidGattEvent {
     val sessionId: PeripheralSessionId
     val target: AndroidSessionTarget? get() = null
 
+    /** [attMtu] is the ATT MTU already reported for this device's still-up LE link, if any. */
     data class Connected(
         override val sessionId: PeripheralSessionId,
         override val target: AndroidSessionTarget? = null,
+        val attMtu: Int? = null,
     ) : AndroidGattEvent
 
     data class Disconnected(

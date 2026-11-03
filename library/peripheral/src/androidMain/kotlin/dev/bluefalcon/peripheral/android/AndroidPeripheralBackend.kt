@@ -739,10 +739,12 @@ internal class AndroidPeripheralBackend(
                     }
                     sessionTokens[event.sessionId] = token
                     if (target != null) sessionTargets[event.sessionId] = target
-                    maximumUpdateLengths[event.sessionId] = DefaultMaximumUpdateValueLength
+                    val maximumUpdateValueLength =
+                        event.attMtu?.let(::maximumUpdateValueLengthFor) ?: DefaultMaximumUpdateValueLength
+                    maximumUpdateLengths[event.sessionId] = maximumUpdateValueLength
                     subscriptions[event.sessionId] = mutableMapOf()
                     val delivery = {
-                        sink.onSessionOpened(token, DefaultMaximumUpdateValueLength)
+                        sink.onSessionOpened(token, maximumUpdateValueLength)
                     }
                     delivery
                 }
@@ -752,9 +754,7 @@ internal class AndroidPeripheralBackend(
                 if (event.sessionId !in connectedSessions) {
                     null
                 } else {
-                    val maximumUpdateValueLength =
-                        (event.mtu.coerceAtLeast(AttHeaderLength) - AttHeaderLength)
-                            .coerceAtMost(MAX_ATT_ATTRIBUTE_VALUE_BYTES)
+                    val maximumUpdateValueLength = maximumUpdateValueLengthFor(event.mtu)
                     maximumUpdateLengths[event.sessionId] = maximumUpdateValueLength
                     val token = sessionTokens[event.sessionId] ?: return null
                     val delivery = {
@@ -1249,6 +1249,10 @@ internal class AndroidPeripheralBackend(
             return value.takeIf { populated.all { it } }
         }
     }
+
+    private fun maximumUpdateValueLengthFor(mtu: Int): Int =
+        (mtu.coerceAtLeast(AttHeaderLength) - AttHeaderLength)
+            .coerceAtMost(MAX_ATT_ATTRIBUTE_VALUE_BYTES)
 
     private sealed interface CccdValue {
         data object Disabled : CccdValue
