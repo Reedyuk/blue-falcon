@@ -23,7 +23,9 @@ class AppleBluetoothPeripheral(
     override val name: String? get() = cbPeripheral.name
     override val uuid: String = cbPeripheral.identifier.UUIDString
     override var mtuSize: Int? = null
-    
+
+    override var advertisedLocalName: String? = null
+
     /**
      * Updates the underlying native peripheral reference when CoreBluetooth provides
      * a new object instance for the same physical device (identified by UUID).

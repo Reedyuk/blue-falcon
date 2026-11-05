@@ -994,12 +994,14 @@ class AndroidEngine(
                     val newRssi = result.rssi.toFloat()
                     bluetoothPeripheral.rssi = newRssi
                     val manufacturer = extractManufacturerData(result) ?: run { peripheralRetention.reject(); return }
+                    val localName = extractLocalName(result)
                     val retainedBytes = manufacturer.values.sumOf { it.size.toLong() } + advertisedServiceUUIDs.size * 16L
                     val existing = peripheralFor(device.address)
                     if (!peripheralRetention.offer(device.address, existing ?: bluetoothPeripheral, retainedBytes.toInt())) return
                     bluetoothPeripheral.manufacturerData = manufacturer
                     bluetoothPeripheral.advertisedServiceUUIDs = advertisedServiceUUIDs
                     bluetoothPeripheral.isConnectable = extractConnectable(result)
+                    bluetoothPeripheral.advertisedLocalName = localName
                     if (existing != null) {
                         (existing as? AndroidBluetoothPeripheral)?.rssi = newRssi
                         (existing as? AndroidBluetoothPeripheral)?.manufacturerData =
@@ -1008,6 +1010,8 @@ class AndroidEngine(
                             bluetoothPeripheral.advertisedServiceUUIDs
                         (existing as? AndroidBluetoothPeripheral)?.isConnectable =
                             bluetoothPeripheral.isConnectable
+                        // A passive scan can deliver a packet without the name. Keep the last known name.
+                        if (localName != null) (existing as? AndroidBluetoothPeripheral)?.advertisedLocalName = localName
                         _rssiUpdates.tryEmit(bluetoothPeripheral.uuid to newRssi)
                     } else {
                         _peripherals.value = peripheralRetention.snapshot().toSet()
@@ -1035,6 +1039,16 @@ class AndroidEngine(
             val fromServiceData = scanRecord.serviceData?.keys?.map { it.uuid.toString().toUuid() }
                 ?: emptyList()
             return (fromServiceUuidList + fromServiceData).distinct()
+        }
+
+        /**
+         * Reads the raw bytes because `ScanRecord.deviceName` keeps the last name AD structure in
+         * the packet, which can be the shortened name. Falls back to `deviceName` without raw bytes.
+         */
+        private fun extractLocalName(result: ScanResult): String? {
+            val scanRecord = result.scanRecord ?: return null
+            val raw = scanRecord.bytes ?: return scanRecord.deviceName?.takeIf { it.isNotEmpty() }
+            return parseAdvertisedLocalName(raw) ?: scanRecord.deviceName?.takeIf { it.isNotEmpty() }
         }
 
         private fun extractConnectable(result: ScanResult): Boolean? =
@@ -1574,4 +1588,31 @@ class AndroidEngine(
          */
         private const val GATT_OPERATION_TIMEOUT_MS = 10_000L
     }
+}
+
+private const val AD_TYPE_SHORTENED_LOCAL_NAME = 0x08
+private const val AD_TYPE_COMPLETE_LOCAL_NAME = 0x09
+
+/**
+ * Returns the local name from raw advertisement bytes. The complete name (AD type 0x09) wins over
+ * the shortened name (AD type 0x08), whatever their order. Returns `null` when no AD structure
+ * carries a non-empty name. The parser stops at the first malformed AD structure.
+ */
+internal fun parseAdvertisedLocalName(raw: ByteArray): String? {
+    var shortened: String? = null
+    var index = 0
+    while (index < raw.size) {
+        val length = raw[index].toUByte().toInt()
+        if (length == 0 || index + 1 + length > raw.size) break
+        val type = raw[index + 1].toUByte().toInt()
+        if (type == AD_TYPE_COMPLETE_LOCAL_NAME || type == AD_TYPE_SHORTENED_LOCAL_NAME) {
+            val name = raw.decodeToString(index + 2, index + 1 + length).trimEnd('\u0000')
+            if (name.isNotEmpty()) {
+                if (type == AD_TYPE_COMPLETE_LOCAL_NAME) return name
+                if (shortened == null) shortened = name
+            }
+        }
+        index += 1 + length
+    }
+    return shortened
 }

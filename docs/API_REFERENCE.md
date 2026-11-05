@@ -577,14 +577,26 @@ Represents a BLE device.
 
 ```kotlin
 interface BluetoothPeripheral {
-    val name: String?                          // Device name
+    val name: String?                          // GAP device name (the OS can cache it)
     val uuid: String                           // Platform-specific ID
     val rssi: Float?                           // Signal strength (dBm)
     val mtuSize: Int?                          // MTU size
     val services: List<BluetoothService>       // GATT services
     val characteristics: List<BluetoothCharacteristic>
+    val manufacturerData: Map<Int, ByteArray>  // Advertised manufacturer data, by company ID
+    val advertisedServiceUUIDs: List<Uuid>     // Advertised service UUIDs
+    val isConnectable: Boolean?                // Advertised connectable flag, if known
+    val advertisedLocalName: String?           // Advertised local name (AD type 0x09, else 0x08)
 }
 ```
+
+`name` and `advertisedLocalName` can differ. The OS caches `name`. For example, Android returns the
+cached name of a bonded device after the peripheral changes its advertised name.
+`advertisedLocalName` comes from the latest scan result that carried a local name.
+Android, iOS, macOS and Windows fill it. The other engines return `null`.
+On Windows, `name` is the advertised name of the first scan result, and the platform can report
+the shortened name instead of the complete name.
+To show the name that the device advertises now, use `device.advertisedLocalName ?: device.name`.
 
 **Example**:
 

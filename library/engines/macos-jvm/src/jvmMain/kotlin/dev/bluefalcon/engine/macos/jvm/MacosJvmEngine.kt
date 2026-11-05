@@ -76,16 +76,24 @@ class MacosJvmEngine : BlueFalconEngine {
     }
 
     @Suppress("unused")
-    private fun onDeviceDiscovered(uuid: String, name: String?, rssi: Float, manufacturerDataBytes: ByteArray?) {
+    private fun onDeviceDiscovered(
+        uuid: String,
+        name: String?,
+        localName: String?,
+        rssi: Float,
+        manufacturerDataBytes: ByteArray?
+    ) {
         val mfData = parseManufacturerData(manufacturerDataBytes)
         val existing = _peripherals.value.find { it.uuid == uuid } as? MacosJvmBluetoothPeripheral
         if (existing != null) {
             existing.rssi = rssi
             if (mfData.isNotEmpty()) existing.manufacturerData = mfData
+            if (localName != null) existing.advertisedLocalName = localName
         } else {
             val peripheral = MacosJvmBluetoothPeripheral(uuid, name).apply {
                 this.rssi = rssi
                 this.manufacturerData = mfData
+                this.advertisedLocalName = localName
             }
             _peripherals.value = _peripherals.value + peripheral
         }

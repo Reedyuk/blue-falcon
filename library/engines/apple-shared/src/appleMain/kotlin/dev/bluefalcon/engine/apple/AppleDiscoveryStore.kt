@@ -1,6 +1,7 @@
 package dev.bluefalcon.engine.apple
 
 import kotlinx.coroutines.flow.*
+import platform.CoreBluetooth.CBAdvertisementDataLocalNameKey
 
 /** Bounds the library's retained discovery payload independently of native advertising format. */
 data class AppleDiscoveryStorageStatus(val retainedPeers: Int, val retainedPayloadBytes: Long, val rejectedDiscoveries: Long)
@@ -39,6 +40,10 @@ internal class AppleDiscoveryStore<T : Any>(
     fun reject() { rejected.update { if (it == Long.MAX_VALUE) it else it + 1 } }
     fun clear() { values.value = emptySet() }
 }
+
+/** Reads `CBAdvertisementDataLocalNameKey`; `null` when absent or empty. */
+internal fun decodeAppleLocalName(advertisementData: Map<Any?, *>): String? =
+    (advertisementData[CBAdvertisementDataLocalNameKey] as? String)?.takeIf { it.isNotEmpty() }
 
 /** Length admission occurs before any native NSData copy or payload allocation. */
 internal fun decodeAppleManufacturerData(length: ULong, copy: () -> ByteArray): Map<Int, ByteArray>? {

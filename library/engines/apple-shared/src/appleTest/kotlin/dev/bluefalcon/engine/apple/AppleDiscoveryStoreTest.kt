@@ -3,6 +3,7 @@ package dev.bluefalcon.engine.apple
 import kotlinx.coroutines.*
 import kotlinx.coroutines.test.*
 import kotlin.test.*
+import platform.CoreBluetooth.CBAdvertisementDataLocalNameKey
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class AppleDiscoveryStoreTest {
@@ -17,6 +18,11 @@ class AppleDiscoveryStoreTest {
         val decoded = decodeAppleManufacturerData(4098uL) { copies++; ByteArray(4098).apply { this[0] = 0x34; this[1] = 0x12 } }!!
         assertEquals(4096, decoded[0x1234]!!.size)
         assertEquals(1, copies)
+    }
+    @Test fun localNameIsReadFromAdvertisementData() {
+        assertEquals("Sensor-A1", decodeAppleLocalName(mapOf<Any?, Any?>(CBAdvertisementDataLocalNameKey to "Sensor-A1")))
+        assertNull(decodeAppleLocalName(mapOf<Any?, Any?>(CBAdvertisementDataLocalNameKey to "")))
+        assertNull(decodeAppleLocalName(mapOf<Any?, Any?>("kCBAdvDataIsConnectable" to 1)))
     }
     @Test fun discoveryChurnRejectsNewestAndAccountsPayloadBeforeRetention() {
         val store = store()

@@ -67,6 +67,24 @@ interface BluetoothPeripheral {
      */
     val isConnectable: Boolean?
         get() = null
+
+    /**
+     * The local name in the peripheral's advertisement (AD type 0x09 Complete Local Name, or
+     * 0x08 Shortened Local Name when no complete name is present). Populated from scan results;
+     * `null` when no scan result carried a local name.
+     *
+     * This value differs from [name]. [name] is the platform's GAP device name, which the OS can
+     * cache. For example, Android returns the cached name of a bonded device after the peripheral
+     * changes its advertised name. A later scan result without a local name keeps the last known value.
+     *
+     * - Android: parsed from the raw `ScanRecord` bytes, falling back to `ScanRecord.deviceName`
+     * - iOS/macOS: sourced from `CBAdvertisementDataLocalNameKey`
+     * - Windows: sourced from `BluetoothLEAdvertisement.LocalName`, which can be the complete or
+     *   the shortened name. On Windows, [name] is the local name of the first scan result, so the
+     *   two values differ only after the peripheral changes its advertised name.
+     */
+    val advertisedLocalName: String?
+        get() = null
 }
 
 /**
