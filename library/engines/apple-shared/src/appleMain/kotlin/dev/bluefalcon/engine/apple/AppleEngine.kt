@@ -10,6 +10,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -25,7 +26,9 @@ import platform.Foundation.*
  * Uses CoreBluetooth framework
  */
 @OptIn(BetaInteropApi::class)
-class AppleEngine : ClosableBlueFalconEngine, CBCentralManagerCallback, CBPeripheralCallback {
+class AppleEngine(
+    private val logger: Logger? = null
+) : ClosableBlueFalconEngine, CBCentralManagerCallback, CBPeripheralCallback {
     
     override val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val lifecycle = AppleEngineLifecycle(scope, ::closeResources)
@@ -94,10 +97,20 @@ class AppleEngine : ClosableBlueFalconEngine, CBCentralManagerCallback, CBPeriph
     private val _rssiUpdates = MutableSharedFlow<Pair<String, Float>>(extraBufferCapacity = 64)
     override val rssiUpdates: SharedFlow<Pair<String, Float>> = _rssiUpdates
 
-    private val _connectionStateUpdates = MutableSharedFlow<ConnectionStateUpdate>(extraBufferCapacity = 64)
+    // Use DROP_OLDEST for connection state so the latest authoritative state (Connected/Disconnected)
+    // always reaches consumers, even under backpressure. A stale "Connected" is worse than missing
+    // an intermediate state.
+    private val _connectionStateUpdates = MutableSharedFlow<ConnectionStateUpdate>(
+        extraBufferCapacity = 64,
+        onBufferOverflow = BufferOverflow.DROP_OLDEST
+    )
     override val connectionStateUpdates: SharedFlow<ConnectionStateUpdate> = _connectionStateUpdates
 
-    private val _serviceDiscoveryUpdates = MutableSharedFlow<ServiceDiscoveryUpdate>(extraBufferCapacity = 64)
+    // Use DROP_OLDEST for service discovery so the latest discovery phase is always delivered.
+    private val _serviceDiscoveryUpdates = MutableSharedFlow<ServiceDiscoveryUpdate>(
+        extraBufferCapacity = 64,
+        onBufferOverflow = BufferOverflow.DROP_OLDEST
+    )
     override val serviceDiscoveryUpdates: SharedFlow<ServiceDiscoveryUpdate> = _serviceDiscoveryUpdates
 
     private val centralWriteController = AppleCentralWriteController(scope, onQuarantine = { connection ->
@@ -287,7 +300,11 @@ class AppleEngine : ClosableBlueFalconEngine, CBCentralManagerCallback, CBPeriph
                     centralWriteController.disconnected(active.connection)
                     l2capDeferreds.value[token.peripheralUuid]?.completeExceptionally(L2capException("Apple connection retired"))
                     l2capDeferreds.update { it - token.peripheralUuid }
-                    _connectionStateUpdates.tryEmit(ConnectionStateUpdate(active.device, BluetoothPeripheralState.Disconnected))
+                    if (!_connectionStateUpdates.tryEmit(ConnectionStateUpdate(active.device, BluetoothPeripheralState.Disconnected))) {
+                        logger?.warn("Dropped disconnect event for ${active.device.uuid} (buffer full)")
+                    }
+                        // DROP_OLDEST flow — best effort; terminal retirement is still guaranteed
+                        // by the callbackDispatcher admission contract (R08).
                 }
             } finally {
                 peripheralDelegates.update { it - token }
@@ -709,7 +726,10 @@ class AppleEngine : ClosableBlueFalconEngine, CBCentralManagerCallback, CBPeriph
                 if (!discovery.put(existing, retainedData.values.sumOf { it.size.toLong() })) return@callback
                 existing.rssi = rssiValue
                 if (mfData.isNotEmpty()) existing.manufacturerData = mfData
-                _rssiUpdates.tryEmit(uuid to rssiValue)
+                if (!_rssiUpdates.tryEmit(uuid to rssiValue)) {
+                    logger?.debug("Dropped RSSI update for $uuid (buffer full)")
+                }
+                    // Best-effort RSSI; dropping under backpressure is acceptable.
             } else {
                 val device = AppleBluetoothPeripheral(peripheral, rssiValue, mfData)
                 discovery.put(device, mfData.values.sumOf { it.size.toLong() })
@@ -745,7 +765,10 @@ class AppleEngine : ClosableBlueFalconEngine, CBCentralManagerCallback, CBPeriph
             )
             if (!discovery.put(device, device.manufacturerData.values.sumOf { it.size.toLong() }, evictInactive = true)) {
                 retirePeer(epoch, token, forced = false)
-                _connectionStateUpdates.tryEmit(ConnectionStateUpdate(device, BluetoothPeripheralState.Disconnected))
+                if (!_connectionStateUpdates.tryEmit(ConnectionStateUpdate(device, BluetoothPeripheralState.Disconnected))) {
+                    logger?.warn("Dropped disconnect event for ${device.uuid} after discovery overflow (buffer full)")
+                }
+                    // DROP_OLDEST flow — best effort; the peer is already retired so state will reconcile.
                 return@dispatchOwned
             }
             device.updatePeripheral(peripheral)
@@ -757,9 +780,12 @@ class AppleEngine : ClosableBlueFalconEngine, CBCentralManagerCallback, CBPeriph
                 connection = connection,
                 ownership = token,
             )
-            _connectionStateUpdates.tryEmit(
+            if (!_connectionStateUpdates.tryEmit(
                 ConnectionStateUpdate(device, BluetoothPeripheralState.Connected)
-            )
+            )) {
+                logger?.warn("Dropped connect event for ${device.uuid} (buffer full)")
+            }
+                // DROP_OLDEST flow — latest connect event always wins under backpressure.
         }
     }
     
@@ -871,12 +897,15 @@ class AppleEngine : ClosableBlueFalconEngine, CBCentralManagerCallback, CBPeriph
         dispatchOwned(token) {
             if (error != null) return@dispatchOwned
             val active = activeConnection(token) ?: return@dispatchOwned
-            _serviceDiscoveryUpdates.tryEmit(
+            if (!_serviceDiscoveryUpdates.tryEmit(
                 ServiceDiscoveryUpdate(
                     active.device,
                     ServiceDiscoveryPhase.ServicesDiscovered,
                 )
-            )
+            )) {
+                logger?.warn("Dropped services discovered event for ${active.device.uuid} (buffer full)")
+            }
+                // DROP_OLDEST flow — latest discovery phase always wins under backpressure.
         }
     }
 
@@ -900,13 +929,16 @@ class AppleEngine : ClosableBlueFalconEngine, CBCentralManagerCallback, CBPeriph
             if (error != null) return@dispatchOwned
             val active = activeConnection(token) ?: return@dispatchOwned
             val bluetoothService = AppleBluetoothService(service)
-            _serviceDiscoveryUpdates.tryEmit(
+            if (!_serviceDiscoveryUpdates.tryEmit(
                 ServiceDiscoveryUpdate(
                     active.device,
                     ServiceDiscoveryPhase.CharacteristicsDiscovered,
                     bluetoothService,
                 )
-            )
+            )) {
+                logger?.debug("Dropped characteristics discovered event for ${active.device.uuid} (buffer full)")
+            }
+                // DROP_OLDEST flow — latest discovery phase always wins under backpressure.
             service.characteristics
                 ?.mapNotNull { it as? CBCharacteristic }
                 ?.forEach { characteristic ->
@@ -963,13 +995,16 @@ class AppleEngine : ClosableBlueFalconEngine, CBCentralManagerCallback, CBPeriph
         dispatchOwned(token, payloadBytes = safeValue.size) {
             val active = activeConnection(token) ?: return@dispatchOwned
             bluetoothCharacteristic.emitNotification(safeValue)
-            _characteristicNotifications.tryEmit(
+            if (!_characteristicNotifications.tryEmit(
                 CharacteristicNotification(
                     peripheral = active.device,
                     characteristic = bluetoothCharacteristic,
                     value = safeValue,
                 )
-            )
+            )) {
+                logger?.debug("Dropped characteristic notification for ${active.device.uuid} (buffer full)")
+            }
+                // DROP_LATEST (default) — latest notification sample is most valuable.
         }
     }
     
