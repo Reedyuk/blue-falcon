@@ -507,13 +507,16 @@ class WindowsEngine : BlueFalconEngine {
         val mfData = parseManufacturerData(manufacturerDataBytes)
         val existing = _peripherals.value.find { it.uuid == WindowsBluetoothPeripheral(address, null).uuid }
                 as? WindowsBluetoothPeripheral
+        // The native layer passes BluetoothLEAdvertisement.LocalName as name.
         if (existing != null) {
             existing.rssi = rssi
             if (mfData.isNotEmpty()) existing.manufacturerData = mfData
+            if (name != null) existing.advertisedLocalName = name
         } else {
             val peripheral = WindowsBluetoothPeripheral(address, name).apply {
                 this.rssi = rssi
                 this.manufacturerData = mfData
+                this.advertisedLocalName = name
             }
             _peripherals.value = _peripherals.value + peripheral
         }

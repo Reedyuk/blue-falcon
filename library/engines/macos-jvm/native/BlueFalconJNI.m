@@ -330,16 +330,17 @@ static void ensureL2capThread(void) {
 
     jclass cls = (*env)->GetObjectClass(env, gEngineRef);
     jmethodID m = (*env)->GetMethodID(env, cls, "onDeviceDiscovered",
-        "(Ljava/lang/String;Ljava/lang/String;F[B)V");
+        "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;F[B)V");
     (*env)->DeleteLocalRef(env, cls);
 
     if (m) {
-        NSString *name = peripheral.name
-            ?: (NSString *)advertisementData[CBAdvertisementDataLocalNameKey];
+        NSString *localName = (NSString *)advertisementData[CBAdvertisementDataLocalNameKey];
+        NSString *name = peripheral.name ?: localName;
         NSData *mfrNSData = (NSData *)advertisementData[CBAdvertisementDataManufacturerDataKey];
 
         jstring juuid = toJString(env, uuid);
         jstring jname = name ? toJString(env, name) : NULL;
+        jstring jlocalName = localName.length > 0 ? toJString(env, localName) : NULL;
 
         jbyteArray jmfr = NULL;
         if (mfrNSData && mfrNSData.length > 0) {
@@ -350,9 +351,10 @@ static void ensureL2capThread(void) {
             }
         }
 
-        (*env)->CallVoidMethod(env, gEngineRef, m, juuid, jname, [RSSI floatValue], jmfr);
+        (*env)->CallVoidMethod(env, gEngineRef, m, juuid, jname, jlocalName, [RSSI floatValue], jmfr);
         (*env)->DeleteLocalRef(env, juuid);
         if (jname) (*env)->DeleteLocalRef(env, jname);
+        if (jlocalName) (*env)->DeleteLocalRef(env, jlocalName);
         if (jmfr)  (*env)->DeleteLocalRef(env, jmfr);
     }
     releaseEnv(att);

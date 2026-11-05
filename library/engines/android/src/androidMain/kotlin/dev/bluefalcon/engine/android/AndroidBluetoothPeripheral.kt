@@ -43,6 +43,9 @@ class AndroidBluetoothPeripheral(val device: BluetoothDevice) : BluetoothPeriphe
     @Volatile
     override var isConnectable: Boolean? = null
 
+    @Volatile
+    override var advertisedLocalName: String? = null
+
     /**
      * Clears transient per-connection state (discovered services and the negotiated MTU) so that a
      * later reconnect using this same reused instance does not observe stale values from the previous

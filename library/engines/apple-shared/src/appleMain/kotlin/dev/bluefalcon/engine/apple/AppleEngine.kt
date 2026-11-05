@@ -720,18 +720,24 @@ class AppleEngine(
             val uuid = peripheral.identifier.UUIDString
             val rssiValue = rssi.floatValue
             val mfData = parseManufacturerData(advertisementData) ?: run { discovery.reject(); return@callback }
+            val localName = decodeAppleLocalName(advertisementData)
             val existing = discovery.valueFor(uuid) as? AppleBluetoothPeripheral
             if (existing != null) {
                 val retainedData = mfData.ifEmpty { existing.manufacturerData }
+                // CoreBluetooth can report the advertisement before the scan response that holds
+                // the name. A callback without a name keeps the last known name.
                 if (!discovery.put(existing, retainedData.values.sumOf { it.size.toLong() })) return@callback
                 existing.rssi = rssiValue
                 if (mfData.isNotEmpty()) existing.manufacturerData = mfData
+                if (localName != null) existing.advertisedLocalName = localName
                 if (!_rssiUpdates.tryEmit(uuid to rssiValue)) {
                     logger?.debug("Dropped RSSI update for $uuid (buffer full)")
                 }
                     // Best-effort RSSI; dropping under backpressure is acceptable.
             } else {
-                val device = AppleBluetoothPeripheral(peripheral, rssiValue, mfData)
+                val device = AppleBluetoothPeripheral(peripheral, rssiValue, mfData).apply {
+                    advertisedLocalName = localName
+                }
                 discovery.put(device, mfData.values.sumOf { it.size.toLong() })
             }
         }
