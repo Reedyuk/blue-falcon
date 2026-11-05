@@ -49,6 +49,7 @@ internal class FrameworkAndroidBluetoothStack(
         applicationContext.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
     private val lock = Any()
     private val payloadAdmission = AndroidPayloadAdmission()
+    private val linkMtus = AndroidLinkMtus.memory
 
     private val lifecycleState = AndroidGattLifecycleState()
     private val serviceGate =
@@ -111,6 +112,7 @@ internal class FrameworkAndroidBluetoothStack(
     override fun closeGattServer() = closeCurrentGattServer()
 
     private fun openGattServer(listener: AndroidBluetoothStackListener) {
+        AndroidLinkMtus.observe(applicationContext, logger)
         val attempt = synchronized(lock) {
             check(gattServer == null) { "Android GATT server is already open" }
             lifecycleState.beginOpen()
@@ -405,6 +407,7 @@ internal class FrameworkAndroidBluetoothStack(
                 val sessionId = device.toSessionId()
                 when (newState) {
                     BluetoothProfile.STATE_CONNECTED -> {
+                        var attMtu: Int? = null
                         val target = synchronized(lock) {
                             if (lifecycleState.isActive(generation)) {
                                 val server = gattServer ?: return@synchronized null
@@ -414,10 +417,11 @@ internal class FrameworkAndroidBluetoothStack(
                                     throw IllegalStateException("Android native connection owner retired or capacity exceeded")
                                 }
                                 devicesBySession[sessionId] = device
+                                attMtu = linkMtus.recall(device.address)
                                 owned
                             } else null
                         }
-                        if (target != null) listener.onEvent(AndroidGattEvent.Connected(sessionId, target))
+                        if (target != null) listener.onEvent(AndroidGattEvent.Connected(sessionId, target, attMtu))
                     }
 
                     BluetoothProfile.STATE_DISCONNECTED -> {
@@ -436,7 +440,9 @@ internal class FrameworkAndroidBluetoothStack(
         override fun onMtuChanged(device: BluetoothDevice, mtu: Int) {
             dispatchAndroidGattCallback(listener) {
                 val target = synchronized(lock) {
-                    if (lifecycleState.isActive(generation)) targetsBySession[device.toSessionId()]?.takeIf { it.device === device || it.device == device } else null
+                    val current = if (lifecycleState.isActive(generation)) targetsBySession[device.toSessionId()]?.takeIf { it.device === device || it.device == device } else null
+                    if (current != null) linkMtus.remember(device.address, mtu)
+                    current
                 } ?: return@dispatchAndroidGattCallback
                 val sessionId = target.sessionId
                 listener.onEvent(AndroidGattEvent.MtuChanged(sessionId, mtu, target))
