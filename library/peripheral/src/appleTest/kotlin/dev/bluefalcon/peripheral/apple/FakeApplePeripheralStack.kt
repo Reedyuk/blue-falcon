@@ -73,6 +73,23 @@ internal class FakeApplePeripheralStack : ApplePeripheralStack {
         listener.onEvent(event)
     }
 
+    val publishedL2capSecurity = mutableListOf<Boolean>()
+    val unpublishedPsms = mutableListOf<Int>()
+    var nextL2capPsm = 0x00C0
+
+    override suspend fun publishL2capChannel(secure: Boolean): Int {
+        publishedL2capSecurity += secure
+        return nextL2capPsm++
+    }
+
+    override fun unpublishL2capChannel(psm: Int) {
+        unpublishedPsms += psm
+    }
+
+    fun openL2capChannel(channel: AppleL2capChannel) {
+        listener.onL2capChannelOpened(channel)
+    }
+
     fun fail(cause: Throwable) {
         listener.onPlatformFailure(cause)
     }

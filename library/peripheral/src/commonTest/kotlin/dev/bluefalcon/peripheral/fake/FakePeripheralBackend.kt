@@ -17,6 +17,8 @@ import dev.bluefalcon.peripheral.internal.BackendCharacteristicWrite
 import dev.bluefalcon.peripheral.internal.BackendCharacteristicWriteBatchRequest
 import dev.bluefalcon.peripheral.internal.BackendCharacteristicWriteRequest
 import dev.bluefalcon.peripheral.internal.BackendGattResponder
+import dev.bluefalcon.peripheral.internal.BackendL2capServer
+import dev.bluefalcon.peripheral.internal.BackendL2capSink
 import kotlinx.coroutines.CompletableDeferred
 
 internal class FakePeripheralBackend(
@@ -48,6 +50,15 @@ internal class FakePeripheralBackend(
 
     lateinit var eventSink: PeripheralBackendEventSink
         private set
+
+    val l2capServers = mutableListOf<FakeL2capServer>()
+    var l2capPublishFailure: Throwable? = null
+
+    override suspend fun publishL2capChannel(secure: Boolean, sink: BackendL2capSink): BackendL2capServer {
+        l2capPublishFailure?.let { throw it }
+        return FakeL2capServer(psm = 0x0080 + l2capServers.size, secure = secure, sink = sink)
+            .also { l2capServers += it }
+    }
 
     override suspend fun start(
         config: PeripheralConfig,
@@ -207,6 +218,7 @@ internal class FakePeripheralBackend(
             connectionLifecycleVisibility = true,
             preparedWrites = true,
             stateRestoration = true,
+            l2capServer = true,
         )
     }
 }

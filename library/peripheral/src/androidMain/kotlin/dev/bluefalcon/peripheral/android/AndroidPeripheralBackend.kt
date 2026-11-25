@@ -29,8 +29,11 @@ import dev.bluefalcon.peripheral.internal.BackendDescriptorWriteRequest
 import dev.bluefalcon.peripheral.internal.BackendExecuteWriteRequest
 import dev.bluefalcon.peripheral.internal.BackendGattResponder
 import dev.bluefalcon.peripheral.internal.PeripheralBackendEventSink
+import dev.bluefalcon.peripheral.internal.BackendL2capServer
+import dev.bluefalcon.peripheral.internal.BackendL2capSink
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -98,6 +101,7 @@ internal class AndroidPeripheralBackend(
         connectionLifecycleVisibility = platformSupported,
         preparedWrites = platformSupported,
         stateRestoration = false,
+        l2capServer = stack.capabilities.l2capServer,
     )
 
     init {
@@ -206,6 +210,11 @@ internal class AndroidPeripheralBackend(
 
     override suspend fun stop() {
         shutdown(terminal = false)
+    }
+
+    override suspend fun publishL2capChannel(secure: Boolean, sink: BackendL2capSink): BackendL2capServer {
+        val native = withContext(Dispatchers.IO) { stack.listenL2cap(secure) }
+        return AndroidL2capServer(native, sink, logger).also { it.start() }
     }
 
     override suspend fun close() {

@@ -24,4 +24,24 @@ interface BlueFalconPeripheral {
     suspend fun start(config: PeripheralConfig)
     suspend fun stop()
     suspend fun close()
+
+    /**
+     * Publishes an L2CAP connection-oriented channel server and returns its listener.
+     *
+     * Valid only while [state] is [PeripheralManagerState.Running]; otherwise it throws
+     * [PeripheralLifecycleException]. The listener is closed automatically by [stop], [close],
+     * and terminal manager failures. See [L2capListener].
+     *
+     * Platform support ([PeripheralCapabilities.l2capServer]):
+     * - Android 10 (API 29) and newer: `BluetoothAdapter.listenUsingL2capChannel` (secure) or
+     *   `listenUsingInsecureL2capChannel`. Requires `BLUETOOTH_CONNECT` on Android 12+.
+     * - iOS and macOS: `CBPeripheralManager.publishL2CAPChannelWithEncryption`.
+     *
+     * @param secure `true` to require an encrypted (authenticated) link. The platform may start
+     *   pairing when a central connects. `false` accepts unencrypted channels.
+     * @throws dev.bluefalcon.core.L2capException when the platform does not support an L2CAP
+     *   server or refuses to publish the channel.
+     */
+    suspend fun publishL2capChannel(secure: Boolean = true): L2capListener =
+        throw dev.bluefalcon.core.L2capException("L2CAP channel server is not supported by this peripheral")
 }

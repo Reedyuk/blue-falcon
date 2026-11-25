@@ -29,10 +29,20 @@ internal interface ApplePeripheralStack {
     fun retireSession(sessionId: PeripheralSessionId) {}
 
     fun close()
+
+    /** Publishes an L2CAP channel and returns its PSM once Core Bluetooth confirms it. */
+    suspend fun publishL2capChannel(secure: Boolean): Int =
+        throw dev.bluefalcon.core.L2capException("Apple L2CAP server is not supported by this stack")
+
+    /** Unpublishes a PSM returned by [publishL2capChannel]. Idempotent. */
+    fun unpublishL2capChannel(psm: Int) {}
 }
 
 internal interface ApplePeripheralStackListener {
     fun onEvent(event: AppleGattEvent)
+
+    /** A central opened a channel on a published PSM. The listener owns [channel]. */
+    fun onL2capChannelOpened(channel: AppleL2capChannel) = channel.close()
 
     fun onResourceOverflow(cause: Throwable) = onPlatformFailure(cause)
 

@@ -1,5 +1,6 @@
 package dev.bluefalcon.peripheral.apple
 
+import dev.bluefalcon.core.L2capException
 import dev.bluefalcon.core.Logger
 import dev.bluefalcon.core.toUuid
 import dev.bluefalcon.peripheral.AdvertiseConfig
@@ -52,6 +53,8 @@ import platform.CoreBluetooth.CBATTErrorAttributeNotFound
 import platform.CoreBluetooth.CBATTRequest
 import platform.CoreBluetooth.CBCentral
 import platform.CoreBluetooth.CBCharacteristic
+import platform.CoreBluetooth.CBL2CAPChannel
+import platform.CoreBluetooth.CBL2CAPPSM
 import platform.CoreBluetooth.CBManagerStatePoweredOn
 import platform.CoreBluetooth.CBManagerStateUnauthorized
 import platform.CoreBluetooth.CBManagerStateUnsupported
@@ -197,6 +200,9 @@ internal class FrameworkApplePeripheralStack(
     private val characteristics = mutableMapOf<GattCharacteristicId, CBMutableCharacteristic>()
     private val centrals = mutableMapOf<PeripheralSessionId, CBCentral>()
     private val centralTargets = mutableMapOf<PeripheralSessionId, FrameworkCentralTarget>()
+    // Core Bluetooth reports publication without a request id, so publications are serialized.
+    private var l2capPublishWaiter: CompletableDeferred<Int>? = null
+    private val publishedL2capPsms = mutableSetOf<Int>()
 
     private fun createDelegate(
         owner: ApplePeripheralCallbackOwner<CBPeripheralManager>,
@@ -397,6 +403,72 @@ internal class FrameworkApplePeripheralStack(
             owner.listenerFor(peripheral)?.onEvent(AppleGattEvent.NotificationReady)
         }
 
+        @ObjCSignatureOverride
+        override fun peripheralManager(
+            peripheral: CBPeripheralManager,
+            didPublishL2CAPChannel: CBL2CAPPSM,
+            error: NSError?,
+        ) {
+            val psm = didPublishL2CAPChannel.toInt()
+            val waiter = locked {
+                if (!ownsCallbackLocked(owner, peripheral)) return
+                l2capPublishWaiter.also {
+                    l2capPublishWaiter = null
+                    if (it != null && error == null) publishedL2capPsms += psm
+                }
+            }
+            when {
+                error != null -> waiter?.completeExceptionally(
+                    L2capException("Core Bluetooth refused to publish an L2CAP channel: ${error.localizedDescription}"),
+                )
+                // The caller gave up (timeout or cancellation): nobody owns this PSM.
+                waiter == null -> peripheral.unpublishL2CAPChannel(didPublishL2CAPChannel)
+                else -> waiter.complete(psm)
+            }
+        }
+
+        @ObjCSignatureOverride
+        override fun peripheralManager(
+            peripheral: CBPeripheralManager,
+            didUnpublishL2CAPChannel: CBL2CAPPSM,
+            error: NSError?,
+        ) {
+            if (error != null) {
+                logger?.warn("Failed to unpublish L2CAP PSM $didUnpublishL2CAPChannel: ${error.localizedDescription}")
+            }
+        }
+
+        override fun peripheralManager(
+            peripheral: CBPeripheralManager,
+            didOpenL2CAPChannel: CBL2CAPChannel?,
+            error: NSError?,
+        ) {
+            val channel = didOpenL2CAPChannel ?: return
+            val input = channel.inputStream
+            val output = channel.outputStream
+            val psm = channel.PSM.toInt()
+            val peerId = channel.peer?.identifier?.UUIDString
+            val listener = locked {
+                if (!ownsCallbackLocked(owner, peripheral) || psm !in publishedL2capPsms) null
+                else owner.listenerFor(peripheral)
+            }
+            if (error != null || listener == null || input == null || output == null || peerId.isNullOrBlank()) {
+                if (error != null) logger?.warn("L2CAP channel open failed: ${error.localizedDescription}")
+                input?.close()
+                output?.close()
+                return
+            }
+            listener.onL2capChannelOpened(
+                AppleL2capChannel(
+                    psm = psm,
+                    sessionId = PeripheralSessionId(peerId),
+                    inputStream = input,
+                    outputStream = output,
+                    nativeChannel = channel,
+                ),
+            )
+        }
+
         override fun peripheralManager(
             peripheral: CBPeripheralManager,
             willRestoreState: Map<Any?, *>,
@@ -505,6 +577,34 @@ internal class FrameworkApplePeripheralStack(
         locked { manager }?.stopAdvertising()
     }
 
+    override suspend fun publishL2capChannel(secure: Boolean): Int {
+        val waiter = CompletableDeferred<Int>()
+        val peripheral = locked {
+            val current = manager ?: throw L2capException("Apple peripheral manager is not running")
+            if (l2capPublishWaiter != null) throw L2capException("Another L2CAP channel is being published")
+            l2capPublishWaiter = waiter
+            current
+        }
+        try {
+            peripheral.publishL2CAPChannelWithEncryption(secure)
+            return withTimeout(operationTimeout) { waiter.await() }
+        } catch (cause: Throwable) {
+            locked { if (l2capPublishWaiter === waiter) l2capPublishWaiter = null }
+            if (cause is TimeoutCancellationException) {
+                throw L2capException("Timed out publishing an L2CAP channel", cause)
+            }
+            throw cause
+        }
+    }
+
+    override fun unpublishL2capChannel(psm: Int) {
+        val peripheral = locked {
+            if (!publishedL2capPsms.remove(psm)) return
+            manager
+        }
+        peripheral?.unpublishL2CAPChannel(psm.toUShort())
+    }
+
     override fun clearServices() {
         val peripheral = locked { retireManagerLocked() }
         peripheral?.delegate = null
@@ -524,6 +624,13 @@ internal class FrameworkApplePeripheralStack(
         advertisingWaiter = null
         poweredOnWaiter?.completeExceptionally(failure)
         poweredOnWaiter = null
+        l2capPublishWaiter?.completeExceptionally(L2capException("Apple peripheral manager run retired", failure))
+        l2capPublishWaiter = null
+        val retiredManager = manager
+        publishedL2capPsms.toList().forEach { psm ->
+            runCatching { retiredManager?.unpublishL2CAPChannel(psm.toUShort()) }
+        }
+        publishedL2capPsms.clear()
         return manager.also { manager = null }
     }
 

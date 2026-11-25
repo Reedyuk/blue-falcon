@@ -199,6 +199,36 @@ See the **[Peripheral Echo Server example](examples/Peripheral-Example/README.md
 for complete request routing, targeted notifications through `QueuePlugin`,
 platform permissions, lifecycle ownership, and restoration setup.
 
+### L2CAP channel server
+
+For bulk data, a running peripheral can publish an L2CAP connection-oriented
+channel. Accepted channels use the same `BluetoothSocket` contract as
+`BlueFalcon.openL2capChannel` on the central side:
+
+```kotlin
+if (peripheral.capabilities.l2capServer) {
+    val listener = peripheral.publishL2capChannel(secure = true)
+    // Tell centrals the PSM, e.g. in a readable characteristic
+    // (Apple convention: ABDD3056-28FA-441D-A470-55A75A52553A, UInt16 little-endian).
+    publishPsm(listener.psm)
+    applicationScope.launch {
+        listener.sockets.collect { socket ->
+            launch { socket.incoming.collect { chunk -> handle(socket.sessionId, chunk) } }
+        }
+    }
+}
+```
+
+| | Android | iOS / macOS |
+|---|---|---|
+| Support | Android 10 (API 29)+, `BLUETOOTH_CONNECT` on 12+ | iOS 11+ / macOS 10.13+ |
+| Native API | `listenUsingL2capChannel` / `listenUsingInsecureL2capChannel` | `publishL2CAPChannelWithEncryption` |
+
+`stop()`, `close()` and `listener.close()` unpublish the channel and close every
+accepted socket. Each listener holds at most 16 open sockets. Inbound data is
+buffered without loss until you collect `incoming`. See
+[ADR 0016](docs/adr/0016-peripheral-l2cap-coc-server.md).
+
 ## 📚 Documentation
 
 - **[Migration Guide](docs/MIGRATION_GUIDE.md)** - Upgrading from 2.x (legacy API reference)

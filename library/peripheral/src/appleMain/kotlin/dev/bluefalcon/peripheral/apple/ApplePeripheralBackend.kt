@@ -23,8 +23,12 @@ import dev.bluefalcon.peripheral.internal.PeripheralRequestAdmission
 import dev.bluefalcon.peripheral.internal.PeripheralResourceOverflowException
 import dev.bluefalcon.peripheral.internal.PeripheralBackend
 import dev.bluefalcon.peripheral.internal.PeripheralBackendEventSink
+import dev.bluefalcon.peripheral.internal.BackendL2capServer
+import dev.bluefalcon.peripheral.internal.BackendL2capSink
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -63,7 +67,9 @@ internal class ApplePeripheralBackend(
         connectionLifecycleVisibility = false,
         preparedWrites = false,
         stateRestoration = true,
+        l2capServer = true,
     )
+    private val l2capSinks = MutableStateFlow<Map<Int, BackendL2capSink>>(emptyMap())
 
     override suspend fun start(
         config: PeripheralConfig,
@@ -98,6 +104,10 @@ internal class ApplePeripheralBackend(
 
             override fun onPlatformFailure(cause: Throwable) {
                 publishPlatformFailure(startGeneration, cause)
+            }
+
+            override fun onL2capChannelOpened(channel: AppleL2capChannel) {
+                acceptL2capChannel(channel)
             }
         }
 
@@ -134,6 +144,31 @@ internal class ApplePeripheralBackend(
             }
             throw cause
         }
+    }
+
+    override suspend fun publishL2capChannel(secure: Boolean, sink: BackendL2capSink): BackendL2capServer {
+        val psm = stack.publishL2capChannel(secure)
+        l2capSinks.update { it + (psm to sink) }
+        return object : BackendL2capServer {
+            override val psm: Int = psm
+
+            override fun close() {
+                l2capSinks.update { current -> if (current[psm] === sink) current - psm else current }
+                stack.unpublishL2capChannel(psm)
+            }
+        }
+    }
+
+    private fun acceptL2capChannel(channel: AppleL2capChannel) {
+        val sink = l2capSinks.value[channel.psm] ?: return channel.close()
+        val socket = try {
+            AppleL2capServerSocket(channel, sink::onSocketClosed)
+        } catch (cause: Throwable) {
+            logger?.warn("ApplePeripheral: failed to open L2CAP streams on PSM ${channel.psm}", cause)
+            channel.close()
+            return
+        }
+        sink.onSocketAccepted(socket)
     }
 
     override suspend fun stop() = lifecycleMutex.withLock {

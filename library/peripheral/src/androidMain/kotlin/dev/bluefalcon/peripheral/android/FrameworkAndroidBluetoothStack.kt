@@ -21,6 +21,7 @@ import android.os.Build
 import android.os.ParcelUuid
 import dev.bluefalcon.core.BluetoothNotEnabledException
 import dev.bluefalcon.core.BluetoothPermissionException
+import dev.bluefalcon.core.L2capException
 import dev.bluefalcon.core.Logger
 import dev.bluefalcon.peripheral.AdvertiseConfig
 import dev.bluefalcon.peripheral.CharacteristicProperty
@@ -35,6 +36,7 @@ import dev.bluefalcon.peripheral.NotificationMode
 import dev.bluefalcon.peripheral.PeripheralSessionId
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
+import java.io.IOException
 import java.util.UUID as JavaUuid
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
@@ -71,6 +73,7 @@ internal class FrameworkAndroidBluetoothStack(
                 connectableAdvertising = adapter != null && runCatching {
                     adapter.isMultipleAdvertisementSupported
                 }.getOrDefault(true),
+                l2capServer = adapter != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q,
             )
         }
 
@@ -110,6 +113,27 @@ internal class FrameworkAndroidBluetoothStack(
     }
 
     override fun closeGattServer() = closeCurrentGattServer()
+
+    override fun listenL2cap(secure: Boolean): AndroidL2capServerChannel {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+            throw L2capException("Android L2CAP CoC server requires Android 10 (API 29)")
+        }
+        val adapter = bluetoothManager.adapter
+            ?: throw L2capException("Android Bluetooth adapter is unavailable")
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
+            !applicationContext.hasPermission(Manifest.permission.BLUETOOTH_CONNECT)
+        ) {
+            throw BluetoothPermissionException()
+        }
+        val server = try {
+            if (secure) adapter.listenUsingL2capChannel() else adapter.listenUsingInsecureL2capChannel()
+        } catch (cause: SecurityException) {
+            throw BluetoothPermissionException().also { it.initCause(cause) }
+        } catch (cause: IOException) {
+            throw L2capException("Android refused to open an L2CAP server", cause)
+        }
+        return FrameworkL2capServerChannel(server)
+    }
 
     private fun openGattServer(listener: AndroidBluetoothStackListener) {
         AndroidLinkMtus.observe(applicationContext, logger)
