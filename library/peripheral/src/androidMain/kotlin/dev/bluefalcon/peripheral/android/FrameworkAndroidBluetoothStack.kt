@@ -758,24 +758,25 @@ internal class FrameworkAndroidBluetoothStack(
             .build()
 
     private fun AdvertiseConfig.toAdvertiseData(): AdvertiseData =
+        toAndroidAdvertisementPacket().toAdvertiseData()
+
+    private fun AdvertiseConfig.toScanResponseData(): AdvertiseData =
+        toAndroidScanResponsePacket().toAdvertiseData()
+
+    private fun AndroidAdvertisementPacket.toAdvertiseData(): AdvertiseData =
         AdvertiseData.Builder().apply {
-            // Device name is carried in the scan response packet instead (see
-            // toScanResponseData) so it doesn't compete with the service UUID and
-            // manufacturer data for the primary packet's 31-byte legacy budget.
-            setIncludeDeviceName(false)
-            setIncludeTxPowerLevel(includeTxPower)
+            setIncludeDeviceName(includeDeviceName)
+            setIncludeTxPowerLevel(includeTxPowerLevel)
             serviceUuids.forEach { uuid ->
-                addServiceUuid(ParcelUuid(Uuid.parse(uuid).toJavaUuid()))
+                addServiceUuid(ParcelUuid(uuid.toJavaUuid()))
             }
             manufacturerData.forEach { (id, data) ->
                 addManufacturerData(id, data.copyOf())
             }
+            serviceData.forEach { (uuid, data) ->
+                addServiceData(ParcelUuid(uuid.toJavaUuid()), data.copyOf())
+            }
         }.build()
-
-    private fun AdvertiseConfig.toScanResponseData(): AdvertiseData =
-        AdvertiseData.Builder()
-            .setIncludeDeviceName(localName != null)
-            .build()
 
     private fun BluetoothDevice.toSessionId(): PeripheralSessionId =
         PeripheralSessionId(address)
@@ -1012,3 +1013,40 @@ internal fun JavaUuid.toKotlinUuid(): Uuid = Uuid.parse(toString())
 
 internal fun NotificationMode.toAndroidConfirm(): Boolean =
     this == NotificationMode.Indication
+
+/** Framework-independent description of one legacy Android advertising packet. */
+@OptIn(ExperimentalUuidApi::class)
+internal class AndroidAdvertisementPacket(
+    val includeDeviceName: Boolean,
+    val includeTxPowerLevel: Boolean,
+    val serviceUuids: List<Uuid>,
+    val manufacturerData: Map<Int, ByteArray>,
+    val serviceData: Map<Uuid, ByteArray>,
+)
+
+/**
+ * Primary advertising packet. It never carries the device name, so the name cannot compete with
+ * service UUIDs, manufacturer data and service data for the 31-byte legacy budget.
+ */
+@OptIn(ExperimentalUuidApi::class)
+internal fun AdvertiseConfig.toAndroidAdvertisementPacket(): AndroidAdvertisementPacket =
+    AndroidAdvertisementPacket(
+        includeDeviceName = false,
+        includeTxPowerLevel = includeTxPower,
+        serviceUuids = serviceUuids.map(Uuid::parse),
+        manufacturerData = manufacturerData,
+        serviceData = serviceData.mapKeys { (uuid, _) -> Uuid.parse(uuid) },
+    )
+
+/**
+ * Scan response packet. Android can only advertise the system adapter name, not [AdvertiseConfig.localName],
+ * so the name is included only when the caller opts in with [AdvertiseConfig.includeSystemDeviceName].
+ */
+internal fun AdvertiseConfig.toAndroidScanResponsePacket(): AndroidAdvertisementPacket =
+    AndroidAdvertisementPacket(
+        includeDeviceName = includeSystemDeviceName,
+        includeTxPowerLevel = false,
+        serviceUuids = emptyList(),
+        manufacturerData = emptyMap(),
+        serviceData = emptyMap(),
+    )

@@ -32,6 +32,9 @@ internal fun PeripheralConfig.copyForBackend(): PeripheralConfig = copy(
         manufacturerData = advertiseConfig.manufacturerData.mapValues { (_, value) ->
             value.copyOf()
         },
+        serviceData = advertiseConfig.serviceData.mapValues { (_, value) ->
+            value.copyOf()
+        },
         services = advertiseConfig.services.map { service ->
             service.copy(
                 characteristics = service.characteristics.map { characteristic ->
