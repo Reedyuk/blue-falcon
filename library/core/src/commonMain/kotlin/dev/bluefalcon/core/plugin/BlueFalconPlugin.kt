@@ -162,8 +162,13 @@ open class PluginConfig
  * Scan operation call
  */
 data class ScanCall(
-    val filters: List<ServiceFilter>
-)
+    val filters: List<ServiceFilter>,
+    val config: ScanConfig = ScanConfig(),
+) {
+    /** Keeps the previous JVM constructor signature for callers compiled against older releases. */
+    @Deprecated("Binary compatibility only", level = DeprecationLevel.HIDDEN)
+    constructor(filters: List<ServiceFilter>) : this(filters, ScanConfig())
+}
 
 /**
  * Connect operation call
