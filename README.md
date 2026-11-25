@@ -231,7 +231,43 @@ platform permissions, lifecycle ownership, and restoration setup.
 
 #### Android
 - Minimum SDK: 24 (Android 7.0)
-- Target SDK: 33 (Android 13)
+- Compile / target SDK: 36 (Android 16)
+
+##### Android permissions
+
+The Android engine merges these permissions into your app:
+
+| Permission | Declared for |
+|---|---|
+| `BLUETOOTH`, `BLUETOOTH_ADMIN` | Android 11 and lower (`maxSdkVersion="30"`) |
+| `ACCESS_FINE_LOCATION`, `ACCESS_COARSE_LOCATION` | Android 11 and lower (`maxSdkVersion="30"`); BLE scans need location only there |
+| `BLUETOOTH_SCAN` | Android 12+, with `usesPermissionFlags="neverForLocation"` |
+| `BLUETOOTH_CONNECT`, `BLUETOOTH_ADVERTISE` | Android 12+ |
+
+`neverForLocation` tells Android that scan results are not used to derive
+location. Android then filters some beacon advertisements from the results.
+
+**If your app needs location on Android 12+** (for any reason, including maps),
+remove the library's limit in your own manifest. A plain re-declaration is not
+enough: the manifest merger keeps the library's `maxSdkVersion`.
+
+```xml
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"
+        tools:remove="android:maxSdkVersion" />
+</manifest>
+```
+
+**If your app derives location from BLE scans** (for example beacon
+positioning), remove the flag too:
+
+```xml
+<uses-permission android:name="android.permission.BLUETOOTH_SCAN"
+    tools:remove="android:usesPermissionFlags" />
+```
+
+You still request the runtime permissions yourself.
 
 #### iOS
 - Minimum: iOS 13.0+

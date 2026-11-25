@@ -20,11 +20,11 @@ val kotlinx_coroutines_version: String by project
 val versionLegacy: String by project
 
 android {
-    compileSdk = 33
+    compileSdk = 36
     namespace = "dev.bluefalcon.legacy"
     defaultConfig {
         minSdk = 24
-        targetSdk = 33
+        targetSdk = 36
     }
     lint {
         disable += "MissingPermission"

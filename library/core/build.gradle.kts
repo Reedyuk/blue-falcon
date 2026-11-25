@@ -14,11 +14,11 @@ val kotlinx_coroutines_version: String by project
 val versionCore: String by project
 
 android {
-    compileSdk = 33
+    compileSdk = 36
     namespace = "dev.bluefalcon.core"
     defaultConfig {
         minSdk = 24
-        targetSdk = 33
+        targetSdk = 36
     }
 }
 
