@@ -1,0 +1,6 @@
+language = Objective-C
+headers = bfl2cap.h
+headerFilter = bfl2cap.h
+compilerOpts = -fobjc-arc
+staticLibraries = libbfl2cap.a
+package = dev.bluefalcon.engine.apple.objc
