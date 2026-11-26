@@ -56,3 +56,20 @@ internal class AppleChannelOwner<T : Any> {
         failure?.let { throw it }
     }
 }
+
+/**
+ * Hands [channel] back to [owner] when the socket closes, then runs [onClosed].
+ *
+ * The socket drops this callback after it runs, so a closed socket that the app still
+ * references does not keep the native channel alive (#334).
+ */
+internal fun <T : Any> AppleL2CapSocket.releaseChannelOnClose(
+    channel: T,
+    owner: AppleChannelOwner<T>,
+    onClosed: (Throwable?) -> Unit,
+) {
+    this.onClosed = { failure ->
+        owner.release(channel)
+        onClosed(failure)
+    }
+}

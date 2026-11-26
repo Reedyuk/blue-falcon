@@ -44,8 +44,8 @@ import platform.darwin.dispatch_get_main_queue
  */
 @OptIn(ExperimentalForeignApi::class, BetaInteropApi::class, InternalBlueFalconApi::class)
 class AppleL2CapSocket internal constructor(
-    private val inputStream: NSInputStream,
-    private val outputStream: NSOutputStream,
+    inputStream: NSInputStream,
+    outputStream: NSOutputStream,
     override val psm: Int,
     override val peripheral: BluetoothPeripheral,
     private val closeNativeStream: (NSStream) -> Unit = { it.close() },
@@ -57,6 +57,11 @@ class AppleL2CapSocket internal constructor(
     /** Runs a resumed drain on the thread whose run loop the streams are scheduled on. */
     private val runOnStreamThread: (() -> Unit) -> Unit = { block -> dispatch_async(dispatch_get_main_queue()) { block() } },
 ) : BluetoothSocket {
+    // The channel's streams keep the CBL2CAPChannel alive, and Core Bluetooth closes the channel
+    // over the air only after that object is deallocated (#334). beginClose clears both fields,
+    // so a closed socket that the app still references does not keep the channel open.
+    private var nativeInput: NSInputStream? = inputStream
+    private var nativeOutput: NSOutputStream? = outputStream
     constructor(channel: CBL2CAPChannel, psm: Int, peripheral: BluetoothPeripheral) : this(channel, psm, peripheral, {})
     internal constructor(channel: CBL2CAPChannel, psm: Int, peripheral: BluetoothPeripheral, onCleanupFailure: (Throwable) -> Unit) : this(
         channel.inputStream ?: throw L2capException("L2CAP channel on PSM $psm has no input stream"),
@@ -107,6 +112,8 @@ class AppleL2CapSocket internal constructor(
                 closeCallback = value
                 if (retired && !closeCallbackInvoked) {
                     closeCallbackInvoked = true
+                    // The owner's callback captures the CBL2CAPChannel; see close().
+                    closeCallback = null
                     notify = true
                 }
             } finally { closeLock.unlock() }
@@ -124,8 +131,8 @@ class AppleL2CapSocket internal constructor(
             locked {
                 if (closing.value) return@locked
                 when (handleEvent) {
-                    NSStreamEventHasBytesAvailable -> if (aStream == inputStream) drainInput()
-                    NSStreamEventEndEncountered -> if (aStream == inputStream) finishInput() else close()
+                    NSStreamEventHasBytesAvailable -> if (aStream == nativeInput) drainInput()
+                    NSStreamEventEndEncountered -> if (aStream == nativeInput) finishInput() else close()
                     NSStreamEventErrorOccurred -> close()
                     else -> {}
                 }
@@ -143,7 +150,7 @@ class AppleL2CapSocket internal constructor(
         started = true
         try {
             val runLoop = NSRunLoop.mainRunLoop
-            for (stream in listOf(inputStream, outputStream)) {
+            for (stream in listOfNotNull(nativeInput, nativeOutput)) {
                 if (closing.value) break
                 stream.delegate = streamDelegate
                 stream.scheduleInRunLoop(runLoop, NSDefaultRunLoopMode)
@@ -163,6 +170,7 @@ class AppleL2CapSocket internal constructor(
             pendingChunk.value = null
         }
         val buffer = ByteArray(READ_BUFFER_SIZE)
+        val inputStream = nativeInput ?: return
         while (!closing.value && inputStream.hasBytesAvailable) {
             val read = buffer.usePinned { pinned ->
                 inputStream.read(pinned.addressOf(0).reinterpret(), READ_BUFFER_SIZE.toULong())
@@ -188,7 +196,7 @@ class AppleL2CapSocket internal constructor(
     }
 
     private fun completeInput() {
-        if (closing.value || pendingChunk.value != null || inputStream.hasBytesAvailable) return
+        if (closing.value || pendingChunk.value != null || nativeInput?.hasBytesAvailable == true) return
         inbound.finish()
         retire()
     }
@@ -221,6 +229,8 @@ class AppleL2CapSocket internal constructor(
                     var offset = 0
                     while (offset < data.size) {
                         if (closing.value) throw L2capException("L2CAP socket on PSM $psm is closed")
+                        val outputStream = nativeOutput
+                            ?: throw L2capException("L2CAP socket on PSM $psm is closed")
                         val written = writeNative?.invoke(data, offset) ?: outputStream.write(
                             pinned.addressOf(offset).reinterpret(),
                             (data.size - offset).toULong()
@@ -252,11 +262,14 @@ class AppleL2CapSocket internal constructor(
                     }
                 }
                 val runLoop = NSRunLoop.mainRunLoop
-                for (stream in listOf(inputStream, outputStream)) {
+                for (stream in listOfNotNull(nativeInput, nativeOutput)) {
                     attempt { stream.delegate = null }
                     attempt { closeNativeStream(stream) }
                     attempt { stream.removeFromRunLoop(runLoop, NSDefaultRunLoopMode) }
                 }
+                // A blocked write or read keeps its own local reference until it returns.
+                nativeInput = null
+                nativeOutput = null
                 teardownDone = true
                 closeFailure = failure
                 failure?.let(onCleanupFailure)
@@ -281,6 +294,11 @@ class AppleL2CapSocket internal constructor(
             if (!closeCallbackInvoked) {
                 closeCallback?.let {
                     closeCallbackInvoked = true
+                    // Drop the callback once it ran. The engine's callback captures the
+                    // CBL2CAPChannel, and Core Bluetooth closes the channel over the air only
+                    // after its last reference is released (#334). An app that keeps the closed
+                    // socket must not keep the channel open.
+                    closeCallback = null
                     it(closeFailure)
                 }
             }

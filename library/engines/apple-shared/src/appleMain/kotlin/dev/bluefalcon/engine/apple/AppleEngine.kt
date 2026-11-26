@@ -34,6 +34,8 @@ class AppleEngine(
     private val lifecycle = AppleEngineLifecycle(scope, ::closeResources)
     private val channelOwner = AppleChannelOwner<CBL2CAPChannel>()
     private val ownedSockets = MutableStateFlow<Set<AppleL2CapSocket>>(emptySet())
+    private val nativeReleaser = AppleNativeReleaser(scope)
+    private val recentChannelCloses = AppleRecentChannelCloses()
 
     override suspend fun close() { lifecycle.close() }
 
@@ -647,6 +649,36 @@ class AppleEngine(
         installPeripheralDelegate(cbPeripheral)
 
         val identifier = cbPeripheral.identifier.UUIDString
+        // A channel this engine just closed on the same PSM can still be closing on the air (#334).
+        val openedChannel = openWhileOwnCloseSettles(
+            remaining = { recentChannelCloses.remaining(identifier, psm) },
+            onRetry = nativeReleaser::requestRelease,
+        ) { openNativeChannel(cbPeripheral, identifier, psm) }
+        return@operation lifecycle.native {
+            try {
+                AppleL2CapSocket(
+                    openedChannel, psm, peripheral, lifecycle::rememberCleanupFailure, false,
+                ).also { socket ->
+                    socket.releaseChannelOnClose(openedChannel, channelOwner) { failure ->
+                        lifecycle.rememberCleanupFailure(failure)
+                        ownedSockets.update { it - socket }
+                        recentChannelCloses.closed(identifier, psm)
+                        // Nothing in the engine references the channel now. Release it promptly
+                        // so Core Bluetooth closes it over the air (#334).
+                        nativeReleaser.requestRelease()
+                    }
+                    ownedSockets.update { it + socket }
+                    socket.start()
+                }
+            } catch (failure: Throwable) {
+                try { closeNativeChannel(openedChannel) } finally { channelOwner.release(openedChannel) }
+                throw failure
+            }
+        }
+    }
+    
+    /** One native open: `openL2CAPChannel` and its `didOpen` callback. */
+    private suspend fun openNativeChannel(cbPeripheral: CBPeripheral, identifier: String, psm: Int): CBL2CAPChannel {
         val deferred = CompletableDeferred<CBL2CAPChannel>()
         lifecycle.native {
             channelOwner.registerWaiter(deferred)
@@ -670,28 +702,9 @@ class AppleEngine(
             channelOwner.forgetWaiter(deferred)
             l2capDeferreds.update { it - identifier }
         }
-
-        val openedChannel = checkNotNull(channel)
-        return@operation lifecycle.native {
-            try {
-                AppleL2CapSocket(
-                    openedChannel, psm, peripheral, lifecycle::rememberCleanupFailure, false,
-                ).also { socket ->
-                    socket.onClosed = { failure ->
-                        lifecycle.rememberCleanupFailure(failure)
-                        ownedSockets.update { it - socket }
-                        channelOwner.release(openedChannel)
-                    }
-                    ownedSockets.update { it + socket }
-                    socket.start()
-                }
-            } catch (failure: Throwable) {
-                try { closeNativeChannel(openedChannel) } finally { channelOwner.release(openedChannel) }
-                throw failure
-            }
-        }
+        return checkNotNull(channel)
     }
-    
+
     override suspend fun createBond(peripheral: BluetoothPeripheral): Unit = lifecycle.operation {
         // Not required on Apple platforms - bonding is handled automatically
     }
@@ -1151,7 +1164,7 @@ class AppleEngine(
                         try { closeNativeChannel(channel) } finally { channelOwner.release(channel) }
                     }
                     deferred.completeExceptionally(
-                        L2capException("Failed to open L2CAP channel: ${error.localizedDescription}")
+                        AppleL2capOpenRejected(L2capException("Failed to open L2CAP channel: ${error.localizedDescription}"))
                     )
                 }
                 channel == null ->
