@@ -273,7 +273,7 @@ buffered without loss until you collect `incoming`. See
 
 #### Android
 - Minimum SDK: 24 (Android 7.0)
-- Target SDK: 33 (Android 13)
+- Compile / target SDK: 36 (Android 16)
 
 #### iOS
 - Minimum: iOS 13.0+
