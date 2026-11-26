@@ -39,6 +39,15 @@ interface BluetoothSocket {
 
     /**
      * Inbound frames/chunks read from the channel.
+     *
+     * On the Android and Apple engines this flow is loss-free and bounded (see
+     * [L2capInboundBuffer]):
+     * - Chunks that arrive before the first collector subscribes are kept and delivered to it.
+     * - When the collector is slow, the engine stops reading from the native channel, so L2CAP
+     *   flow control pushes back on the remote sender. No chunk is dropped.
+     * - After the remote closes the channel, chunks that are already buffered are still delivered.
+     *   [close] drops them.
+     * - A collector that subscribes after another one receives chunks from that point on.
      */
     val incoming: SharedFlow<ByteArray>
 
