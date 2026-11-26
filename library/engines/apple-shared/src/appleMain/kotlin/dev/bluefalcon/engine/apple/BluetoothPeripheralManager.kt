@@ -23,11 +23,18 @@ interface CBCentralManagerCallback {
 
 /**
  * Wrapper for CBCentralManager that handles delegate callbacks
+ *
+ * @param restorationIdentifier passed as `CBCentralManagerOptionRestoreIdentifierKey`. Only the
+ * engine's scanning manager uses it; per-peer connection managers never do.
  */
-class BluetoothPeripheralManager(
-    private val callback: CBCentralManagerCallback
+class BluetoothPeripheralManager internal constructor(
+    private val callback: CBCentralManagerCallback,
+    restorationIdentifier: String?,
+    private val onRestoredState: (AppleCentralRestoredState) -> Unit,
 ) : NSObject(), CBCentralManagerDelegateProtocol {
-    
+
+    constructor(callback: CBCentralManagerCallback) : this(callback, null, {})
+
     private val owner = AppleNativeManagerOwner()
     private val _managerState = MutableStateFlow<CBManagerState>(CBManagerStateUnknown)
     val managerState: StateFlow<CBManagerState> = _managerState
@@ -41,7 +48,11 @@ class BluetoothPeripheralManager(
     // (FrameworkApplePeripheralStack), which already does this correctly.
     private val delegateQueue = dispatch_queue_create("dev.bluefalcon.engine.apple.central", null)
 
-    private var nativeManager: CBCentralManager? = CBCentralManager(this, delegateQueue)
+    private var nativeManager: CBCentralManager? = CBCentralManager(
+        this,
+        delegateQueue,
+        restorationIdentifier?.let { mapOf<Any?, Any?>(CBCentralManagerOptionRestoreIdentifierKey to it) },
+    )
     val centralManager: CBCentralManager
         get() = checkNotNull(nativeManager) { "Apple native manager is closed" }
     
@@ -62,6 +73,15 @@ class BluetoothPeripheralManager(
             }
             add { nativeManager = null }
         })
+    }
+
+    /**
+     * Called only for a manager created with a restoration identifier, before the first state
+     * update. It can run while the owner is still constructing this manager, so [onRestoredState]
+     * must only touch state that exists before the manager.
+     */
+    override fun centralManager(central: CBCentralManager, willRestoreState: Map<Any?, *>) = owner.forward {
+        onRestoredState(parseCentralRestoredState(willRestoreState))
     }
 
     override fun centralManagerDidUpdateState(central: CBCentralManager) = owner.forward {

@@ -279,6 +279,25 @@ buffered without loss until you collect `incoming`. See
 - Minimum: iOS 13.0+
 - Xcode 14.0+
 
+##### Background scan restoration (iOS)
+
+Pass a restoration identifier so that iOS can hand back a running scan after it ends the app in the background:
+
+```kotlin
+val engine = IosEngine(AppleEngineConfiguration(restorationIdentifier = "com.example.central"))
+val blueFalcon = BlueFalcon(engine)
+
+// Set once, when iOS relaunches the app with a scan it restored. Core Bluetooth keeps
+// that scan running, and discoveries arrive in `peripherals` without a new scan() call.
+engine.restoredScan.filterNotNull().collect { scan -> println("Restored scan for ${scan.filters}") }
+```
+
+- **Only scans are restored, not connections.** Every connection uses its own per-peer `CBCentralManager`, and those managers have no restoration identifier. After a relaunch, scan and connect again.
+- iOS doesn't relaunch or restore an app that the user force-quit from the app switcher.
+- Add `bluetooth-central` to `UIBackgroundModes` in `Info.plist`. Without it, Core Bluetooth throws `NSInternalInconsistencyException` when the engine is created.
+- Create the engine early during launch (for example in `application(_:didFinishLaunchingWithOptions:)`), and use the same identifier every time.
+- macOS doesn't support state restoration. The identifier has no effect there.
+
 #### macOS
 - Minimum: macOS 10.15+
 
