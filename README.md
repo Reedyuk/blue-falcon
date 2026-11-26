@@ -231,7 +231,7 @@ platform permissions, lifecycle ownership, and restoration setup.
 
 #### Android
 - Minimum SDK: 24 (Android 7.0)
-- Compile / target SDK: 36 (Android 16)
+- Target SDK: 33 (Android 13)
 
 ##### Android permissions
 

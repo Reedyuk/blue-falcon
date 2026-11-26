@@ -14,11 +14,11 @@ val kotlinx_coroutines_version: String by project
 val versionPeripheral: String by project
 
 android {
-    compileSdk = 36
+    compileSdk = 33
     namespace = "dev.bluefalcon.peripheral"
     defaultConfig {
         minSdk = 24
-        targetSdk = 36
+        targetSdk = 33
     }
     lint {
         disable += "MissingPermission"

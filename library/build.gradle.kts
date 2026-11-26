@@ -39,12 +39,12 @@ val version: String by project
 val kotlinx_coroutines_version: String by project
 
 android {
-    compileSdk = 36
+    compileSdk = 33
     sourceSets["main"].manifest.srcFile("src/androidMain/AndroidManifest.xml")
     namespace = "dev.bluefalcon.blueFalcon"
     defaultConfig {
         minSdk = 24
-        targetSdk = 36
+        targetSdk = 33
     }
     lint {
         disable += "MissingPermission"
