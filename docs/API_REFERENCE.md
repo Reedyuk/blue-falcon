@@ -413,6 +413,8 @@ suspend fun openL2capChannel(peripheral: BluetoothPeripheral, psm: Int)
 
 Open L2CAP channel (platform-dependent).
 
+On Android and Apple, `BluetoothSocket.incoming` doesn't drop data. Bytes that arrive before you start collecting are buffered (up to 64 chunks). When the buffer is full, or your collector is slow, the engine stops reading, and L2CAP flow control slows the sender down.
+
 ---
 
 ```kotlin
