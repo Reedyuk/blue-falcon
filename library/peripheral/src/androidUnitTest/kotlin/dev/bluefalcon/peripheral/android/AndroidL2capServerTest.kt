@@ -24,7 +24,10 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.seconds
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.takeWhile
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
@@ -62,6 +65,27 @@ class AndroidL2capServerTest {
         val first = withTimeout(5.seconds) { socket.incoming.first() }
 
         assertContentEquals(byteArrayOf(1, 2, 3), first)
+        socket.close()
+    }
+
+    @Test
+    fun collectorThatResubscribesLosesNoChunks() = runBlocking<Unit> {
+        val connection = FakeConnection("central")
+        val socket = AndroidL2capServerSocket(connection, psm = 0x0081, onClosed = {})
+
+        connection.remoteWrites(byteArrayOf(1))
+        val first = withTimeout(5.seconds) { socket.incoming.first() }
+        // No collector is subscribed while these arrive.
+        connection.remoteWrites(byteArrayOf(2))
+        delay(100)
+        connection.remoteWrites(byteArrayOf(3))
+        delay(100)
+        val later = withTimeout(5.seconds) {
+            socket.incoming.takeWhileJoined { it.size < 2 }
+        }
+
+        assertContentEquals(byteArrayOf(1), first)
+        assertContentEquals(byteArrayOf(2, 3), later)
         socket.close()
     }
 
@@ -148,6 +172,13 @@ class AndroidL2capServerTest {
     fun stackWithoutL2capReportsNoCapability() {
         val peripheral = createBlueFalconPeripheral(FakeAndroidBluetoothStack(), NoOpLogger, EmptyCoroutineContext)
         assertFalse(peripheral.capabilities.l2capServer)
+    }
+
+    /** Collects chunks, joined, while [more] holds for the bytes so far. Reads may merge chunks. */
+    private suspend fun Flow<ByteArray>.takeWhileJoined(more: (ByteArray) -> Boolean): ByteArray {
+        var joined = ByteArray(0)
+        takeWhile { joined = joined + it; more(joined) }.collect()
+        return joined
     }
 
     /** Coroutines stack-trace recovery may wrap the original exception, so search the chain. */

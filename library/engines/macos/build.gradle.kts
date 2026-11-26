@@ -16,8 +16,8 @@ kotlin {
     jvmToolchain(17)
     
     // macOS targets
-    macosArm64()
-    macosX64()
+    macosArm64 { bluefalconL2capInterop() }
+    macosX64 { bluefalconL2capInterop() }
     
     sourceSets {
         val macosMain by creating {
@@ -54,6 +54,41 @@ kotlin {
         val macosX64Test by getting {
             dependsOn(macosTest)
         }
+    }
+}
+
+/**
+ * Objective-C helper that owns CBL2CAPChannel objects outside Kotlin (#334). The `.m` file is
+ * compiled per target into a static library, which cinterop embeds in the klib.
+ */
+fun org.jetbrains.kotlin.gradle.plugin.mpp.KotlinNativeTarget.bluefalconL2capInterop() {
+    val (sdk, arch, minVersion) = when (konanTarget) {
+        org.jetbrains.kotlin.konan.target.KonanTarget.IOS_ARM64 -> Triple("iphoneos", "arm64", "-miphoneos-version-min=12.0")
+        org.jetbrains.kotlin.konan.target.KonanTarget.IOS_SIMULATOR_ARM64 -> Triple("iphonesimulator", "arm64", "-mios-simulator-version-min=12.0")
+        org.jetbrains.kotlin.konan.target.KonanTarget.IOS_X64 -> Triple("iphonesimulator", "x86_64", "-mios-simulator-version-min=12.0")
+        org.jetbrains.kotlin.konan.target.KonanTarget.MACOS_ARM64 -> Triple("macosx", "arm64", "-mmacosx-version-min=10.15")
+        org.jetbrains.kotlin.konan.target.KonanTarget.MACOS_X64 -> Triple("macosx", "x86_64", "-mmacosx-version-min=10.15")
+        else -> error("bfl2cap: unsupported target $konanTarget")
+    }
+    val source = project.file("../apple-shared/src/nativeInterop/objc")
+    val outDir = project.layout.buildDirectory.dir("bfl2cap/$name").get().asFile
+    val compile = project.tasks.register("compileBfl2cap" + name.replaceFirstChar { it.uppercase() }, Exec::class.java) {
+        inputs.dir(source)
+        outputs.dir(outDir)
+        doFirst { outDir.mkdirs() }
+        commandLine(
+            "sh", "-c",
+            "xcrun --sdk $sdk clang -c -fobjc-arc -fmodules -Os -arch $arch $minVersion " +
+                "-I'$source' '$source/bfl2cap.m' -o '$outDir/bfl2cap.o' && " +
+                "xcrun libtool -static -o '$outDir/libbfl2cap.a' '$outDir/bfl2cap.o'",
+        )
+    }
+    compilations.getByName("main").cinterops.create("bfl2cap") {
+        definitionFile.set(project.file("../apple-shared/src/nativeInterop/cinterop/bfl2cap.def"))
+        packageName("dev.bluefalcon.engine.apple.objc")
+        includeDirs(source)
+        extraOpts("-libraryPath", outDir.absolutePath)
+        project.tasks.named(interopProcessingTaskName).configure { dependsOn(compile) }
     }
 }
 

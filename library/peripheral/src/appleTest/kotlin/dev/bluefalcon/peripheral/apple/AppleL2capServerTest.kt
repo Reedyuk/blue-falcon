@@ -6,6 +6,14 @@ import dev.bluefalcon.peripheral.L2capServerSocket
 import dev.bluefalcon.peripheral.PeripheralConfig
 import dev.bluefalcon.peripheral.PeripheralSessionId
 import kotlinx.cinterop.ExperimentalForeignApi
+import kotlinx.cinterop.ObjCObjectVar
+import kotlinx.cinterop.addressOf
+import kotlinx.cinterop.alloc
+import kotlinx.cinterop.memScoped
+import kotlinx.cinterop.ptr
+import kotlinx.cinterop.reinterpret
+import kotlinx.cinterop.usePinned
+import kotlinx.cinterop.value
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.take
@@ -15,10 +23,12 @@ import kotlinx.coroutines.withTimeout
 import platform.Foundation.NSData
 import platform.Foundation.NSInputStream
 import platform.Foundation.NSOutputStream
+import platform.Foundation.NSStream
 import platform.Foundation.NSStreamDataWrittenToMemoryStreamKey
 import platform.Foundation.NSStreamEventEndEncountered
 import platform.Foundation.NSStreamEventErrorOccurred
 import platform.Foundation.NSStreamStatusClosed
+import platform.Foundation.getBoundStreamsWithBufferSize
 import platform.Foundation.outputStreamToMemory
 import kotlin.coroutines.EmptyCoroutineContext
 import kotlin.test.Test
@@ -63,6 +73,33 @@ class AppleL2capServerTest {
         val joined = received.fold(ByteArray(0)) { acc, bytes -> acc + bytes }
         assertContentEquals(payload, joined)
         socket.close()
+    }
+
+    @Test
+    fun collectorThatResubscribesLosesNoChunks() = runBlocking<Unit> {
+        val (input, remote) = boundStreams()
+        val channel = AppleL2capChannel(
+            psm = 0x0081,
+            sessionId = PeripheralSessionId("central-1"),
+            inputStream = input,
+            outputStream = NSOutputStream.outputStreamToMemory(),
+        )
+        val socket = AppleL2capServerSocket(channel, onClosed = {}, runOnStreamThread = { it() })
+
+        remote.writeAll(byteArrayOf(1))
+        socket.drainInput()
+        val first = withTimeout(5.seconds) { socket.incoming.first() }
+        // No collector is subscribed while these arrive.
+        delay(100)
+        remote.writeAll(byteArrayOf(2, 3))
+        socket.drainInput()
+        delay(100)
+        val later = withTimeout(5.seconds) { socket.incoming.first() }
+
+        assertContentEquals(byteArrayOf(1), first)
+        assertContentEquals(byteArrayOf(2, 3), later)
+        socket.close()
+        remote.close()
     }
 
     @Test
@@ -136,10 +173,29 @@ class AppleL2capServerTest {
         peripheral.close()
     }
 
+    /** An input stream fed by writes to the returned output stream, like a central sending bytes. */
+    private fun boundStreams(): Pair<NSInputStream, NSOutputStream> = memScoped {
+        val input = alloc<ObjCObjectVar<NSInputStream?>>()
+        val output = alloc<ObjCObjectVar<NSOutputStream?>>()
+        NSStream.getBoundStreamsWithBufferSize(BoundBufferSize, input.ptr, output.ptr)
+        val remote = output.value!!
+        remote.open()
+        input.value!! to remote
+    }
+
+    private fun NSOutputStream.writeAll(bytes: ByteArray) {
+        val written = bytes.usePinned { write(it.addressOf(0).reinterpret(), bytes.size.toULong()) }
+        assertEquals(bytes.size.toLong(), written)
+    }
+
     private fun channel(bytes: ByteArray, psm: Int = 0x0081) = AppleL2capChannel(
         psm = psm,
         sessionId = PeripheralSessionId("central-1"),
         inputStream = NSInputStream(data = bytes.toData()),
         outputStream = NSOutputStream.outputStreamToMemory(),
     )
+
+    private companion object {
+        val BoundBufferSize: ULong = (64 * 1024).toULong()
+    }
 }

@@ -24,6 +24,8 @@ import dev.bluefalcon.core.BluetoothPermissionException
 import dev.bluefalcon.core.L2capException
 import dev.bluefalcon.core.Logger
 import dev.bluefalcon.peripheral.AdvertiseConfig
+import dev.bluefalcon.peripheral.AdvertiseMode
+import dev.bluefalcon.peripheral.AdvertiseTxPower
 import dev.bluefalcon.peripheral.CharacteristicProperty
 import dev.bluefalcon.peripheral.GattCharacteristicConfig
 import dev.bluefalcon.peripheral.GattCharacteristicId
@@ -774,12 +776,14 @@ internal class FrameworkAndroidBluetoothStack(
         characteristic.addDescriptor(cccd)
     }
 
-    private fun AdvertiseConfig.toAdvertiseSettings(): AdvertiseSettings =
-        AdvertiseSettings.Builder()
-            .setAdvertiseMode(AdvertiseSettings.ADVERTISE_MODE_BALANCED)
-            .setConnectable(services.isNotEmpty())
-            .setTxPowerLevel(AdvertiseSettings.ADVERTISE_TX_POWER_MEDIUM)
+    private fun AdvertiseConfig.toAdvertiseSettings(): AdvertiseSettings {
+        val spec = toAndroidAdvertiseSettings()
+        return AdvertiseSettings.Builder()
+            .setAdvertiseMode(spec.advertiseMode)
+            .setConnectable(spec.connectable)
+            .setTxPowerLevel(spec.txPowerLevel)
             .build()
+    }
 
     private fun AdvertiseConfig.toAdvertiseData(): AdvertiseData =
         toAndroidAdvertisementPacket().toAdvertiseData()
@@ -1037,6 +1041,29 @@ internal fun JavaUuid.toKotlinUuid(): Uuid = Uuid.parse(toString())
 
 internal fun NotificationMode.toAndroidConfirm(): Boolean =
     this == NotificationMode.Indication
+
+/** Framework-independent `AdvertiseSettings` values, so the mapping is unit-testable. */
+internal data class AndroidAdvertiseSettings(
+    val advertiseMode: Int,
+    val txPowerLevel: Int,
+    val connectable: Boolean,
+)
+
+/** Defaults map to the previous hardcoded `ADVERTISE_MODE_BALANCED` / `ADVERTISE_TX_POWER_MEDIUM`. */
+internal fun AdvertiseConfig.toAndroidAdvertiseSettings(): AndroidAdvertiseSettings = AndroidAdvertiseSettings(
+    advertiseMode = when (advertiseMode) {
+        AdvertiseMode.LowPower -> AdvertiseSettings.ADVERTISE_MODE_LOW_POWER
+        AdvertiseMode.Balanced -> AdvertiseSettings.ADVERTISE_MODE_BALANCED
+        AdvertiseMode.LowLatency -> AdvertiseSettings.ADVERTISE_MODE_LOW_LATENCY
+    },
+    txPowerLevel = when (txPowerLevel) {
+        AdvertiseTxPower.UltraLow -> AdvertiseSettings.ADVERTISE_TX_POWER_ULTRA_LOW
+        AdvertiseTxPower.Low -> AdvertiseSettings.ADVERTISE_TX_POWER_LOW
+        AdvertiseTxPower.Medium -> AdvertiseSettings.ADVERTISE_TX_POWER_MEDIUM
+        AdvertiseTxPower.High -> AdvertiseSettings.ADVERTISE_TX_POWER_HIGH
+    },
+    connectable = services.isNotEmpty(),
+)
 
 /** Framework-independent description of one legacy Android advertising packet. */
 @OptIn(ExperimentalUuidApi::class)

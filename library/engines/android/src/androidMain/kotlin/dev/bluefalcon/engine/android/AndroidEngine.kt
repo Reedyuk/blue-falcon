@@ -185,7 +185,9 @@ class AndroidEngine(
         }
     }
     
-    override suspend fun scan(filters: List<ServiceFilter>) {
+    override suspend fun scan(filters: List<ServiceFilter>) = scan(filters, ScanConfig())
+
+    override suspend fun scan(filters: List<ServiceFilter>, config: ScanConfig) {
         synchronized(lifetime.lock) {
             check(!lifetime.isClosed) { "AndroidEngine is closed" }
 
@@ -203,8 +205,10 @@ class AndroidEngine(
             // service UUID we can observe (see [matchesActiveFilters]).
             val scanFilters: List<ScanFilter> = listOf(ScanFilter.Builder().build())
 
+            val settingsSpec = config.toAndroidScanSettings()
             val settings = ScanSettings.Builder()
-                .setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY)
+                .setScanMode(settingsSpec.scanMode)
+                .setReportDelay(settingsSpec.reportDelayMillis)
                 .build()
             val scanner = bluetoothManager.adapter?.bluetoothLeScanner
             scanner?.startScan(scanFilters, settings, scanCallback)
@@ -1645,3 +1649,17 @@ internal fun parseAdvertisedLocalName(raw: ByteArray): String? {
     }
     return shortened
 }
+
+/** Framework-independent `ScanSettings` values, so the mapping is unit-testable. */
+internal data class AndroidScanSettings(val scanMode: Int, val reportDelayMillis: Long)
+
+/** [ScanConfig] defaults map to the previous hardcoded `SCAN_MODE_LOW_LATENCY` and no batching. */
+internal fun ScanConfig.toAndroidScanSettings(): AndroidScanSettings = AndroidScanSettings(
+    scanMode = when (mode) {
+        ScanMode.Opportunistic -> ScanSettings.SCAN_MODE_OPPORTUNISTIC
+        ScanMode.LowPower -> ScanSettings.SCAN_MODE_LOW_POWER
+        ScanMode.Balanced -> ScanSettings.SCAN_MODE_BALANCED
+        ScanMode.LowLatency -> ScanSettings.SCAN_MODE_LOW_LATENCY
+    },
+    reportDelayMillis = reportDelay.inWholeMilliseconds,
+)

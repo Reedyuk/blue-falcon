@@ -354,9 +354,18 @@ class BlueFalcon(
     /**
      * Scan for BLE devices
      */
-    suspend fun scan(filters: List<ServiceFilter> = emptyList()): Unit = owned {
-        plugins.interceptScan(ScanCall(filters)) { call ->
-            engine.scan(call.filters)
+    suspend fun scan(filters: List<ServiceFilter> = emptyList()): Unit = scan(filters, ScanConfig())
+
+    /**
+     * Scan for BLE devices with explicit [ScanConfig] settings, for example a low-power mode in the
+     * background. `ScanConfig()` gives the same behavior as [scan] without a config.
+     */
+    suspend fun scan(filters: List<ServiceFilter> = emptyList(), config: ScanConfig): Unit = owned {
+        plugins.interceptScan(ScanCall(filters, config)) { call ->
+            // Default settings keep the original engine entry point, so wrapper engines that
+            // override only scan(filters) (for example `BlueFalconEngine by inner`) are unaffected.
+            if (call.config == ScanConfig()) engine.scan(call.filters)
+            else engine.scan(call.filters, call.config)
         }
     }
     

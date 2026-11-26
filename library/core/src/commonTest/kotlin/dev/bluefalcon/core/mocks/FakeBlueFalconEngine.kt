@@ -79,6 +79,13 @@ class FakeBlueFalconEngine : BlueFalconEngine {
     var onConnect: () -> Unit = {}
     var onScan: () -> Unit = {}
     
+    var lastScanConfig: ScanConfig? = null
+
+    override suspend fun scan(filters: List<ServiceFilter>, config: ScanConfig) {
+        lastScanConfig = config
+        scan(filters)
+    }
+
     override suspend fun scan(filters: List<ServiceFilter>) {
         scanCalled = true
         lastScanFilters = filters
