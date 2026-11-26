@@ -30,6 +30,7 @@ class ApplePeripheralBackendLifecycleTest {
                 connectionLifecycleVisibility = false,
                 preparedWrites = false,
                 stateRestoration = true,
+                l2capServer = true,
             ),
             backend.capabilities,
         )

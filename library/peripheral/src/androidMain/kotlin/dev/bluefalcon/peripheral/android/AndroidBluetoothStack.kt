@@ -39,6 +39,13 @@ internal interface AndroidBluetoothStack {
     fun clearServices() = Unit
 
     fun closeGattServer()
+
+    /**
+     * Opens a native L2CAP CoC server socket. Blocking; called off the main thread.
+     * Throws [dev.bluefalcon.core.L2capException] when unsupported or refused.
+     */
+    fun listenL2cap(secure: Boolean): AndroidL2capServerChannel =
+        throw dev.bluefalcon.core.L2capException("Android L2CAP server is not supported by this stack")
 }
 
 internal interface AndroidBluetoothStackListener {
@@ -51,6 +58,7 @@ internal interface AndroidBluetoothStackListener {
 internal data class AndroidStackCapabilities(
     val localGattServer: Boolean,
     val connectableAdvertising: Boolean,
+    val l2capServer: Boolean = false,
 )
 
 internal sealed interface AndroidGattEvent {

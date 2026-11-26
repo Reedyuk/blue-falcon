@@ -52,6 +52,13 @@ internal interface PeripheralBackend {
         if (token.isCurrent()) disconnect(token.sessionId) else DisconnectResult.AlreadyDisconnected
 
     suspend fun disconnect(sessionId: PeripheralSessionId): DisconnectResult
+
+    /**
+     * Publishes a native L2CAP CoC server and routes its accepted sockets to [sink]. Called only
+     * while the manager is Running. On failure the backend releases everything it created.
+     */
+    suspend fun publishL2capChannel(secure: Boolean, sink: BackendL2capSink): BackendL2capServer =
+        throw dev.bluefalcon.core.L2capException("L2CAP channel server is not supported by this backend")
 }
 
 internal interface PeripheralBackendEventSink {

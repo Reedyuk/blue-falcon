@@ -71,3 +71,4 @@ ADRs can have the following statuses:
 - [ADR 0013: Add Windows Bluetooth Adapter Enumeration and Selection](0013-add-windows-adapter-selection.md) - **Accepted** - 2026-09-01
 - [ADR 0014: Suspend `readCharacteristic` Until the Value Is Actually Received](0014-suspending-characteristic-reads.md) - **✅ Implemented** - 2026-09-09
 - [ADR 0015: Add an Observable Central Command Queue Plugin](0015-observable-central-command-queue.md) - **✅ Implemented** - 2026-10-01
+- [ADR 0016: Peripheral-Role L2CAP CoC Server](0016-peripheral-l2cap-coc-server.md) - **Proposed** - 2026-11-25
