@@ -170,7 +170,10 @@ class AppleEngine(
     // the async openL2CAPChannel(...) / onL2CAPChannelOpened(...) callback pair.
     private val l2capDeferreds = MutableStateFlow<Map<String, CompletableDeferred<CBL2CAPChannel>>>(emptyMap())
     
-    override suspend fun scan(filters: List<ServiceFilter>): Unit = lifecycle.operation {
+    override suspend fun scan(filters: List<ServiceFilter>): Unit = scan(filters, ScanConfig())
+
+    /** Applies [ScanConfig.allowDuplicates]; Core Bluetooth has no duty-cycle or batching control. */
+    override suspend fun scan(filters: List<ServiceFilter>, config: ScanConfig): Unit = lifecycle.operation {
         lifecycle.native { isScanning = true }
         
         when (centralManager.state) {
@@ -189,7 +192,7 @@ class AppleEngine(
                 lifecycle.native {
                     centralManager.scanForPeripheralsWithServices(
                         serviceUUIDs,
-                        mapOf(CBCentralManagerScanOptionAllowDuplicatesKey to true)
+                        config.toAppleScanOptions()
                     )
                 }
             }
@@ -1338,3 +1341,7 @@ private fun Int?.toCharacteristicWriteType() = when (this) {
     1 -> CharacteristicWriteType.WithoutResponse
     else -> CharacteristicWriteType.WithResponse
 }
+
+/** [ScanConfig] defaults keep the previous `AllowDuplicates = true` option. */
+internal fun ScanConfig.toAppleScanOptions(): Map<Any?, Any?> =
+    mapOf(CBCentralManagerScanOptionAllowDuplicatesKey to allowDuplicates)

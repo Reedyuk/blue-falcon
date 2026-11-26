@@ -103,6 +103,29 @@ launch {
 blueFalcon.scan()
 ```
 
+### Scan and advertise settings
+
+`scan()` keeps its previous defaults. Pass a `ScanConfig` to change them, for
+example for duty cycling between foreground and background:
+
+```kotlin
+blueFalcon.scan(config = ScanConfig(mode = ScanMode.LowPower))          // background
+blueFalcon.scan(config = ScanConfig(reportDelay = 5.seconds))           // Android batch scan
+```
+
+Peripheral advertising takes `AdvertiseConfig(advertiseMode = AdvertiseMode.LowPower,
+txPowerLevel = AdvertiseTxPower.Low)`.
+
+| Setting | Default (unchanged) | Android | iOS / macOS |
+|---|---|---|---|
+| `ScanConfig.mode` | `LowLatency` | `ScanSettings.setScanMode` | Ignored (OS controls the duty cycle) |
+| `ScanConfig.reportDelay` | `0` | `setReportDelay`; needs offloaded batching support | Ignored |
+| `ScanConfig.allowDuplicates` | `true` | Ignored (Android reports every advertisement) | `CBCentralManagerScanOptionAllowDuplicatesKey` |
+| `AdvertiseConfig.advertiseMode` | `Balanced` | `AdvertiseSettings.setAdvertiseMode` | Ignored |
+| `AdvertiseConfig.txPowerLevel` | `Medium` | `AdvertiseSettings.setTxPowerLevel` | Ignored |
+
+Windows, JS and Raspberry Pi engines ignore `ScanConfig`.
+
 ## Peripheral / GATT Server (3.7.0+)
 
 The `blue-falcon-peripheral` module provides the BLE Peripheral role alongside the
