@@ -21,6 +21,7 @@ import android.os.Build
 import android.os.ParcelUuid
 import dev.bluefalcon.core.BluetoothNotEnabledException
 import dev.bluefalcon.core.BluetoothPermissionException
+import dev.bluefalcon.core.L2capException
 import dev.bluefalcon.core.Logger
 import dev.bluefalcon.peripheral.AdvertiseConfig
 import dev.bluefalcon.peripheral.AdvertiseMode
@@ -37,6 +38,7 @@ import dev.bluefalcon.peripheral.NotificationMode
 import dev.bluefalcon.peripheral.PeripheralSessionId
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
+import java.io.IOException
 import java.util.UUID as JavaUuid
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
@@ -73,6 +75,7 @@ internal class FrameworkAndroidBluetoothStack(
                 connectableAdvertising = adapter != null && runCatching {
                     adapter.isMultipleAdvertisementSupported
                 }.getOrDefault(true),
+                l2capServer = adapter != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q,
             )
         }
 
@@ -112,6 +115,27 @@ internal class FrameworkAndroidBluetoothStack(
     }
 
     override fun closeGattServer() = closeCurrentGattServer()
+
+    override fun listenL2cap(secure: Boolean): AndroidL2capServerChannel {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+            throw L2capException("Android L2CAP CoC server requires Android 10 (API 29)")
+        }
+        val adapter = bluetoothManager.adapter
+            ?: throw L2capException("Android Bluetooth adapter is unavailable")
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
+            !applicationContext.hasPermission(Manifest.permission.BLUETOOTH_CONNECT)
+        ) {
+            throw BluetoothPermissionException()
+        }
+        val server = try {
+            if (secure) adapter.listenUsingL2capChannel() else adapter.listenUsingInsecureL2capChannel()
+        } catch (cause: SecurityException) {
+            throw BluetoothPermissionException().also { it.initCause(cause) }
+        } catch (cause: IOException) {
+            throw L2capException("Android refused to open an L2CAP server", cause)
+        }
+        return FrameworkL2capServerChannel(server)
+    }
 
     private fun openGattServer(listener: AndroidBluetoothStackListener) {
         AndroidLinkMtus.observe(applicationContext, logger)
@@ -762,24 +786,25 @@ internal class FrameworkAndroidBluetoothStack(
     }
 
     private fun AdvertiseConfig.toAdvertiseData(): AdvertiseData =
+        toAndroidAdvertisementPacket().toAdvertiseData()
+
+    private fun AdvertiseConfig.toScanResponseData(): AdvertiseData =
+        toAndroidScanResponsePacket().toAdvertiseData()
+
+    private fun AndroidAdvertisementPacket.toAdvertiseData(): AdvertiseData =
         AdvertiseData.Builder().apply {
-            // Device name is carried in the scan response packet instead (see
-            // toScanResponseData) so it doesn't compete with the service UUID and
-            // manufacturer data for the primary packet's 31-byte legacy budget.
-            setIncludeDeviceName(false)
-            setIncludeTxPowerLevel(includeTxPower)
+            setIncludeDeviceName(includeDeviceName)
+            setIncludeTxPowerLevel(includeTxPowerLevel)
             serviceUuids.forEach { uuid ->
-                addServiceUuid(ParcelUuid(Uuid.parse(uuid).toJavaUuid()))
+                addServiceUuid(ParcelUuid(uuid.toJavaUuid()))
             }
             manufacturerData.forEach { (id, data) ->
                 addManufacturerData(id, data.copyOf())
             }
+            serviceData.forEach { (uuid, data) ->
+                addServiceData(ParcelUuid(uuid.toJavaUuid()), data.copyOf())
+            }
         }.build()
-
-    private fun AdvertiseConfig.toScanResponseData(): AdvertiseData =
-        AdvertiseData.Builder()
-            .setIncludeDeviceName(localName != null)
-            .build()
 
     private fun BluetoothDevice.toSessionId(): PeripheralSessionId =
         PeripheralSessionId(address)
@@ -1039,3 +1064,40 @@ internal fun AdvertiseConfig.toAndroidAdvertiseSettings(): AndroidAdvertiseSetti
     },
     connectable = services.isNotEmpty(),
 )
+
+/** Framework-independent description of one legacy Android advertising packet. */
+@OptIn(ExperimentalUuidApi::class)
+internal class AndroidAdvertisementPacket(
+    val includeDeviceName: Boolean,
+    val includeTxPowerLevel: Boolean,
+    val serviceUuids: List<Uuid>,
+    val manufacturerData: Map<Int, ByteArray>,
+    val serviceData: Map<Uuid, ByteArray>,
+)
+
+/**
+ * Primary advertising packet. It never carries the device name, so the name cannot compete with
+ * service UUIDs, manufacturer data and service data for the 31-byte legacy budget.
+ */
+@OptIn(ExperimentalUuidApi::class)
+internal fun AdvertiseConfig.toAndroidAdvertisementPacket(): AndroidAdvertisementPacket =
+    AndroidAdvertisementPacket(
+        includeDeviceName = false,
+        includeTxPowerLevel = includeTxPower,
+        serviceUuids = serviceUuids.map(Uuid::parse),
+        manufacturerData = manufacturerData,
+        serviceData = serviceData.mapKeys { (uuid, _) -> Uuid.parse(uuid) },
+    )
+
+/**
+ * Scan response packet. Android can only advertise the system adapter name, not [AdvertiseConfig.localName],
+ * so the name is included only when the caller opts in with [AdvertiseConfig.includeSystemDeviceName].
+ */
+internal fun AdvertiseConfig.toAndroidScanResponsePacket(): AndroidAdvertisementPacket =
+    AndroidAdvertisementPacket(
+        includeDeviceName = includeSystemDeviceName,
+        includeTxPowerLevel = false,
+        serviceUuids = emptyList(),
+        manufacturerData = emptyMap(),
+        serviceData = emptyMap(),
+    )

@@ -1,5 +1,6 @@
 package dev.bluefalcon.peripheral.internal
 
+import dev.bluefalcon.core.L2capException
 import dev.bluefalcon.peripheral.BlueFalconPeripheral
 import dev.bluefalcon.peripheral.GattCharacteristicReadRequest
 import dev.bluefalcon.peripheral.GattCharacteristicWrite
@@ -11,6 +12,7 @@ import dev.bluefalcon.peripheral.GattDescriptorWriteRequest
 import dev.bluefalcon.peripheral.GattExecuteWriteRequest
 import dev.bluefalcon.peripheral.GattResponseStatus
 import dev.bluefalcon.peripheral.GattServerRequest
+import dev.bluefalcon.peripheral.L2capListener
 import dev.bluefalcon.peripheral.NotificationReadiness
 import dev.bluefalcon.peripheral.NotificationReadinessState
 import dev.bluefalcon.peripheral.PeripheralCapabilities
@@ -41,6 +43,7 @@ import kotlinx.coroutines.flow.channelFlow
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.receiveAsFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
@@ -89,6 +92,7 @@ internal class DefaultBlueFalconPeripheral(
         get() = mutableActiveGeneration.value
         set(value) { mutableActiveGeneration.value = value }
     private var activeConfig: PeripheralConfig? = null
+    private val l2capListeners = MutableStateFlow<Set<DefaultL2capListener>>(emptySet())
     private var closeStarted = false
     private val closeCompletion = CompletableDeferred<Throwable?>()
     private val readinessCloseCompletion = CompletableDeferred<Throwable?>()
@@ -204,6 +208,7 @@ internal class DefaultBlueFalconPeripheral(
                 retireIngress()
                 activeConfig = null
                 mutableState.value = PeripheralManagerState.Stopping
+                closeL2capListeners()
                 val closingSessions = beginCloseAllSessions()
                 try {
                     backend.stop()
@@ -276,6 +281,7 @@ internal class DefaultBlueFalconPeripheral(
                     activeGeneration = NoGeneration
                     retireIngress()
                     activeConfig = null
+                    closeL2capListeners()
                     val closingSessions = beginCloseAllSessions()
                     var failure: Throwable? = null
                     try {
@@ -307,6 +313,7 @@ internal class DefaultBlueFalconPeripheral(
             activeGeneration = NoGeneration
             retireIngress()
             activeConfig = null
+            closeL2capListeners()
             val closingSessions = beginCloseAllSessions()
 
             if (shouldStop) {
@@ -361,6 +368,36 @@ internal class DefaultBlueFalconPeripheral(
         closeCompletion.complete(failure)
         failure?.let { throw it }
         Unit
+    }
+
+    override suspend fun publishL2capChannel(secure: Boolean): L2capListener {
+        if (!capabilities.l2capServer) {
+            throw L2capException("L2CAP channel server is not supported on this platform")
+        }
+        return lifecycleMutex.withLock {
+            val current = mutableState.value
+            if (closeStarted || current != PeripheralManagerState.Running) {
+                throw PeripheralLifecycleException(
+                    "L2CAP channels can only be published while Running; current state is $current",
+                )
+            }
+            if (l2capListeners.value.size >= MaximumL2capListeners) {
+                throw L2capException("At most $MaximumL2capListeners L2CAP listeners can be published at once")
+            }
+            val listener = DefaultL2capListener(secure) { closed ->
+                l2capListeners.update { it - closed }
+            }
+            listener.attach(backend.publishL2capChannel(secure, listener))
+            l2capListeners.update { it + listener }
+            // A platform failure may close the listener before it is registered.
+            if (!listener.isOpen) l2capListeners.update { it - listener }
+            listener
+        }
+    }
+
+    /** Listeners own native servers and sockets; they close before the backend stops. */
+    private fun closeL2capListeners() {
+        l2capListeners.value.forEach { it.close() }
     }
 
     private suspend fun processBackendEvent(event: BackendEvent) {

@@ -2,16 +2,16 @@ package dev.bluefalcon.engine.apple
 
 import dev.bluefalcon.core.BluetoothPeripheral
 import dev.bluefalcon.core.BluetoothSocket
+import dev.bluefalcon.core.InternalBlueFalconApi
 import dev.bluefalcon.core.L2capException
+import dev.bluefalcon.core.L2capInboundBuffer
 import kotlinx.cinterop.BetaInteropApi
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.addressOf
 import kotlinx.cinterop.reinterpret
 import kotlinx.cinterop.usePinned
 import kotlinx.coroutines.*
-import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
-import kotlinx.coroutines.flow.asSharedFlow
 import platform.CoreBluetooth.CBL2CAPChannel
 import platform.Foundation.NSDefaultRunLoopMode
 import platform.Foundation.NSInputStream
@@ -26,6 +26,8 @@ import platform.Foundation.NSStreamEventEndEncountered
 import platform.Foundation.NSStreamEventErrorOccurred
 import platform.Foundation.NSStreamEventHasBytesAvailable
 import platform.darwin.NSObject
+import platform.darwin.dispatch_async
+import platform.darwin.dispatch_get_main_queue
 
 /**
  * Apple [BluetoothSocket] backed by a [CBL2CAPChannel].
@@ -33,8 +35,14 @@ import platform.darwin.NSObject
  * The channel exposes an [NSInputStream]/[NSOutputStream] pair. We schedule both
  * on the main run loop and install an [NSStreamDelegateProtocol] that drains the
  * input stream into [incoming] whenever bytes become available.
+ *
+ * Inbound chunks go through an [L2capInboundBuffer]. Bytes that arrive before the first
+ * collector are kept. When the buffer is full, reading stops and resumes after the collector
+ * takes a chunk, so Core Bluetooth's L2CAP flow control pushes back on the remote sender.
+ * At end of input the remaining stream bytes are still read and delivered before the socket
+ * closes. [close] drops buffered chunks.
  */
-@OptIn(ExperimentalForeignApi::class, BetaInteropApi::class)
+@OptIn(ExperimentalForeignApi::class, BetaInteropApi::class, InternalBlueFalconApi::class)
 class AppleL2CapSocket internal constructor(
     private val inputStream: NSInputStream,
     private val outputStream: NSOutputStream,
@@ -45,6 +53,9 @@ class AppleL2CapSocket internal constructor(
     private val openNativeStream: (NSStream) -> Unit = { it.open() },
     private val onCleanupFailure: (Throwable) -> Unit = {},
     autoStart: Boolean = true,
+    inboundCapacity: Int = L2capInboundBuffer.DEFAULT_CAPACITY,
+    /** Runs a resumed drain on the thread whose run loop the streams are scheduled on. */
+    private val runOnStreamThread: (() -> Unit) -> Unit = { block -> dispatch_async(dispatch_get_main_queue()) { block() } },
 ) : BluetoothSocket {
     constructor(channel: CBL2CAPChannel, psm: Int, peripheral: BluetoothPeripheral) : this(channel, psm, peripheral, {})
     internal constructor(channel: CBL2CAPChannel, psm: Int, peripheral: BluetoothPeripheral, onCleanupFailure: (Throwable) -> Unit) : this(
@@ -66,9 +77,20 @@ class AppleL2CapSocket internal constructor(
         onCleanupFailure = onCleanupFailure,
         autoStart = autoStart,
     )
-    private val _incoming = MutableSharedFlow<ByteArray>(extraBufferCapacity = 64)
-    override val incoming: SharedFlow<ByteArray> = _incoming.asSharedFlow()
+    private val inboundScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    private val inbound = L2capInboundBuffer(
+        scope = inboundScope,
+        capacity = inboundCapacity,
+        onChunkDelivered = { requestDrain() },
+        onInputFinished = { inboundScope.cancel() },
+    )
+    override val incoming: SharedFlow<ByteArray> get() = inbound.incoming
     private val closing = MutableStateFlow(false)
+    private val drainScheduled = MutableStateFlow(false)
+    // A chunk read from the stream while the inbound buffer was full. Written with streamLock
+    // held; requestDrain reads it without the lock, because a blocked write holds that lock.
+    private val pendingChunk = MutableStateFlow<ByteArray?>(null)
+    private var endOfInput = false
     private val streamLock = NSRecursiveLock()
     private val closeLock = NSRecursiveLock()
     private var teardownDone = false
@@ -103,7 +125,8 @@ class AppleL2CapSocket internal constructor(
                 if (closing.value) return@locked
                 when (handleEvent) {
                     NSStreamEventHasBytesAvailable -> if (aStream == inputStream) drainInput()
-                    NSStreamEventEndEncountered, NSStreamEventErrorOccurred -> close()
+                    NSStreamEventEndEncountered -> if (aStream == inputStream) finishInput() else close()
+                    NSStreamEventErrorOccurred -> close()
                     else -> {}
                 }
             }
@@ -132,7 +155,13 @@ class AppleL2CapSocket internal constructor(
         }
     }
 
+    /** Reads until the stream is empty or the inbound buffer is full. Called with streamLock held. */
     private fun drainInput() {
+        if (closing.value) return
+        pendingChunk.value?.let { chunk ->
+            if (!inbound.trySend(chunk)) return
+            pendingChunk.value = null
+        }
         val buffer = ByteArray(READ_BUFFER_SIZE)
         while (!closing.value && inputStream.hasBytesAvailable) {
             val read = buffer.usePinned { pinned ->
@@ -142,7 +171,37 @@ class AppleL2CapSocket internal constructor(
                 if (read < 0L) close()
                 break
             }
-            if (!closing.value) _incoming.tryEmit(buffer.copyOf(read.toInt()))
+            val chunk = buffer.copyOf(read.toInt())
+            if (!inbound.trySend(chunk)) {
+                // Stop reading: unread bytes stay in the native stream and L2CAP credits run out.
+                pendingChunk.value = chunk
+                return
+            }
+        }
+        if (endOfInput) completeInput()
+    }
+
+    /** The remote closed its side. Deliver what is still readable, then close. Called with streamLock held. */
+    private fun finishInput() {
+        endOfInput = true
+        drainInput()
+    }
+
+    private fun completeInput() {
+        if (closing.value || pendingChunk.value != null || inputStream.hasBytesAvailable) return
+        inbound.finish()
+        retire()
+    }
+
+    /** The collector took a chunk. Resume a drain that stopped on a full buffer. */
+    private fun requestDrain() {
+        // If the chunk is set right after this check, the buffer was full at that moment,
+        // so a later delivery calls requestDrain again.
+        if (closing.value || pendingChunk.value == null) return
+        if (!drainScheduled.compareAndSet(expect = false, update = true)) return
+        runOnStreamThread {
+            drainScheduled.value = false
+            locked { drainInput() }
         }
     }
 
@@ -206,9 +265,16 @@ class AppleL2CapSocket internal constructor(
     }
 
     override fun close() {
+        inbound.cancel()
+        inboundScope.cancel()
+        retire()
+    }
+
+    /** Closes the native streams and notifies the owner. Buffered chunks are left to the collector. */
+    private fun retire() {
         beginClose()
         // Native close must release blocked IO before waiting for its admission lock.
-        locked { }
+        locked { pendingChunk.value = null }
         closeLock.lock()
         try {
             if (!retired) retired = true

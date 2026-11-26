@@ -34,6 +34,14 @@ internal class FakeAndroidBluetoothStack : AndroidBluetoothStack {
     val listener: AndroidBluetoothStackListener?
         get() = listeners.lastOrNull()
 
+    val l2capListenCalls = mutableListOf<Boolean>()
+    var l2capChannel: AndroidL2capServerChannel? = null
+
+    override fun listenL2cap(secure: Boolean): AndroidL2capServerChannel {
+        l2capListenCalls += secure
+        return l2capChannel ?: super.listenL2cap(secure)
+    }
+
     override fun validateStart() {
         validationFailure?.let { throw it }
     }

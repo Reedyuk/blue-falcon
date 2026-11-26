@@ -213,14 +213,56 @@ applicationScope.launch {
 
 Use `PeripheralConfig.restorationIdentifier` for Apple state restoration and
 declare `bluetooth-peripheral` in `UIBackgroundModes` when enabling it on iOS.
-Advertisement fields are platform-dependent: iOS does not advertise manufacturer
-data. Inspect `peripheral.capabilities` and typed notification results before
+Advertisement fields are platform-dependent:
+
+| Field | Android | iOS / macOS |
+|---|---|---|
+| `localName` | Ignored. Android cannot set a name per advertiser. | Advertised |
+| `includeSystemDeviceName` (default `false`) | Puts the system Bluetooth adapter name (for example "Alice's Pixel") in the scan response | Ignored |
+| `serviceUuids` | Advertised | Advertised |
+| `manufacturerData` | Advertised | Not supported: `start` fails |
+| `serviceData` | Advertised | Not supported: `start` fails. Core Bluetooth does not support service data for advertising |
+
+By default Blue Falcon never broadcasts the system device name. Set
+`includeSystemDeviceName = true` only if the user agrees to be identified by it.
+
+Inspect `peripheral.capabilities` and typed notification results before
 relying on platform-specific behavior. `stop()` is restartable; `close()` is
 terminal and should run before cancelling the owning scope.
 
 See the **[Peripheral Echo Server example](examples/Peripheral-Example/README.md)**
 for complete request routing, targeted notifications through `QueuePlugin`,
 platform permissions, lifecycle ownership, and restoration setup.
+
+### L2CAP channel server
+
+For bulk data, a running peripheral can publish an L2CAP connection-oriented
+channel. Accepted channels use the same `BluetoothSocket` contract as
+`BlueFalcon.openL2capChannel` on the central side:
+
+```kotlin
+if (peripheral.capabilities.l2capServer) {
+    val listener = peripheral.publishL2capChannel(secure = true)
+    // Tell centrals the PSM, e.g. in a readable characteristic
+    // (Apple convention: ABDD3056-28FA-441D-A470-55A75A52553A, UInt16 little-endian).
+    publishPsm(listener.psm)
+    applicationScope.launch {
+        listener.sockets.collect { socket ->
+            launch { socket.incoming.collect { chunk -> handle(socket.sessionId, chunk) } }
+        }
+    }
+}
+```
+
+| | Android | iOS / macOS |
+|---|---|---|
+| Support | Android 10 (API 29)+, `BLUETOOTH_CONNECT` on 12+ | iOS 11+ / macOS 10.13+ |
+| Native API | `listenUsingL2capChannel` / `listenUsingInsecureL2capChannel` | `publishL2CAPChannelWithEncryption` |
+
+`stop()`, `close()` and `listener.close()` unpublish the channel and close every
+accepted socket. Each listener holds at most 16 open sockets. Inbound data is
+buffered without loss until you collect `incoming`. See
+[ADR 0016](docs/adr/0016-peripheral-l2cap-coc-server.md).
 
 ## 📚 Documentation
 

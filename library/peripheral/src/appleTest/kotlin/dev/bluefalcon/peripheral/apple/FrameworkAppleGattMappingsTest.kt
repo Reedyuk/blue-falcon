@@ -149,6 +149,25 @@ class FrameworkAppleGattMappingsTest {
     }
 
     @Test
+    fun systemDeviceNameOptInIsIgnoredByCoreBluetooth() {
+        val config = AdvertiseConfig(includeSystemDeviceName = true)
+
+        config.requireAppleAdvertisingSupport()
+        assertTrue(config.toAppleAdvertisementData().isEmpty())
+    }
+
+    @Test
+    fun serviceDataIsRejectedLikeOtherUnsupportedPayloadFields() {
+        assertFailsWith<IllegalArgumentException> {
+            AdvertiseConfig(serviceData = mapOf("180d" to byteArrayOf(1, 2))).requireAppleAdvertisingSupport()
+        }
+        assertFailsWith<IllegalArgumentException> {
+            AdvertiseConfig(manufacturerData = mapOf(0x004C to byteArrayOf(1))).requireAppleAdvertisingSupport()
+        }
+        AdvertiseConfig(localName = "node", serviceUuids = listOf("180d")).requireAppleAdvertisingSupport()
+    }
+
+    @Test
     fun gattBuilderUsesDynamicValuesAndFiltersAppleManagedCccd() {
         val service = GattServiceConfig(
             uuid = "180d",

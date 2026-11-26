@@ -3,7 +3,10 @@ package dev.bluefalcon.peripheral
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertContentEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNotSame
+import kotlin.test.assertTrue
 import kotlin.time.Duration
 
 class PeripheralTypesTest {
@@ -53,5 +56,25 @@ class PeripheralTypesTest {
                 responseDeadline = Duration.INFINITE,
             )
         }
+    }
+
+    @Test
+    fun advertiseConfigDoesNotSendSystemDeviceNameByDefault() {
+        val config = AdvertiseConfig(localName = "node")
+
+        assertFalse(config.includeSystemDeviceName)
+        assertTrue(config.serviceData.isEmpty())
+    }
+
+    @Test
+    fun backendCopyDetachesServiceDataPayloads() {
+        val payload = byteArrayOf(1, 2, 3)
+        val config = PeripheralConfig(AdvertiseConfig(serviceData = mapOf("180d" to payload)))
+
+        val copied = config.copyForBackend().advertiseConfig.serviceData.getValue("180d")
+        payload[0] = 9
+
+        assertNotSame(payload, copied)
+        assertContentEquals(byteArrayOf(1, 2, 3), copied)
     }
 }
