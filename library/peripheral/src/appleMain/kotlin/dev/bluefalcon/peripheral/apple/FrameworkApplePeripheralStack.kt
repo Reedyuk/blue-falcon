@@ -138,6 +138,23 @@ internal fun isAppleManagedCccd(uuid: String): Boolean = when (uuid.uppercase())
     else -> false
 }
 
+/**
+ * Core Bluetooth advertises only the local name and service UUIDs. Payload fields that callers
+ * expect on air fail fast instead of being dropped. [AdvertiseConfig.includeSystemDeviceName] is
+ * an Android opt-in and is ignored here because ignoring it never discloses more data.
+ */
+internal fun AdvertiseConfig.requireAppleAdvertisingSupport() {
+    require(manufacturerData.isEmpty()) {
+        "Core Bluetooth peripheral advertising does not support manufacturerData"
+    }
+    require(!includeTxPower) {
+        "Core Bluetooth peripheral advertising does not support includeTxPower"
+    }
+    require(serviceData.isEmpty()) {
+        "Core Bluetooth peripheral advertising does not support serviceData (Android only)"
+    }
+}
+
 @OptIn(ExperimentalForeignApi::class)
 internal fun AdvertiseConfig.toAppleAdvertisementData(): Map<Any?, Any?> = buildMap {
     localName?.let { put(CBAdvertisementDataLocalNameKey, it) }
@@ -419,12 +436,7 @@ internal class FrameworkApplePeripheralStack(
         config: PeripheralConfig,
         listener: ApplePeripheralStackListener,
     ): AppleOpenResult {
-        require(config.advertiseConfig.manufacturerData.isEmpty()) {
-            "Core Bluetooth peripheral advertising does not support manufacturerData"
-        }
-        require(!config.advertiseConfig.includeTxPower) {
-            "Core Bluetooth peripheral advertising does not support includeTxPower"
-        }
+        config.advertiseConfig.requireAppleAdvertisingSupport()
         val peripheral = prepareManager(config, listener)
         awaitPoweredOn(peripheral)
 

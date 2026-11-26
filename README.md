@@ -190,8 +190,20 @@ applicationScope.launch {
 
 Use `PeripheralConfig.restorationIdentifier` for Apple state restoration and
 declare `bluetooth-peripheral` in `UIBackgroundModes` when enabling it on iOS.
-Advertisement fields are platform-dependent: iOS does not advertise manufacturer
-data. Inspect `peripheral.capabilities` and typed notification results before
+Advertisement fields are platform-dependent:
+
+| Field | Android | iOS / macOS |
+|---|---|---|
+| `localName` | Ignored. Android cannot set a name per advertiser. | Advertised |
+| `includeSystemDeviceName` (default `false`) | Puts the system Bluetooth adapter name (for example "Alice's Pixel") in the scan response | Ignored |
+| `serviceUuids` | Advertised | Advertised |
+| `manufacturerData` | Advertised | Not supported: `start` fails |
+| `serviceData` | Advertised | Not supported: `start` fails. Core Bluetooth does not support service data for advertising |
+
+By default Blue Falcon never broadcasts the system device name. Set
+`includeSystemDeviceName = true` only if the user agrees to be identified by it.
+
+Inspect `peripheral.capabilities` and typed notification results before
 relying on platform-specific behavior. `stop()` is restartable; `close()` is
 terminal and should run before cancelling the owning scope.
 
