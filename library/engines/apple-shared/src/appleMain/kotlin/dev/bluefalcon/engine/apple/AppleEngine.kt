@@ -37,8 +37,9 @@ class AppleEngine(
     
     override val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val lifecycle = AppleEngineLifecycle(scope, ::closeResources)
-    private val channelOwner = AppleChannelOwner<CBL2CAPChannel>()
+    private val channelOwner = AppleChannelOwner<AppleL2capHandle>()
     private val ownedSockets = MutableStateFlow<Set<AppleL2CapSocket>>(emptySet())
+    private val recentChannelCloses = AppleRecentChannelCloses()
 
     override suspend fun close() { lifecycle.close() }
 
@@ -175,13 +176,30 @@ class AppleEngine(
         scope.launch { delay(10_000L); action() }
     })
     private val peripheralDelegates = MutableStateFlow<
-        Map<AppleNativeConnectionToken<CBPeripheral>, CBPeripheralDelegateWrapper>
+        Map<AppleNativeConnectionToken<CBPeripheral>, AppleDelegateBinding>
     >(emptyMap())
+
+    /**
+     * The Kotlin delegate and the Objective-C proxy that Core Bluetooth actually calls. The proxy
+     * keeps L2CAP channels out of Kotlin (#334) and holds the delegate weakly, so this binding
+     * keeps both alive while the connection is current.
+     */
+    private class AppleDelegateBinding(
+        val delegate: CBPeripheralDelegateWrapper,
+        val proxy: dev.bluefalcon.engine.apple.objc.BFPeripheralDelegateProxy,
+    )
+
+    private fun bindDelegate(token: AppleNativeConnectionToken<CBPeripheral>): AppleDelegateBinding {
+        val callback = ConnectionCallback(token)
+        val delegate = CBPeripheralDelegateWrapper(callback)
+        val sink = AppleL2capOpenSink(callback::onL2capChannelOpened)
+        return AppleDelegateBinding(delegate, dev.bluefalcon.engine.apple.objc.BFPeripheralDelegateProxy(delegate, sink))
+    }
 
     private fun installPeripheralDelegate(peripheral: CBPeripheral) = lifecycle.callback {
         val token = nativeConnectionOwnership.capture(peripheral.identifier.UUIDString, peripheral)
             ?: return@callback
-        peripheral.delegate = peripheralDelegates.value[token]
+        peripheral.delegate = peripheralDelegates.value[token]?.proxy
     }
     
     // Map to track connected peripherals
@@ -189,9 +207,12 @@ class AppleEngine(
 
     // Pending L2CAP channel opens, keyed by peripheral identifier, bridged from
     // the async openL2CAPChannel(...) / onL2CAPChannelOpened(...) callback pair.
-    private val l2capDeferreds = MutableStateFlow<Map<String, CompletableDeferred<CBL2CAPChannel>>>(emptyMap())
+    private val l2capDeferreds = MutableStateFlow<Map<String, CompletableDeferred<AppleL2capHandle>>>(emptyMap())
     
-    override suspend fun scan(filters: List<ServiceFilter>): Unit = lifecycle.operation {
+    override suspend fun scan(filters: List<ServiceFilter>): Unit = scan(filters, ScanConfig())
+
+    /** Applies [ScanConfig.allowDuplicates]; Core Bluetooth has no duty-cycle or batching control. */
+    override suspend fun scan(filters: List<ServiceFilter>, config: ScanConfig): Unit = lifecycle.operation {
         scanRestoration.appChangedScan()
         lifecycle.native { isScanning = true }
         
@@ -211,7 +232,7 @@ class AppleEngine(
                 lifecycle.native {
                     centralManager.scanForPeripheralsWithServices(
                         serviceUUIDs,
-                        mapOf(CBCentralManagerScanOptionAllowDuplicatesKey to true)
+                        config.toAppleScanOptions()
                     )
                 }
             }
@@ -266,9 +287,9 @@ class AppleEngine(
                     "Replacement Apple manager returned a quarantined native handle or recovery capacity exhausted"
                 }
                 val token = nativeConnectionOwnership.connected(uuid, cbPeripheral, epoch)
-                val delegate = CBPeripheralDelegateWrapper(ConnectionCallback(token))
-                peripheralDelegates.update { it + (token to delegate) }
-                cbPeripheral.delegate = delegate
+                val binding = bindDelegate(token)
+                peripheralDelegates.update { it + (token to binding) }
+                cbPeripheral.delegate = binding.proxy
                 applePeripheral.updatePeripheral(cbPeripheral)
                 manager.centralManager.connectPeripheral(cbPeripheral, null)
                 }
@@ -670,13 +691,39 @@ class AppleEngine(
         installPeripheralDelegate(cbPeripheral)
 
         val identifier = cbPeripheral.identifier.UUIDString
-        val deferred = CompletableDeferred<CBL2CAPChannel>()
+        // A channel this engine just closed on the same PSM can still be closing on the air (#334).
+        val openedChannel = openWhileOwnCloseSettles(
+            remaining = { recentChannelCloses.remaining(identifier, psm) },
+        ) { openNativeChannel(cbPeripheral, identifier, psm) }
+        return@operation lifecycle.native {
+            try {
+                AppleL2CapSocket(
+                    openedChannel, psm, peripheral, lifecycle::rememberCleanupFailure, false,
+                ).also { socket ->
+                    socket.releaseChannelOnClose(openedChannel, channelOwner) { failure ->
+                        lifecycle.rememberCleanupFailure(failure)
+                        ownedSockets.update { it - socket }
+                        recentChannelCloses.closed(identifier, psm)
+                    }
+                    ownedSockets.update { it + socket }
+                    socket.start()
+                }
+            } catch (failure: Throwable) {
+                try { closeNativeChannel(openedChannel) } finally { channelOwner.release(openedChannel) }
+                throw failure
+            }
+        }
+    }
+    
+    /** One native open: `openL2CAPChannel` and its `didOpen` callback. */
+    private suspend fun openNativeChannel(cbPeripheral: CBPeripheral, identifier: String, psm: Int): AppleL2capHandle {
+        val deferred = CompletableDeferred<AppleL2capHandle>()
         lifecycle.native {
             channelOwner.registerWaiter(deferred)
             l2capDeferreds.update { it + (identifier to deferred) }
         }
 
-        var channel: CBL2CAPChannel? = null
+        var channel: AppleL2capHandle? = null
         try {
             lifecycle.native { cbPeripheral.openL2CAPChannel(psm.toUShort()) }
             val received = deferred.await()
@@ -693,28 +740,9 @@ class AppleEngine(
             channelOwner.forgetWaiter(deferred)
             l2capDeferreds.update { it - identifier }
         }
-
-        val openedChannel = checkNotNull(channel)
-        return@operation lifecycle.native {
-            try {
-                AppleL2CapSocket(
-                    openedChannel, psm, peripheral, lifecycle::rememberCleanupFailure, false,
-                ).also { socket ->
-                    socket.onClosed = { failure ->
-                        lifecycle.rememberCleanupFailure(failure)
-                        ownedSockets.update { it - socket }
-                        channelOwner.release(openedChannel)
-                    }
-                    ownedSockets.update { it + socket }
-                    socket.start()
-                }
-            } catch (failure: Throwable) {
-                try { closeNativeChannel(openedChannel) } finally { channelOwner.release(openedChannel) }
-                throw failure
-            }
-        }
+        return checkNotNull(channel)
     }
-    
+
     override suspend fun createBond(peripheral: BluetoothPeripheral): Unit = lifecycle.operation {
         // Not required on Apple platforms - bonding is handled automatically
     }
@@ -886,11 +914,17 @@ class AppleEngine(
             }
         }
 
+        // Only reached when the delegate is used without its proxy. The proxy path below keeps
+        // the channel out of Kotlin.
         override fun onL2CAPChannelOpened(
             peripheral: CBPeripheral,
             channel: CBL2CAPChannel?,
             error: NSError?,
         ) {
+            onL2capChannelOpened(peripheral, channel?.let(AppleL2capHandle::adopt), error)
+        }
+
+        fun onL2capChannelOpened(peripheral: CBPeripheral, channel: AppleL2capHandle?, error: NSError?) {
             var forwarded = false
             callbacks.forward { token ->
                 forwarded = true
@@ -1144,18 +1178,19 @@ class AppleEngine(
         channel: CBL2CAPChannel?,
         error: NSError?,
     ) {
+        val handle = channel?.let(AppleL2capHandle::adopt)
         val token = nativeConnectionOwnership.capture(peripheral.identifier.UUIDString, peripheral)
         if (token == null) {
-            if (channel != null) closeNativeChannel(channel)
+            if (handle != null) closeNativeChannel(handle)
             return
         }
-        onL2CAPChannelOpened(token, peripheral, channel, error)
+        onL2CAPChannelOpened(token, peripheral, handle, error)
     }
 
     private fun onL2CAPChannelOpened(
         token: AppleNativeConnectionToken<CBPeripheral>,
         peripheral: CBPeripheral,
-        channel: CBL2CAPChannel?,
+        channel: AppleL2capHandle?,
         error: NSError?,
     ) {
         if (channel != null && !channelOwner.retain(channel)) {
@@ -1174,7 +1209,7 @@ class AppleEngine(
                         try { closeNativeChannel(channel) } finally { channelOwner.release(channel) }
                     }
                     deferred.completeExceptionally(
-                        L2capException("Failed to open L2CAP channel: ${error.localizedDescription}")
+                        AppleL2capOpenRejected(L2capException("Failed to open L2CAP channel: ${error.localizedDescription}"))
                     )
                 }
                 channel == null ->
@@ -1210,19 +1245,8 @@ class AppleEngine(
         // Descriptor written - could expose this through a callback if needed
     }
 
-    private fun closeNativeChannel(channel: CBL2CAPChannel): Unit = lifecycle.trackNativeCleanup {
-        var failure: Throwable? = null
-        fun attempt(action: () -> Unit) {
-            try { action() } catch (cause: Throwable) {
-                if (failure == null) failure = cause
-            }
-        }
-        listOfNotNull(channel.inputStream, channel.outputStream).forEach { stream ->
-            attempt { stream.delegate = null }
-            attempt { stream.close() }
-            attempt { stream.removeFromRunLoop(NSRunLoop.mainRunLoop, NSDefaultRunLoopMode) }
-        }
-        failure?.let { throw it }
+    private fun closeNativeChannel(channel: AppleL2capHandle): Unit = lifecycle.trackNativeCleanup {
+        channel.close()
     }
 
     private fun dispatchOwned(
@@ -1361,3 +1385,7 @@ private fun Int?.toCharacteristicWriteType() = when (this) {
     1 -> CharacteristicWriteType.WithoutResponse
     else -> CharacteristicWriteType.WithResponse
 }
+
+/** [ScanConfig] defaults keep the previous `AllowDuplicates = true` option. */
+internal fun ScanConfig.toAppleScanOptions(): Map<Any?, Any?> =
+    mapOf(CBCentralManagerScanOptionAllowDuplicatesKey to allowDuplicates)

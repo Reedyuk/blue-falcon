@@ -6,13 +6,14 @@ import android.bluetooth.BluetoothSocket
 import android.os.Build
 import dev.bluefalcon.core.BluetoothPeripheral
 import dev.bluefalcon.core.BluetoothPermissionException
+import dev.bluefalcon.core.InternalBlueFalconApi
 import dev.bluefalcon.core.L2capException
+import dev.bluefalcon.core.L2capInboundBuffer
 import dev.bluefalcon.core.Logger
 import dev.bluefalcon.peripheral.L2capServerSocket
 import dev.bluefalcon.peripheral.PeripheralSessionId
 import dev.bluefalcon.peripheral.internal.BackendL2capServer
 import dev.bluefalcon.peripheral.internal.BackendL2capSink
-import dev.bluefalcon.peripheral.internal.L2capInboundBuffer
 import dev.bluefalcon.peripheral.internal.L2capRemoteCentral
 import java.io.IOException
 import java.io.InputStream
@@ -101,6 +102,7 @@ internal class AndroidL2capServer(
 }
 
 /** Server-side socket. Reads are bounded and loss-free; see [L2capInboundBuffer]. */
+@OptIn(InternalBlueFalconApi::class)
 internal class AndroidL2capServerSocket(
     private val connection: AndroidL2capConnection,
     override val psm: Int,
@@ -155,6 +157,8 @@ internal class AndroidL2capServerSocket(
             // Closing the native socket also unblocks the reader.
             runCatching { connection.close() }
         } finally {
+            // Bytes not yet delivered are dropped; end of stream (finish) delivers them instead.
+            inbound.cancel()
             scope.cancel()
             onClosed(this)
         }

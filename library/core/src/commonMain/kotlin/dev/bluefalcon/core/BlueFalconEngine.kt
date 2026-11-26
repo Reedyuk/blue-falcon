@@ -139,6 +139,16 @@ interface BlueFalconEngine {
      * @param filters Optional service UUID filters
      */
     suspend fun scan(filters: List<ServiceFilter> = emptyList())
+
+    /**
+     * Start scanning with explicit [ScanConfig] settings. Engines that cannot apply a setting
+     * ignore it (see [ScanConfig]). The default implementation ignores [config] and calls [scan].
+     *
+     * [BlueFalcon] calls this overload only for a non-default config; `ScanConfig()` still goes
+     * through `scan(filters)`. A wrapper engine that delegates with `by` and overrides
+     * `scan(filters)` should also override this overload to intercept configured scans.
+     */
+    suspend fun scan(filters: List<ServiceFilter>, config: ScanConfig) = scan(filters)
     
     /**
      * Stop scanning for devices

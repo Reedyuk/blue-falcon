@@ -1,10 +1,11 @@
 package dev.bluefalcon.peripheral.apple
 
 import dev.bluefalcon.core.BluetoothPeripheral
+import dev.bluefalcon.core.InternalBlueFalconApi
 import dev.bluefalcon.core.L2capException
+import dev.bluefalcon.core.L2capInboundBuffer
 import dev.bluefalcon.peripheral.L2capServerSocket
 import dev.bluefalcon.peripheral.PeripheralSessionId
-import dev.bluefalcon.peripheral.internal.L2capInboundBuffer
 import dev.bluefalcon.peripheral.internal.L2capRemoteCentral
 import kotlinx.cinterop.BetaInteropApi
 import kotlinx.cinterop.ExperimentalForeignApi
@@ -65,7 +66,7 @@ internal class AppleL2capChannel(
  * the bounded inbound buffer is full and resume after the collector catches up, so no inbound
  * bytes are dropped (see [L2capInboundBuffer]).
  */
-@OptIn(ExperimentalForeignApi::class, BetaInteropApi::class)
+@OptIn(ExperimentalForeignApi::class, BetaInteropApi::class, InternalBlueFalconApi::class)
 internal class AppleL2capServerSocket(
     private val channel: AppleL2capChannel,
     private val onClosed: (L2capServerSocket) -> Unit,
@@ -202,6 +203,8 @@ internal class AppleL2capServerSocket(
             runCatching { stream.removeFromRunLoop(runLoop, NSDefaultRunLoopMode) }
         }
         locked { pendingChunk = null }
+        // Bytes not yet delivered are dropped; end of input (finish) delivers them instead.
+        inbound.cancel()
         channel.release()
         scope.cancel()
         onClosed(this)

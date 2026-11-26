@@ -1,10 +1,11 @@
 package dev.bluefalcon.peripheral
 
+import dev.bluefalcon.core.InternalBlueFalconApi
 import dev.bluefalcon.core.L2capException
+import dev.bluefalcon.core.L2capInboundBuffer
 import dev.bluefalcon.peripheral.fake.FakePeripheralBackend
 import dev.bluefalcon.peripheral.internal.DefaultBlueFalconPeripheral
 import dev.bluefalcon.peripheral.internal.DefaultL2capListener
-import dev.bluefalcon.peripheral.internal.L2capInboundBuffer
 import dev.bluefalcon.peripheral.internal.MaximumL2capListeners
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -24,7 +25,7 @@ import kotlin.test.assertFalse
 import kotlin.test.assertSame
 import kotlin.test.assertTrue
 
-@OptIn(ExperimentalCoroutinesApi::class)
+@OptIn(ExperimentalCoroutinesApi::class, InternalBlueFalconApi::class)
 class L2capListenerContractTest {
 
     @Test
@@ -224,10 +225,12 @@ class L2capListenerContractTest {
 
     @Test
     fun inboundBufferRejectsWhenFull() = runTest {
-        val inbound = L2capInboundBuffer(backgroundScope, capacity = 1, onInputFinished = {})
+        val inbound = L2capInboundBuffer(backgroundScope, capacity = 1)
 
         assertTrue(inbound.trySend(byteArrayOf(1)))
-        assertFalse(inbound.trySend(byteArrayOf(2)))
+        // The forwarder may hold one chunk while it waits for a subscriber, so the bound is capacity + 1.
+        inbound.trySend(byteArrayOf(2))
+        assertFalse(inbound.trySend(byteArrayOf(3)))
     }
 
     @Test

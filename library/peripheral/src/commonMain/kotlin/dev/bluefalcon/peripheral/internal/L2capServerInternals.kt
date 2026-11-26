@@ -7,19 +7,12 @@ import dev.bluefalcon.core.L2capException
 import dev.bluefalcon.peripheral.L2capListener
 import dev.bluefalcon.peripheral.L2capServerSocket
 import dev.bluefalcon.peripheral.PeripheralSessionId
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.SharedFlow
-import kotlinx.coroutines.flow.asSharedFlow
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.getAndUpdate
 import kotlinx.coroutines.flow.update
-import kotlinx.coroutines.launch
 
 /** Native L2CAP server published by a backend for exactly one [DefaultL2capListener]. */
 internal interface BackendL2capServer {
@@ -53,49 +46,6 @@ internal class L2capRemoteCentral(sessionId: PeripheralSessionId) : BluetoothPer
     override fun equals(other: Any?): Boolean = other is L2capRemoteCentral && other.uuid == uuid
     override fun hashCode(): Int = uuid.hashCode()
     override fun toString(): String = "L2capRemoteCentral($uuid)"
-}
-
-/**
- * Bounded, loss-free inbound path shared by the platform server sockets.
- *
- * The platform reader puts chunks into a bounded channel. One forwarder moves them into
- * [incoming] only after the first collector subscribes, so bytes the central sends before the
- * application starts collecting are kept, not dropped. When the channel is full the reader
- * stops reading, and the platform's own flow control pushes back on the remote central.
- */
-internal class L2capInboundBuffer(
-    scope: CoroutineScope,
-    capacity: Int = DefaultL2capChunkCapacity,
-    private val onChunkDelivered: () -> Unit = {},
-    private val onInputFinished: () -> Unit,
-) {
-    private val chunks = Channel<ByteArray>(capacity)
-    private val shared = MutableSharedFlow<ByteArray>(extraBufferCapacity = capacity)
-    val incoming: SharedFlow<ByteArray> = shared.asSharedFlow()
-
-    init {
-        scope.launch(start = CoroutineStart.UNDISPATCHED) {
-            shared.subscriptionCount.first { it > 0 }
-            for (chunk in chunks) {
-                shared.emit(chunk)
-                onChunkDelivered()
-            }
-            onInputFinished()
-        }
-    }
-
-    /** Suspends while the buffer is full. Used by blocking readers (Android). */
-    suspend fun send(chunk: ByteArray) {
-        chunks.send(chunk)
-    }
-
-    /** Returns `false` while the buffer is full. Used by run-loop readers (Apple). */
-    fun trySend(chunk: ByteArray): Boolean = chunks.trySend(chunk).isSuccess
-
-    /** End of input: chunks already buffered are still delivered, then [onInputFinished] runs. */
-    fun finish() {
-        chunks.close()
-    }
 }
 
 /** Common listener state: bounded accept queue, owned sockets, and idempotent shutdown. */
@@ -197,5 +147,4 @@ internal class DefaultL2capListener(
 }
 
 internal const val DefaultL2capSocketCapacity = 16
-internal const val DefaultL2capChunkCapacity = 64
 internal const val MaximumL2capListeners = 8
