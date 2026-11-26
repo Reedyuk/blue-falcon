@@ -5,6 +5,8 @@ import dev.bluefalcon.core.BluetoothSocket
 import dev.bluefalcon.core.InternalBlueFalconApi
 import dev.bluefalcon.core.L2capException
 import dev.bluefalcon.core.L2capInboundBuffer
+import dev.bluefalcon.engine.apple.objc.BFL2capChannelStore
+import kotlinx.cinterop.UByteVar
 import kotlinx.cinterop.BetaInteropApi
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.addressOf
@@ -44,8 +46,8 @@ import platform.darwin.dispatch_get_main_queue
  */
 @OptIn(ExperimentalForeignApi::class, BetaInteropApi::class, InternalBlueFalconApi::class)
 class AppleL2CapSocket internal constructor(
-    inputStream: NSInputStream,
-    outputStream: NSOutputStream,
+    inputStream: NSInputStream?,
+    outputStream: NSOutputStream?,
     override val psm: Int,
     override val peripheral: BluetoothPeripheral,
     private val closeNativeStream: (NSStream) -> Unit = { it.close() },
@@ -56,7 +58,18 @@ class AppleL2CapSocket internal constructor(
     inboundCapacity: Int = L2capInboundBuffer.DEFAULT_CAPACITY,
     /** Runs a resumed drain on the thread whose run loop the streams are scheduled on. */
     private val runOnStreamThread: (() -> Unit) -> Unit = { block -> dispatch_async(dispatch_get_main_queue()) { block() } },
+    /**
+     * Engine path (#334): the channel and its streams live in `BFL2capChannelStore` under this id,
+     * and the socket never holds them. 0 means the stream pair above is used directly.
+     */
+    private val storedChannel: AppleL2capHandle? = null,
 ) : BluetoothSocket {
+    init {
+        require(storedChannel != null || (inputStream != null && outputStream != null)) {
+            "L2CAP socket on PSM $psm needs a stored channel or both streams"
+        }
+    }
+    private val store get() = BFL2capChannelStore.shared()
     // The channel's streams keep the CBL2CAPChannel alive, and Core Bluetooth closes the channel
     // over the air only after that object is deallocated (#334). beginClose clears both fields,
     // so a closed socket that the app still references does not keep the channel open.
@@ -67,6 +80,22 @@ class AppleL2CapSocket internal constructor(
         channel.inputStream ?: throw L2capException("L2CAP channel on PSM $psm has no input stream"),
         channel.outputStream ?: throw L2capException("L2CAP channel on PSM $psm has no output stream"),
         psm, peripheral, onCleanupFailure = onCleanupFailure,
+    )
+    /** Engine path: the channel stays in `BFL2capChannelStore` (#334). */
+    internal constructor(
+        channel: AppleL2capHandle,
+        psm: Int,
+        peripheral: BluetoothPeripheral,
+        onCleanupFailure: (Throwable) -> Unit,
+        autoStart: Boolean,
+    ) : this(
+        null,
+        null,
+        psm,
+        peripheral,
+        onCleanupFailure = onCleanupFailure,
+        autoStart = autoStart,
+        storedChannel = channel,
     )
     internal constructor(
         channel: CBL2CAPChannel,
@@ -127,18 +156,25 @@ class AppleL2CapSocket internal constructor(
 
     private val streamDelegate = object : NSObject(), NSStreamDelegateProtocol {
         override fun stream(aStream: NSStream, handleEvent: NSStreamEvent) {
-            if (closing.value) return
-            locked {
-                if (closing.value) return@locked
-                when (handleEvent) {
-                    NSStreamEventHasBytesAvailable -> if (aStream == nativeInput) drainInput()
-                    NSStreamEventEndEncountered -> if (aStream == nativeInput) finishInput() else close()
-                    NSStreamEventErrorOccurred -> close()
-                    else -> {}
-                }
+            onStreamEvent(input = aStream == nativeInput, event = handleEvent)
+        }
+    }
+
+    private fun onStreamEvent(input: Boolean, event: NSStreamEvent) {
+        if (closing.value) return
+        locked {
+            if (closing.value) return@locked
+            when (event) {
+                NSStreamEventHasBytesAvailable -> if (input) drainInput()
+                NSStreamEventEndEncountered -> if (input) finishInput() else close()
+                NSStreamEventErrorOccurred -> close()
+                else -> {}
             }
         }
     }
+
+    private fun inputHasBytes(): Boolean =
+        storedChannel?.let { store.hasBytesAvailable(it.id) } ?: (nativeInput?.hasBytesAvailable == true)
 
     init { if (autoStart) start() }
 
@@ -148,6 +184,14 @@ class AppleL2CapSocket internal constructor(
         if (closing.value) return@locked
         check(!started) { "Apple L2CAP socket streams already started" }
         started = true
+        storedChannel?.let { channel ->
+            val events: (Boolean, NSStreamEvent) -> Unit = { input, event -> onStreamEvent(input, event) }
+            if (!store.start(channel.id, events)) {
+                try { close() } catch (_: Throwable) { /* Cleanup failure already handed to the owner. */ }
+                throw L2capException("L2CAP channel on PSM $psm is gone")
+            }
+            return@locked
+        }
         try {
             val runLoop = NSRunLoop.mainRunLoop
             for (stream in listOfNotNull(nativeInput, nativeOutput)) {
@@ -170,10 +214,13 @@ class AppleL2CapSocket internal constructor(
             pendingChunk.value = null
         }
         val buffer = ByteArray(READ_BUFFER_SIZE)
-        val inputStream = nativeInput ?: return
-        while (!closing.value && inputStream.hasBytesAvailable) {
+        val inputStream = nativeInput
+        if (storedChannel == null && inputStream == null) return
+        while (!closing.value && inputHasBytes()) {
             val read = buffer.usePinned { pinned ->
-                inputStream.read(pinned.addressOf(0).reinterpret(), READ_BUFFER_SIZE.toULong())
+                val target = pinned.addressOf(0).reinterpret<UByteVar>()
+                storedChannel?.let { store.read(it.id, target, READ_BUFFER_SIZE.toULong()) }
+                    ?: inputStream!!.read(target, READ_BUFFER_SIZE.toULong())
             }
             if (read <= 0L) {
                 if (read < 0L) close()
@@ -196,7 +243,7 @@ class AppleL2CapSocket internal constructor(
     }
 
     private fun completeInput() {
-        if (closing.value || pendingChunk.value != null || nativeInput?.hasBytesAvailable == true) return
+        if (closing.value || pendingChunk.value != null || inputHasBytes()) return
         inbound.finish()
         retire()
     }
@@ -229,12 +276,12 @@ class AppleL2CapSocket internal constructor(
                     var offset = 0
                     while (offset < data.size) {
                         if (closing.value) throw L2capException("L2CAP socket on PSM $psm is closed")
-                        val outputStream = nativeOutput
-                            ?: throw L2capException("L2CAP socket on PSM $psm is closed")
-                        val written = writeNative?.invoke(data, offset) ?: outputStream.write(
-                            pinned.addressOf(offset).reinterpret(),
-                            (data.size - offset).toULong()
-                        )
+                        val source = pinned.addressOf(offset).reinterpret<UByteVar>()
+                        val length = (data.size - offset).toULong()
+                        val written = writeNative?.invoke(data, offset)
+                            ?: storedChannel?.let { store.write(it.id, source, length) }
+                            ?: (nativeOutput ?: throw L2capException("L2CAP socket on PSM $psm is closed"))
+                                .write(source, length)
                         if (written <= 0L) {
                             close()
                             throw L2capException("Failed to write to L2CAP socket on PSM $psm")
@@ -261,6 +308,9 @@ class AppleL2CapSocket internal constructor(
                         if (failure == null) failure = cause else failure.addSuppressed(cause)
                     }
                 }
+                // Engine path: closes both streams and drops the channel on the Objective-C side,
+                // so ARC deallocates it now and Core Bluetooth closes it over the air (#334).
+                storedChannel?.let { channel -> attempt { channel.close() } }
                 val runLoop = NSRunLoop.mainRunLoop
                 for (stream in listOfNotNull(nativeInput, nativeOutput)) {
                     attempt { stream.delegate = null }

@@ -37,8 +37,9 @@ import kotlin.test.assertNull
 import kotlin.time.Duration.Companion.seconds
 
 /**
- * Issue #334: Core Bluetooth closes a `CBL2CAPChannel` over the air only after the channel object
- * is released. The engine's close callback captured the channel, and the socket kept that callback
+ * Issue #334, public stream path (`AppleL2CapSocket(channel, psm, peripheral)`): Core Bluetooth
+ * closes a `CBL2CAPChannel` over the air only after the channel object is released. The engine
+ * itself keeps channels on the Objective-C side (see AppleL2capChannelStoreTest). The engine's close callback captured the channel, and the socket kept that callback
  * after it ran. So any reference to a closed socket kept the channel open, and the next open on
  * the same PSM failed with "L2CAP PSM already connected".
  *
@@ -90,38 +91,11 @@ class AppleSocketChannelReleaseTest {
         assertFalse(socket.isOpen)
     }
 
-    @Test fun releaseRunsOneCollectionScheduleForABurstOfRequests() = runTest {
-        var collections = 0
-        val releaser = AppleNativeReleaser(backgroundScope, collectionDelaysMillis = listOf(50, 100), collect = { collections++ })
-
-        repeat(5) { releaser.requestRelease() }
-        advanceTimeBy(49); runCurrent()
-        assertEquals(0, collections)
-        advanceTimeBy(1); runCurrent()
-        assertEquals(1, collections)
-        advanceTimeBy(100); runCurrent()
-        assertEquals(2, collections, "the burst of 5 requests shares one schedule")
-        advanceTimeBy(1_000); runCurrent()
-        assertEquals(2, collections)
-    }
-
-    @Test fun requestDuringAScheduleAddsOneMoreSchedule() = runTest {
-        var collections = 0
-        val releaser = AppleNativeReleaser(backgroundScope, collectionDelaysMillis = listOf(50, 100), collect = { collections++ })
-
-        releaser.requestRelease()
-        advanceTimeBy(60); runCurrent()
-        releaser.requestRelease()
-        releaser.requestRelease()
-        advanceTimeBy(1_000); runCurrent()
-        assertEquals(4, collections)
-    }
-
     @Test fun reopenWaitsForThisEnginesOwnCloseToSettleOnTheAir() = runTest {
-        // Device measurement in #334: Core Bluetooth closes the channel about 0.55-0.65 s after
-        // close(). The repro reopens 500 ms after close.
+        // Device measurement in #334: even with the channel released at once, Core Bluetooth
+        // rejects an immediate reopen for roughly 0.3-0.4 s. This loop reopens at once.
         val closes = AppleRecentChannelCloses(clock = testScheduler.timeSource)
-        val psm = ClosingPsm(rejectForMillis = 650, now = { testScheduler.currentTime })
+        val psm = ClosingPsm(rejectForMillis = 400, now = { testScheduler.currentTime })
         var opened = 0
         repeat(30) { iteration ->
             openWhileOwnCloseSettles(remaining = { closes.remaining("peer", 42) }) { psm.open() }
@@ -129,7 +103,6 @@ class AppleSocketChannelReleaseTest {
             delay(300)
             psm.close()
             closes.closed("peer", 42)
-            delay(500)
             iteration.hashCode()
         }
         assertEquals(30, opened)
@@ -172,7 +145,7 @@ class AppleSocketChannelReleaseTest {
     }
 
     /**
-     * What `AppleNativeReleaser` triggers, plus a short main run loop turn, because Kotlin/Native
+     * Explicit collections plus a short main run loop turn, because Kotlin/Native
      * can hand Objective-C releases of collected objects to the main thread. Two rounds, because
      * [FakeChannel] is a Kotlin subclass: its Kotlin side becomes collectable only after the
      * streams that retain it were deallocated. A real `CBL2CAPChannel` is a pure Objective-C
