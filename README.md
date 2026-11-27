@@ -36,16 +36,16 @@ Blue Falcon provides a unified API for Bluetooth LE operations across all platfo
 
 ```kotlin
 commonMain.dependencies {
-    implementation("dev.bluefalcon:blue-falcon-core:3.7.17")
+    implementation("dev.bluefalcon:blue-falcon-core:3.8.0")
 }
 
 // Add platform-specific engines
 androidMain.dependencies {
-    implementation("dev.bluefalcon:blue-falcon-engine-android:3.7.17")
+    implementation("dev.bluefalcon:blue-falcon-engine-android:3.8.0")
 }
 
 iosMain.dependencies {
-    implementation("dev.bluefalcon:blue-falcon-engine-ios:3.7.17")
+    implementation("dev.bluefalcon:blue-falcon-engine-ios:3.8.0")
 }
 ```
 
@@ -54,19 +54,19 @@ iosMain.dependencies {
 ```kotlin
 commonMain.dependencies {
     // Logging support
-    implementation("dev.bluefalcon:blue-falcon-plugin-logging:3.7.17")
+    implementation("dev.bluefalcon:blue-falcon-plugin-logging:3.8.0")
     
     // Automatic retry with exponential backoff
-    implementation("dev.bluefalcon:blue-falcon-plugin-retry:3.7.17")
+    implementation("dev.bluefalcon:blue-falcon-plugin-retry:3.8.0")
     
     // Service/characteristic caching
-    implementation("dev.bluefalcon:blue-falcon-plugin-caching:3.7.17")
+    implementation("dev.bluefalcon:blue-falcon-plugin-caching:3.8.0")
     
     // Connection success/failure counts, operation latency, and throughput metrics
-    implementation("dev.bluefalcon:blue-falcon-plugin-metrics:3.7.17")
+    implementation("dev.bluefalcon:blue-falcon-plugin-metrics:3.8.0")
 
     // Bounded, observable central GATT command queue
-    implementation("dev.bluefalcon:blue-falcon-plugin-command-queue:3.7.17")
+    implementation("dev.bluefalcon:blue-falcon-plugin-command-queue:3.8.0")
 }
 ```
 
@@ -134,9 +134,9 @@ and macOS**; the other Central platforms do not currently provide this server AP
 
 ```kotlin
 commonMain.dependencies {
-    implementation("dev.bluefalcon:blue-falcon-peripheral:3.7.17")
+    implementation("dev.bluefalcon:blue-falcon-peripheral:3.8.0")
     // Optional bounded notification queue with fair per-session scheduling
-    implementation("dev.bluefalcon:blue-falcon-plugin-queue:3.7.17")
+    implementation("dev.bluefalcon:blue-falcon-plugin-queue:3.8.0")
 }
 ```
 
@@ -337,6 +337,25 @@ You still request the runtime permissions yourself.
 #### iOS
 - Minimum: iOS 13.0+
 - Xcode 14.0+
+
+##### Background scan restoration (iOS)
+
+Pass a restoration identifier so that iOS can hand back a running scan after it ends the app in the background:
+
+```kotlin
+val engine = IosEngine(AppleEngineConfiguration(restorationIdentifier = "com.example.central"))
+val blueFalcon = BlueFalcon(engine)
+
+// Set once, when iOS relaunches the app with a scan it restored. Core Bluetooth keeps
+// that scan running, and discoveries arrive in `peripherals` without a new scan() call.
+engine.restoredScan.filterNotNull().collect { scan -> println("Restored scan for ${scan.filters}") }
+```
+
+- **Only scans are restored, not connections.** Every connection uses its own per-peer `CBCentralManager`, and those managers have no restoration identifier. After a relaunch, scan and connect again.
+- iOS doesn't relaunch or restore an app that the user force-quit from the app switcher.
+- Add `bluetooth-central` to `UIBackgroundModes` in `Info.plist`. Without it, Core Bluetooth throws `NSInternalInconsistencyException` when the engine is created.
+- Create the engine early during launch (for example in `application(_:didFinishLaunchingWithOptions:)`), and use the same identifier every time.
+- macOS doesn't support state restoration. The identifier has no effect there.
 
 #### macOS
 - Minimum: macOS 10.15+
