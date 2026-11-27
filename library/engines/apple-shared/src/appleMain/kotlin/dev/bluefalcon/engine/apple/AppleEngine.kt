@@ -24,11 +24,16 @@ import platform.Foundation.*
 /**
  * Shared Apple implementation of BlueFalconEngine for iOS and macOS
  * Uses CoreBluetooth framework
+ *
+ * @param configuration engine options, for example scan restoration (see [AppleEngineConfiguration]).
  */
 @OptIn(BetaInteropApi::class)
 class AppleEngine(
-    private val logger: Logger? = null
+    private val configuration: AppleEngineConfiguration,
+    private val logger: Logger? = null,
 ) : ClosableBlueFalconEngine, CBCentralManagerCallback, CBPeripheralCallback {
+
+    constructor(logger: Logger? = null) : this(AppleEngineConfiguration(), logger)
     
     override val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val lifecycle = AppleEngineLifecycle(scope, ::closeResources)
@@ -142,10 +147,26 @@ class AppleEngine(
     override var isScanning: Boolean = false
         private set
     
-    // CoreBluetooth manager
-    private val bluetoothManager = BluetoothPeripheralManager(this)
+    // Scan restoration (#325). Declared before the manager: Core Bluetooth calls back while the
+    // manager is still being constructed, so the callback must not use `bluetoothManager`.
+    private val scanRestoration = AppleScanRestoration(logger)
+
+    /**
+     * The scan that iOS restored after it relaunched the app in the background, or `null`.
+     *
+     * Set at most once per engine, and only when [AppleEngineConfiguration.restorationIdentifier]
+     * is set. Connections are never restored; see [AppleEngineConfiguration].
+     */
+    val restoredScan: StateFlow<AppleRestoredScan?> = scanRestoration.restoredScan
+
+    // CoreBluetooth manager. Only this scanning manager gets the restoration identifier;
+    // per-peer connection managers (#298) never do.
+    private val bluetoothManager = BluetoothPeripheralManager(this, configuration.restorationIdentifier) { state ->
+        scanRestoration.adopt(state) { isScanning = true }
+    }
     private val centralManager: CBCentralManager
         get() = bluetoothManager.centralManager
+
     
     // Peripheral delegate for handling peripheral events
     private val connectionAttempts = AppleConnectionAttemptCoordinator()
@@ -192,6 +213,7 @@ class AppleEngine(
 
     /** Applies [ScanConfig.allowDuplicates]; Core Bluetooth has no duty-cycle or batching control. */
     override suspend fun scan(filters: List<ServiceFilter>, config: ScanConfig): Unit = lifecycle.operation {
+        scanRestoration.appChangedScan()
         lifecycle.native { isScanning = true }
         
         when (centralManager.state) {
@@ -218,6 +240,7 @@ class AppleEngine(
     }
     
     override suspend fun stopScanning(): Unit = lifecycle.operation {
+        scanRestoration.appChangedScan()
         isScanning = false
         lifecycle.native { centralManager.stopScan() }
     }
